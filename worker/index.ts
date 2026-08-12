@@ -50,6 +50,16 @@ const isLocationOpen = (location: LocationId, minutes = worldMinutes()) => {
   const current = minuteOfDay(minutes);
   return current >= hours.open && current < hours.close;
 };
+function scratchPrize() {
+  const roll = crypto.getRandomValues(new Uint32Array(1))[0] / 4_294_967_296;
+  if (roll < 0.62) return 0;
+  if (roll < 0.87) return 100;
+  if (roll < 0.95) return 200;
+  if (roll < 0.985) return 500;
+  if (roll < 0.998) return 1_000;
+  if (roll < 0.9998) return 10_000;
+  return 50_000;
+}
 function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 }
@@ -449,6 +459,7 @@ async function takeAction(request: Request, env: Env) {
   let message = "行動完成。";
   let tone: "good" | "neutral" | "warn" = "good";
   let minutes = 0;
+  let scratch: { price: number; prize: number } | null = null;
 
   switch (body.action) {
     case "move": {
@@ -528,6 +539,17 @@ async function takeAction(request: Request, env: Env) {
       next.cash -= meal.price; next.hunger = clamp(next.hunger + meal.hunger); next.mood = clamp(next.mood + meal.mood); minutes = 20;
       title = `享用${meal.name}`; message = `${meal.name}讓飽足 +${meal.hunger}。`; break;
     }
+    case "scratch": {
+      if (next.location !== "shopping") return json({ message: "請先前往購物街購買刮刮樂。" }, 400);
+      if (!isLocationOpen("shopping", sharedMinutes)) return json({ message: `購物街營業時間為 ${openingHours.shopping?.label}。` }, 400);
+      if (next.cash < 100) return json({ message: "購買刮刮樂需要 NT$100，目前現金不足。" }, 400);
+      const prize = scratchPrize();
+      scratch = { price: 100, prize };
+      next.cash = next.cash - 100 + prize; minutes = 5;
+      title = prize ? `刮刮樂中獎 NT$${prize}` : "刮刮樂未中獎";
+      message = prize ? `花費 NT$100，刮中 NT$${prize}，獎金已存入資產。` : "花費 NT$100，這張沒有中獎。";
+      tone = prize >= 1_000 ? "good" : "neutral"; break;
+    }
     case "sleep":
       if (next.location !== "home") return json({ message: "請先回到溫暖小屋。" }, 400);
       if (!next.owns_home && next.rented_until <= sharedMinutes) return json({ message: "租約已到期，請先到房仲續租。" }, 400);
@@ -587,7 +609,7 @@ async function takeAction(request: Request, env: Env) {
   ]);
   const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id = ?").bind(user.userId).first<PlayerRow>();
   const world = await multiplayer(env.DB);
-  return json({ player: serializePlayer(saved!), message, ...world });
+  return json({ player: serializePlayer(saved!), message, scratch, ...world });
 }
 
 export default {

@@ -239,6 +239,11 @@ function guestAction(current: Player, action: string, payload: Record<string, un
     const meal = payload.kind === "rice" ? { name: "飯糰", price: 45, hunger: 20, mood: 1 } : { name: "便當", price: 100, hunger: 45, mood: 3 };
     if (next.cash < meal.price) return fail("現金不足。");
     next.cash -= meal.price; next.hunger = Math.min(100, next.hunger + meal.hunger); next.mood = Math.min(100, next.mood + meal.mood); minutes = 20; title = `享用${meal.name}`; message = `${meal.name}讓飽足 +${meal.hunger}。`;
+  } else if (action === "scratch") {
+    if (next.location !== "shopping") return fail("請先前往購物街購買刮刮樂。");
+    if (!isLocationOpen("shopping", sharedMinutes)) return fail("購物街營業時間為 10:00～22:00。");
+    if (next.cash < 100) return fail("購買刮刮樂需要 NT$100，目前現金不足。");
+    next.cash -= 100; minutes = 5; title = "刮刮樂試玩"; message = "訪客模式不發放隨機獎金；登入後可購買正式刮刮樂。";
   } else if (action === "sleep") {
     if (next.location !== "home") return fail("請先回到溫暖小屋。");
     if (!next.ownsHome && next.rentedUntil <= sharedMinutes) return fail("租約已到期，請先到房仲續租。");
@@ -291,6 +296,7 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [jobOpen, setJobOpen] = useState(false);
+  const [scratchResult, setScratchResult] = useState<{ price: number; prize: number } | null>(null);
   const [jobCategory, setJobCategory] = useState<string>(JOB_CATEGORIES[0].id);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authError, setAuthError] = useState("");
@@ -376,12 +382,13 @@ export default function Home() {
         headers: apiHeaders(true),
         body: JSON.stringify({ action: action.startsWith("casino_") ? action.slice(7) : action, ...payload }),
       });
-      const data = await response.json() as { player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; message?: string };
+      const data = await response.json() as { player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; scratch?: { price: number; prize: number } | null; message?: string };
       if (!response.ok || !data.player) throw new Error(data.message || "行動失敗");
       setPlayer(data.player);
       if (data.online) setOnline(data.online);
       if (data.feed) setFeed(data.feed);
       if (data.casino) setCasino(data.casino);
+      if (data.scratch) setScratchResult(data.scratch);
       setNotice(data.message || "行動完成");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "行動失敗，請稍後再試。");
@@ -498,7 +505,7 @@ export default function Home() {
               {player.location === "home" && <ActionCard icon="☾" title="睡眠 8 小時" meta="體力全滿 · 健康 +5 · 心情 +10" button="好好休息" onClick={() => void act("sleep")} disabled={busy} />}
               {player.location === "realtor" && <><ActionCard icon="01" title="城市小套房 · 1 天" meta="每日 NT$350 · 租金 NT$350" button="租 1 天" onClick={() => void act("housing", { kind: "rent", days: 1 })} disabled={busy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /><ActionCard icon="07" title="城市小套房 · 7 天" meta="每日 NT$350 · 租金 NT$2,450" button="租 7 天" onClick={() => void act("housing", { kind: "rent", days: 7 })} featured disabled={busy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /><ActionCard icon="買" title="購買城市小宅" meta="NT$150,000 · 永久住所 · 買房後仍可查看租屋" button={player.ownsHome ? "已擁有，仍可看租屋" : "購買房屋"} onClick={() => void act("housing", { kind: "buy" })} disabled={busy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /></>}
               {player.location === "business" && <><ActionCard icon="職" title="找工作" meta="12 條產業升遷路線 · 無固定職業" button="打開產業列表" onClick={() => setJobOpen(true)} featured disabled={busy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="01" title="短班 1 小時" meta={`收入 NT$${formatMoney(career.hourlyPay)} · 產業 EXP +4`} button="開始工作" onClick={() => void act("work", { hours: 1 })} disabled={busy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="04" title="標準班 4 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 4)} · 產業 EXP +16`} button="開始工作" onClick={() => void act("work", { hours: 4 })} disabled={busy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="08" title="長班 8 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 8)} · 產業 EXP +32`} button="開始工作" onClick={() => void act("work", { hours: 8 })} disabled={busy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /></>}
-              {player.location === "shopping" && <><ActionCard icon="飯" title="巷口飯糰" meta="NT$45 · 飽足 +20" button="買來吃" onClick={() => void act("eat", { kind: "rice" })} disabled={busy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="餐" title="豐盛便當" meta="NT$100 · 飽足 +45 · 心情 +3" button="享用便當" onClick={() => void act("eat", { kind: "bento" })} featured disabled={busy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /></>}
+              {player.location === "shopping" && <><ActionCard icon="刮" title="幸運刮刮樂" meta="每張 NT$100 · 最高獎金 NT$50,000" button="購買並刮開" onClick={() => void act("scratch")} featured disabled={busy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="飯" title="巷口飯糰" meta="NT$45 · 飽足 +20" button="買來吃" onClick={() => void act("eat", { kind: "rice" })} disabled={busy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="餐" title="豐盛便當" meta="NT$100 · 飽足 +45 · 心情 +3" button="享用便當" onClick={() => void act("eat", { kind: "bento" })} disabled={busy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /></>}
                 {player.location === "casino" && <CasinoTable state={casino} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`casino_${action}`, payload)} />}
               {player.location === "school" && <ActionCard icon="學" title="程式設計課" meta="NT$500 · 2 小時 · 程式 EXP +25" button="報名上課" onClick={() => void act("study")} featured disabled={busy || !schoolOpen} disabledLabel={!schoolOpen ? "已關門" : undefined} />}
               {player.location === "hospital" && <><ActionCard icon="急" title="24 小時急診" meta="NT$2,500 · 健康至少恢復至 70 · 全天開放" button="前往急診" onClick={() => void act("hospital", { kind: "emergency" })} featured disabled={busy} /><ActionCard icon="診" title="一般門診" meta="08:00～20:00 · NT$600 · 健康 +25" button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={busy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /><ActionCard icon="療" title="完整治療" meta="08:00～20:00 · NT$1,500 · 健康至少恢復至 80" button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} disabled={busy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /></>}
@@ -533,6 +540,15 @@ export default function Home() {
             <div className="route-steps">{selectedJobCategory.jobs.map((job, index) => <div className={player.jobCategory === selectedJobCategory.id && player.currentJob === job ? "current" : ""} key={job}><small>第 {index + 1} 階</small><strong>{job}</strong><span>{index === 0 ? "入行" : `${[100, 250, 500, 900, 1400, 2000, 2700][index]} EXP`}</span></div>)}</div>
             <button className="enter-industry" onClick={() => { setJobOpen(false); void act("job", { job: selectedJobCategory.jobs[0] }); }} disabled={busy || (player.jobCategory === selectedJobCategory.id && player.jobExp === 0)}>進入{selectedJobCategory.label} · 從{selectedJobCategory.jobs[0]}開始</button>
           </div>}
+        </section>
+      </div>}
+      {scratchResult && <div className="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="scratch-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setScratchResult(null); }}>
+        <section className={`scratch-ticket ${scratchResult.prize ? "winner" : ""}`}>
+          <button className="auth-close" type="button" aria-label="關閉" onClick={() => setScratchResult(null)}>×</button>
+          <span>LUCKY STREET · NT$100</span><h2 id="scratch-title">幸運刮刮樂</h2>
+          <div><small>本張獎金</small><strong>{scratchResult.prize ? `NT$${formatMoney(scratchResult.prize)}` : "銘謝惠顧"}</strong></div>
+          <p>{scratchResult.prize ? "恭喜中獎！獎金已存入你的可用資產。" : "這張沒有中獎，謝謝參與。"}</p>
+          <button className="scratch-confirm" onClick={() => setScratchResult(null)}>收下結果</button>
         </section>
       </div>}
       {authOpen && <div className="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="auth-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setAuthOpen(false); }}>
