@@ -261,6 +261,12 @@ async function upsertPlayer(db: D1Database, user: AuthUser) {
     let gameOver = row.game_over;
     for (let day = 0; day < elapsedDays; day += 1) {
       if (row.main_story === "prodigal_return" && loanBalance > 0 && !gameOver) {
+        const paymentShortfall = Math.min(loanBalance, Math.max(0, minimumPayment - paymentMade));
+        if (paymentShortfall > 0 && bankBalance >= paymentShortfall) {
+          bankBalance -= paymentShortfall;
+          loanBalance -= paymentShortfall;
+          paymentMade += paymentShortfall;
+        }
         missedPaymentDays = paymentMade < minimumPayment ? missedPaymentDays + 1 : 0;
         if (missedPaymentDays >= 2) gameOver = PRODIGAL_FAILURE_ENDING;
       } else if (loanBalance <= 0) missedPaymentDays = 0;
