@@ -210,7 +210,7 @@ function guestAction(current: Player, action: string, payload: Record<string, un
     if (!locations.some((item) => item.id === target) || target === next.location) return fail("你已經在這裡了。");
     if (target === "home" && !next.ownsHome && next.rentedUntil <= sharedMinutes) return fail("你目前沒有住所，請先到安心房仲租屋或買房。");
     if (!isLocationOpen(target, sharedMinutes)) return fail(`${locations.find((item) => item.id === target)?.hours} 營業，現在已關門。`);
-    next.location = target; next.energy = Math.max(0, next.energy - 1); next.hunger = Math.max(0, next.hunger - 1); minutes = 10; title = "前往新地點"; message = `花了 10 分鐘抵達${locationName(target)}。`;
+    next.location = target; next.energy = Math.max(0, next.energy - 1); next.hunger = Math.max(0, next.hunger - 1); title = "移動完成"; message = `已抵達${locationName(target)}。`;
   } else if (action === "housing") {
     if (next.location !== "realtor") return fail("請先前往安心房仲。");
     if (!isLocationOpen("realtor", sharedMinutes)) return fail("安心房仲營業時間為 09:00～18:00。");
@@ -446,7 +446,7 @@ export default function Home() {
         setPlayer(result.player);
         setNotice(`${result.message}（訪客進度不會儲存）`);
         const time = clock(result.player.elapsedMinutes).time;
-        setFeed((items) => [{ id: crypto.randomUUID(), time, title: result.title || "完成行動", detail: result.message || "", tone: "neutral" as const }, ...items].slice(0, 6));
+        if (action !== "move") setFeed((items) => [{ id: crypto.randomUUID(), time, title: result.title || "完成行動", detail: result.message || "", tone: "neutral" as const }, ...items].slice(0, 6));
       }
       setBusy(false);
       return;
