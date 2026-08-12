@@ -16,6 +16,42 @@ export const JOB_CATEGORIES = [
 
 export const CAREER_THRESHOLDS = [0, 100, 250, 500, 900, 1400, 2000, 2700] as const;
 export const CAREER_PAY = [180, 230, 300, 400, 550, 750, 1000, 1300] as const;
+export const ABILITY_LABELS = {
+  physical: "體力",
+  intelligence: "智力",
+  creativity: "創造力",
+  social: "社交",
+  charisma: "魅力",
+} as const;
+
+export type AbilityKey = keyof typeof ABILITY_LABELS;
+export type Abilities = Record<AbilityKey, number>;
+
+export const ACADEMIES = [
+  { id: "fitness", name: "健身學院", icon: "健", gains: { physical: 25, charisma: 5 } },
+  { id: "science", name: "科學學院", icon: "科", gains: { intelligence: 25, creativity: 5 } },
+  { id: "art", name: "藝術學院", icon: "藝", gains: { creativity: 25, charisma: 5 } },
+  { id: "performance", name: "表演學院", icon: "演", gains: { charisma: 20, social: 15 } },
+  { id: "business", name: "商業學院", icon: "商", gains: { social: 20, intelligence: 10 } },
+] as const;
+
+const CAREER_ABILITY_PROFILE: Record<string, readonly [AbilityKey, AbilityKey]> = {
+  office: ["social", "intelligence"],
+  technology: ["intelligence", "creativity"],
+  medical: ["intelligence", "social"],
+  education: ["intelligence", "social"],
+  law: ["intelligence", "physical"],
+  finance: ["social", "intelligence"],
+  creative: ["creativity", "charisma"],
+  hospitality: ["social", "charisma"],
+  nature: ["physical", "intelligence"],
+  transport: ["physical", "intelligence"],
+  sports: ["physical", "charisma"],
+  freelance: ["creativity", "social"],
+};
+
+const PRIMARY_REQUIREMENTS = [10, 40, 80, 140, 220, 320, 440, 580] as const;
+const SECONDARY_REQUIREMENTS = [5, 20, 40, 70, 110, 160, 220, 300] as const;
 export const ALL_JOBS = JOB_CATEGORIES.flatMap((category) => category.jobs.map((job) => ({ job, categoryId: category.id, categoryLabel: category.label })));
 
 export function categoryInfo(categoryId: string) {
@@ -26,21 +62,35 @@ export function jobInfo(job: string) {
   return ALL_JOBS.find((item) => item.job === job) ?? null;
 }
 
-export function careerForCategory(categoryId: string, exp: number, fallback = "待業者") {
+export function careerRequirements(categoryId: string, index: number): Partial<Abilities> {
+  const profile = CAREER_ABILITY_PROFILE[categoryId];
+  if (!profile) return {};
+  return {
+    [profile[0]]: PRIMARY_REQUIREMENTS[index] ?? PRIMARY_REQUIREMENTS.at(-1),
+    [profile[1]]: SECONDARY_REQUIREMENTS[index] ?? SECONDARY_REQUIREMENTS.at(-1),
+  };
+}
+
+export function meetsCareerRequirements(abilities: Abilities, requirements: Partial<Abilities>) {
+  return Object.entries(requirements).every(([key, value]) => abilities[key as AbilityKey] >= (value ?? 0));
+}
+
+export function careerForCategory(categoryId: string, exp: number, fallback = "待業者", abilities?: Abilities) {
   const category = categoryInfo(categoryId);
   if (!category || category.id === "unfixed") return { title: fallback === "流浪者" ? "流浪者" : "待業者", hourlyPay: 0, threshold: 0, index: 0 };
-  let index = 0;
-  for (let cursor = 0; cursor < category.jobs.length; cursor += 1) {
-    if (exp >= CAREER_THRESHOLDS[cursor]) index = cursor;
+  const existingIndex = category.jobs.findIndex((job) => job === fallback);
+  let index = Math.max(0, existingIndex);
+  for (let cursor = index + 1; cursor < category.jobs.length; cursor += 1) {
+    if (exp >= CAREER_THRESHOLDS[cursor] && (!abilities || meetsCareerRequirements(abilities, careerRequirements(categoryId, cursor)))) index = cursor;
   }
   return { title: category.jobs[index], hourlyPay: CAREER_PAY[index], threshold: CAREER_THRESHOLDS[index], index };
 }
 
-export function nextCareerForCategory(categoryId: string, exp: number) {
+export function nextCareerForCategory(categoryId: string, exp: number, fallback = "待業者", abilities?: Abilities) {
   const category = categoryInfo(categoryId);
   if (!category || category.id === "unfixed") return null;
-  const current = careerForCategory(categoryId, exp);
+  const current = careerForCategory(categoryId, exp, fallback, abilities);
   const nextIndex = current.index + 1;
   if (nextIndex >= category.jobs.length) return null;
-  return { title: category.jobs[nextIndex], threshold: CAREER_THRESHOLDS[nextIndex], hourlyPay: CAREER_PAY[nextIndex], index: nextIndex };
+  return { title: category.jobs[nextIndex], threshold: CAREER_THRESHOLDS[nextIndex], hourlyPay: CAREER_PAY[nextIndex], index: nextIndex, requirements: careerRequirements(categoryId, nextIndex) };
 }

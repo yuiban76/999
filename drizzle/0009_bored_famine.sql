@@ -1,0 +1,1 @@
+ALTER TABLE `players` ADD `charisma_exp` integer DEFAULT 0 NOT NULL;

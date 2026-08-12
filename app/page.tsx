@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { careerForCategory, categoryInfo, JOB_CATEGORIES, jobInfo, nextCareerForCategory } from "../shared/jobs";
+import { ABILITY_LABELS, ACADEMIES, careerForCategory, careerRequirements, categoryInfo, JOB_CATEGORIES, jobInfo, meetsCareerRequirements, nextCareerForCategory, type Abilities } from "../shared/jobs";
 
 type LocationId = "home" | "realtor" | "bank" | "business" | "shopping" | "hotel" | "casino" | "school" | "hospital";
 type StatKey = "energy" | "health" | "hunger";
@@ -15,9 +15,10 @@ type Player = {
   mood: number;
   hunger: number;
   intelligenceExp: number;
-  programmingExp: number;
-  fitnessExp: number;
-  workExp: number;
+  creativityExp: number;
+  physicalExp: number;
+  socialExp: number;
+  charismaExp: number;
   currentJob: string;
   jobCategory: string;
   jobExp: number;
@@ -87,9 +88,10 @@ const INITIAL_PLAYER: Player = {
   mood: 80,
   hunger: 80,
   intelligenceExp: 0,
-  programmingExp: 0,
-  fitnessExp: 0,
-  workExp: 0,
+  creativityExp: 0,
+  physicalExp: 0,
+  socialExp: 0,
+  charismaExp: 0,
   currentJob: "待業者",
   jobCategory: "unfixed",
   jobExp: 0,
@@ -138,6 +140,16 @@ const levelProgress = (exp: number) => {
   const current = level(exp);
   return Math.min(100, ((exp - thresholds[current - 1]) / (thresholds[current] - thresholds[current - 1])) * 100);
 };
+const abilitiesFor = (player: Player): Abilities => ({
+  physical: player.physicalExp,
+  intelligence: player.intelligenceExp,
+  creativity: player.creativityExp,
+  social: player.socialExp,
+  charisma: player.charismaExp,
+});
+const formatRequirements = (requirements: Partial<Abilities>) => Object.entries(requirements)
+  .map(([key, value]) => `${ABILITY_LABELS[key as keyof Abilities]} ${value}`)
+  .join("、");
 
 const WORLD_EPOCH_MS = Date.UTC(2026, 7, 12, 10, 0, 0);
 const WORLD_START_MINUTES = 7 * 60 + 30;
@@ -257,6 +269,8 @@ function guestAction(current: Player, action: string, payload: Record<string, un
     const category = categoryInfo(selected.categoryId);
     if (!category) return fail("這個產業不存在。");
     if (category.id !== "unfixed" && selected.job !== category.jobs[0]) return fail(`進入${category.label}必須從${category.jobs[0]}開始。`);
+    const entryRequirements = careerRequirements(category.id, 0);
+    if (category.id !== "unfixed" && !meetsCareerRequirements(abilitiesFor(next), entryRequirements)) return fail(`進入${category.label}需要${formatRequirements(entryRequirements)}。`);
     next.currentJob = selected.job; next.jobCategory = selected.categoryId; next.jobExp = 0; minutes = 60;
     title = category.id === "unfixed" ? `狀態變更：${selected.job}` : `進入${selected.categoryLabel}`;
     message = category.id === "unfixed" ? `目前狀態已改為${selected.job}。` : `成功進入「${selected.categoryLabel}」，從${selected.job}開始發展。`;
@@ -267,10 +281,10 @@ function guestAction(current: Player, action: string, payload: Record<string, un
     if (next.illness) return fail(`目前罹患${next.illness}，請先前往醫院治療。`);
     if (next.jobCategory === "unfixed") return fail(`目前是${next.currentJob}，請先選擇一條產業路線。`);
     if (next.energy < hours * 5) return fail("體力不足，先回家休息吧。");
-    const previousCareer = careerForCategory(next.jobCategory, next.jobExp, next.currentJob);
+    const previousCareer = careerForCategory(next.jobCategory, next.jobExp, next.currentJob, abilitiesFor(next));
     const income = hours * previousCareer.hourlyPay;
-    next.cash += income; next.energy = Math.max(0, next.energy - hours * 5); next.health = Math.max(0, next.health - Math.ceil(hours / 2)); next.mood = Math.max(0, next.mood - Math.ceil(hours * .9)); next.hunger = Math.max(0, next.hunger - hours * 2); next.workExp += hours * 4; next.jobExp += hours * 4; minutes = hours * 60;
-    const newCareer = careerForCategory(next.jobCategory, next.jobExp, next.currentJob);
+    next.cash += income; next.energy = Math.max(0, next.energy - hours * 5); next.health = Math.max(0, next.health - Math.ceil(hours / 2)); next.mood = Math.max(0, next.mood - Math.ceil(hours * .9)); next.hunger = Math.max(0, next.hunger - hours * 2); next.jobExp += hours * 4; minutes = hours * 60;
+    const newCareer = careerForCategory(next.jobCategory, next.jobExp, next.currentJob, abilitiesFor(next));
     next.currentJob = newCareer.title;
     title = newCareer.title !== previousCareer.title ? `升遷為${newCareer.title}` : `工作 ${hours} 小時`;
     message = `收入 +NT$${income}、工作經驗 +${hours * 4}。${newCareer.title !== previousCareer.title ? `恭喜升遷為${newCareer.title}！` : ""}`;
@@ -278,8 +292,20 @@ function guestAction(current: Player, action: string, payload: Record<string, un
     if (next.location !== "school") return fail("請先前往未來學院。");
     if (!isLocationOpen("school", sharedMinutes)) return fail("未來學院開放時間為 08:00～21:00。");
     if (next.illness) return fail(`目前罹患${next.illness}，請先前往醫院治療。`);
+    const academy = ACADEMIES.find((item) => item.id === payload.academy);
+    if (!academy) return fail("這所學院不存在。");
     if (next.cash < 500 || next.energy < 10) return fail(next.cash < 500 ? "學費不足。" : "體力不足。");
-    next.cash -= 500; next.energy -= 10; next.mood = Math.max(0, next.mood - 3); next.hunger = Math.max(0, next.hunger - 4); next.programmingExp += 25; next.intelligenceExp += 5; minutes = 120; title = "完成程式設計課"; message = "程式設計 EXP +25、知識 EXP +5。";
+    next.cash -= 500; next.energy -= 10; next.hunger = Math.max(0, next.hunger - 4);
+    for (const [key, gain] of Object.entries(academy.gains)) {
+      if (key === "physical") next.physicalExp += gain;
+      if (key === "intelligence") next.intelligenceExp += gain;
+      if (key === "creativity") next.creativityExp += gain;
+      if (key === "social") next.socialExp += gain;
+      if (key === "charisma") next.charismaExp += gain;
+    }
+    const promoted = careerForCategory(next.jobCategory, next.jobExp, next.currentJob, abilitiesFor(next));
+    const promotionMessage = promoted.title !== next.currentJob ? ` 能力達標，升遷為${promoted.title}！` : "";
+    next.currentJob = promoted.title; minutes = 120; title = `完成${academy.name}課程`; message = `${formatRequirements(academy.gains)}。${promotionMessage}`;
   } else if (action === "eat") {
     if (next.location !== "shopping") return fail("請先前往購物街。");
     if (!isLocationOpen("shopping", sharedMinutes)) return fail("購物街營業時間為 10:00～22:00。");
@@ -351,8 +377,9 @@ export default function Home() {
   const [sharedMinutes, setSharedMinutes] = useState(worldMinutes());
   const gameClock = useMemo(() => clock(sharedMinutes), [sharedMinutes]);
   const currentLocation = locations.find((item) => item.id === player.location)!;
-  const career = careerForCategory(player.jobCategory, player.jobExp, player.currentJob);
-  const nextCareer = nextCareerForCategory(player.jobCategory, player.jobExp);
+  const playerAbilities = abilitiesFor(player);
+  const career = careerForCategory(player.jobCategory, player.jobExp, player.currentJob, playerAbilities);
+  const nextCareer = nextCareerForCategory(player.jobCategory, player.jobExp, player.currentJob, playerAbilities);
   const nextCareerTitle = nextCareer?.title ?? "職涯最高階級";
   const careerProgress = nextCareer ? Math.max(0, Math.min(100, ((player.jobExp - career.threshold) / (nextCareer.threshold - career.threshold)) * 100)) : 100;
   const avatarSrc = profile?.avatarUrl ? `${API_ORIGIN}${profile.avatarUrl}` : "";
@@ -532,13 +559,13 @@ export default function Home() {
           <div className="career-card">
             <div><span>目前職業</span><strong>{career.title}</strong></div><small>時薪 NT${formatMoney(career.hourlyPay)}</small>
             <div className="career-track"><i style={{ width: `${careerProgress}%` }} /></div>
-            <p>{nextCareer && player.jobCategory !== "unfixed" ? `再累積 ${nextCareer.threshold - player.jobExp} 產業 EXP 升遷為${nextCareerTitle}` : player.jobCategory === "unfixed" ? "前往商業區選擇產業路線" : "已達此產業最高職位"}</p>
+            <p>{nextCareer && player.jobCategory !== "unfixed" ? `升遷為${nextCareerTitle}：${Math.max(0, nextCareer.threshold - player.jobExp)} EXP，${formatRequirements(nextCareer.requirements)}` : player.jobCategory === "unfixed" ? "前往商業區選擇產業路線" : "已達此產業最高職位"}</p>
           </div>
           {player.illness && <div className="illness-alert"><strong>目前生病：{player.illness}</strong><span>工作與上課暫停，請前往市立醫院。</span></div>}
           <div className="stat-list">
             {statMeta.map((item) => <div className="stat-row" key={item.key}><span className="stat-label"><span>{item.icon}</span>{item.label}</span><div className="stat-track"><i style={{ width: `${player[item.key]}%` }} /></div><strong>{player[item.key]}</strong></div>)}
           </div>
-          <div className="skills-block"><div className="section-heading"><span>能力履歷</span><small>SKILLS</small></div><Skill name="程式設計" exp={player.programmingExp} /><Skill name="體能" exp={player.fitnessExp} /><Skill name="工作經驗" exp={player.workExp} /></div>
+          <div className="skills-block"><div className="section-heading"><span>能力履歷</span><small>SKILLS</small></div><Skill name="體力" exp={player.physicalExp} /><Skill name="智力" exp={player.intelligenceExp} /><Skill name="創造力" exp={player.creativityExp} /><Skill name="社交" exp={player.socialExp} /><Skill name="魅力" exp={player.charismaExp} /></div>
         </aside>
 
         <section className="world-panel panel">
@@ -557,7 +584,7 @@ export default function Home() {
               {player.location === "shopping" && <><ActionCard icon="刮" title="幸運刮刮樂" meta="每張 NT$100 · 最高獎金 NT$50,000" button="購買並刮開" onClick={() => void act("scratch")} featured disabled={busy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="飯" title="巷口飯糰" meta="NT$45 · 飽足 +20" button="買來吃" onClick={() => void act("eat", { kind: "rice" })} disabled={busy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="餐" title="豐盛便當" meta="NT$100 · 飽足 +45 · 心情 +3" button="享用便當" onClick={() => void act("eat", { kind: "bento" })} disabled={busy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /></>}
               {player.location === "hotel" && <><ActionCard icon="宿" title="旅店住宿一晚" meta="NT$1,200 · 體力全滿 · 健康 +3 · 僅限無住所" button="辦理入住" onClick={() => void act("hotel", { kind: "stay" })} featured disabled={busy || player.ownsHome || rentalDaysLeft > 0} disabledLabel={player.ownsHome || rentalDaysLeft > 0 ? "已有住所" : undefined} /><ActionCard icon="餐" title="24 小時旅店餐" meta="NT$250 · 飽足 +45" button="購買旅店餐" onClick={() => void act("hotel", { kind: "meal" })} disabled={busy} /><ActionCard icon="豪" title="24 小時豪華餐" meta="NT$500 · 飽足 +80" button="購買豪華餐" onClick={() => void act("hotel", { kind: "luxury" })} disabled={busy} /></>}
                 {player.location === "casino" && <CasinoTable state={casino} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`casino_${action}`, payload)} />}
-              {player.location === "school" && <ActionCard icon="學" title="程式設計課" meta="NT$500 · 2 小時 · 程式 EXP +25" button="報名上課" onClick={() => void act("study")} featured disabled={busy || !schoolOpen} disabledLabel={!schoolOpen ? "已關門" : undefined} />}
+              {player.location === "school" && ACADEMIES.map((academy, index) => <ActionCard key={academy.id} icon={academy.icon} title={academy.name} meta={`NT$500 · 2 小時 · ${formatRequirements(academy.gains)}`} button="報名上課" onClick={() => void act("study", { academy: academy.id })} featured={index === 0} disabled={busy || !schoolOpen} disabledLabel={!schoolOpen ? "已關門" : undefined} />)}
               {player.location === "hospital" && <><ActionCard icon="急" title="24 小時急診" meta="NT$2,500 · 健康至少恢復至 70 · 全天開放" button="前往急診" onClick={() => void act("hospital", { kind: "emergency" })} featured disabled={busy} /><ActionCard icon="診" title="一般門診" meta="08:00～20:00 · NT$600 · 健康 +25" button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={busy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /><ActionCard icon="療" title="完整治療" meta="08:00～20:00 · NT$1,500 · 健康至少恢復至 80" button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} disabled={busy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /></>}
             </div>
           </div>
@@ -574,7 +601,7 @@ export default function Home() {
           <ol className="feed-list">
             {feed.slice(0, 6).map((item) => <li key={item.id} className={item.tone}><time>{item.time}</time><div><strong>{item.playerName ? `${item.playerName} · ` : ""}{item.title}</strong><p>{item.detail}</p></div></li>)}
           </ol>
-          <div className="next-goal"><span>職涯里程碑</span><strong>{player.jobCategory === "unfixed" ? "先選擇一條產業路線" : nextCareer ? `升遷：${nextCareerTitle}` : "此產業最高職位"}</strong><div><i style={{ width: `${player.jobCategory === "unfixed" ? 0 : careerProgress}%` }} /></div><small>{player.jobCategory === "unfixed" ? "商業區 · 找工作" : nextCareer ? `${player.jobExp} / ${nextCareer.threshold} 產業 EXP` : `${player.jobExp} 產業 EXP`}</small></div>
+          <div className="next-goal"><span>職涯里程碑</span><strong>{player.jobCategory === "unfixed" ? "先選擇一條產業路線" : nextCareer ? `升遷：${nextCareerTitle}` : "此產業最高職位"}</strong><div><i style={{ width: `${player.jobCategory === "unfixed" ? 0 : careerProgress}%` }} /></div><small>{player.jobCategory === "unfixed" ? "商業區 · 找工作" : nextCareer ? `${player.jobExp} / ${nextCareer.threshold} EXP · ${formatRequirements(nextCareer.requirements)}` : `${player.jobExp} 產業 EXP`}</small></div>
         </aside>
       </div>
       {jobOpen && <div className="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="job-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setJobOpen(false); }}>
@@ -582,12 +609,12 @@ export default function Home() {
           <button className="auth-close" type="button" aria-label="關閉" onClick={() => setJobOpen(false)}>×</button>
           <span className="panel-kicker">CITY CAREER BOARD</span>
           <h2 id="job-title">找工作</h2>
-          <p>選擇產業後會從路線中的第一個職業開始，累積產業經驗後依序升遷。更換產業會重設該路線經驗，但總工作經驗保留。</p>
+          <p>每條產業都有指定能力門檻；先到未來學院培養能力，入行後同時達成產業 EXP 與能力要求才會依序升遷。更換產業會重設該路線經驗，五項能力會保留。</p>
           <div className="job-categories" role="tablist" aria-label="職業分類">
             {JOB_CATEGORIES.map((category) => <button role="tab" aria-selected={jobCategory === category.id} className={jobCategory === category.id ? "active" : ""} key={category.id} onClick={() => setJobCategory(category.id)}>{category.label}</button>)}
           </div>
           {selectedJobCategory.id === "unfixed" ? <div className="job-list">{selectedJobCategory.jobs.map((job) => <button className={player.currentJob === job ? "current" : ""} key={job} onClick={() => { setJobOpen(false); void act("job", { job }); }} disabled={busy}><span>{job}</span><small>{player.currentJob === job ? "目前狀態" : "無固定工作與收入"}</small></button>)}</div> : <div className="career-route">
-            <div className="route-steps">{selectedJobCategory.jobs.map((job, index) => <div className={player.jobCategory === selectedJobCategory.id && player.currentJob === job ? "current" : ""} key={job}><small>第 {index + 1} 階</small><strong>{job}</strong><span>{index === 0 ? "入行" : `${[100, 250, 500, 900, 1400, 2000, 2700][index]} EXP`}</span></div>)}</div>
+            <div className="route-steps">{selectedJobCategory.jobs.map((job, index) => <div className={player.jobCategory === selectedJobCategory.id && player.currentJob === job ? "current" : ""} key={job}><small>第 {index + 1} 階</small><strong>{job}</strong><span>{index === 0 ? "入行" : `${[100, 250, 500, 900, 1400, 2000, 2700][index]} EXP`} · {formatRequirements(careerRequirements(selectedJobCategory.id, index))}</span></div>)}</div>
             <button className="enter-industry" onClick={() => { setJobOpen(false); void act("job", { job: selectedJobCategory.jobs[0] }); }} disabled={busy || (player.jobCategory === selectedJobCategory.id && player.jobExp === 0)}>進入{selectedJobCategory.label} · 從{selectedJobCategory.jobs[0]}開始</button>
           </div>}
         </section>
@@ -706,5 +733,5 @@ function actionTitle(location: LocationId) {
 }
 
 function actionDescription(location: LocationId) {
-  return { home: "有效租約或自有住宅才能進入，全天 24 小時開放。睡一覺能恢復體力與健康。", realtor: "營業時間 09:00～18:00。租屋每日 NT$350，也能買下永久住所；買房後租屋方案仍會保留。", bank: "營業時間 09:00～17:00。存款每日收益 3%；貸款上限 NT$50,000，每日利息 5%。", business: "營業時間 08:00～18:00。工作會累積職涯經驗並自動升遷，職位越高收入越多。", shopping: "營業時間 10:00～22:00。用合理的花費補充飽足，也能購買刮刮樂。", hotel: "全天 24 小時營業。無住所玩家可花 NT$1,200 住宿；餐點全天供應，但價格較高。", casino: "全天 24 小時開放。同一張桌最多五位登入玩家同時挑戰二十一點。", school: "開放時間 08:00～21:00。支付學費，累積程式設計能力。", hospital: "健康低於 50 時，行動後開始有機率生病。急診 24 小時開放；一般診療為 08:00～20:00。" }[location];
+  return { home: "有效租約或自有住宅才能進入，全天 24 小時開放。睡一覺能恢復體力與健康。", realtor: "營業時間 09:00～18:00。租屋每日 NT$350，也能買下永久住所；買房後租屋方案仍會保留。", bank: "營業時間 09:00～17:00。存款每日收益 3%；貸款上限 NT$50,000，每日利息 5%。", business: "營業時間 08:00～18:00。工作會累積職涯經驗；經驗與指定能力都達標後才會升遷。", shopping: "營業時間 10:00～22:00。用合理的花費補充飽足，也能購買刮刮樂。", hotel: "全天 24 小時營業。無住所玩家可花 NT$1,200 住宿；餐點全天供應，但價格較高。", casino: "全天 24 小時開放。同一張桌最多五位登入玩家同時挑戰二十一點。", school: "開放時間 08:00～21:00。五所學院分別培養體力、智力、創造力、社交與魅力。", hospital: "健康低於 50 時，行動後開始有機率生病。急診 24 小時開放；一般診療為 08:00～20:00。" }[location];
 }

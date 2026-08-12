@@ -380,7 +380,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
   .game-grid { display: block; }
   .character-panel { border-right: 0; border-bottom: 1px solid var(--ink); }
   .stat-list { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
-  .skills-block { display: none; }
+  .skills-block { display: block; margin-top: 18px; }
   .location-header { min-height: 115px; padding: 22px 18px; }
   .location-header h2 { font-size: 30px; }
   .location-strip { overflow-x: auto; grid-template-columns: repeat(9, minmax(82px, 1fr)); }

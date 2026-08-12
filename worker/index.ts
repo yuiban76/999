@@ -1,4 +1,4 @@
-import { careerForCategory, categoryInfo, jobInfo } from "../shared/jobs";
+import { ABILITY_LABELS, ACADEMIES, careerForCategory, careerRequirements, categoryInfo, jobInfo, meetsCareerRequirements, type Abilities } from "../shared/jobs";
 
 type LocationId = "home" | "realtor" | "bank" | "business" | "shopping" | "hotel" | "casino" | "school" | "hospital";
 
@@ -22,6 +22,7 @@ type PlayerRow = {
   programming_exp: number;
   fitness_exp: number;
   work_exp: number;
+  charisma_exp: number;
   current_job: string;
   job_category: string;
   job_exp: number;
@@ -37,6 +38,16 @@ type CasinoRow = { user_id: string; player_name: string; player_cards: string; d
 
 const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "bank", "business", "shopping", "hotel", "casino", "school", "hospital"]);
 const clamp = (value: number) => Math.max(0, Math.min(100, value));
+const abilitiesFor = (player: PlayerRow): Abilities => ({
+  physical: player.fitness_exp,
+  intelligence: player.intelligence_exp,
+  creativity: player.programming_exp,
+  social: player.work_exp,
+  charisma: player.charisma_exp,
+});
+const formatRequirements = (requirements: Partial<Abilities>) => Object.entries(requirements)
+  .map(([key, value]) => `${ABILITY_LABELS[key as keyof Abilities]} ${value}`)
+  .join("、");
 const WORLD_EPOCH_MS = Date.UTC(2026, 7, 12, 10, 0, 0);
 const WORLD_START_MINUTES = 7 * 60 + 30;
 const worldMinutes = (now = Date.now()) => WORLD_START_MINUTES + Math.max(0, Math.floor((now - WORLD_EPOCH_MS) / 2_000));
@@ -124,13 +135,13 @@ async function identity(request: Request, db?: D1Database): Promise<AuthUser | n
 }
 
 function guestPlayer() {
-  return { cash: 10000, bankBalance: 0, loanBalance: 0, energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, programmingExp: 0, fitnessExp: 0, workExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, elapsedMinutes: worldMinutes(), location: "realtor" as LocationId };
+  return { cash: 10000, bankBalance: 0, loanBalance: 0, energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, creativityExp: 0, physicalExp: 0, socialExp: 0, charismaExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, elapsedMinutes: worldMinutes(), location: "realtor" as LocationId };
 }
 
 function serializePlayer(row: PlayerRow) {
   const currentJob = jobInfo(row.current_job) ? row.current_job : "待業者";
   const location = VALID_LOCATIONS.has(row.location) ? row.location : "casino";
-  return { cash: row.cash, bankBalance: row.bank_balance, loanBalance: row.loan_balance, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, programmingExp: row.programming_exp, fitnessExp: row.fitness_exp, workExp: row.work_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, elapsedMinutes: worldMinutes(), location };
+  return { cash: row.cash, bankBalance: row.bank_balance, loanBalance: row.loan_balance, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, creativityExp: row.programming_exp, physicalExp: row.fitness_exp, socialExp: row.work_exp, charismaExp: row.charisma_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, elapsedMinutes: worldMinutes(), location };
 }
 
 function profileFor(user: AuthUser) {
@@ -163,7 +174,8 @@ async function ensureSchema(db: D1Database) {
       health INTEGER NOT NULL DEFAULT 100, mood INTEGER NOT NULL DEFAULT 80,
       hunger INTEGER NOT NULL DEFAULT 80, intelligence_exp INTEGER NOT NULL DEFAULT 0,
       programming_exp INTEGER NOT NULL DEFAULT 0, fitness_exp INTEGER NOT NULL DEFAULT 0,
-      work_exp INTEGER NOT NULL DEFAULT 0, illness TEXT NOT NULL DEFAULT '',
+      work_exp INTEGER NOT NULL DEFAULT 0, charisma_exp INTEGER NOT NULL DEFAULT 0,
+      illness TEXT NOT NULL DEFAULT '',
       current_job TEXT NOT NULL DEFAULT 'unemployed', job_category TEXT NOT NULL DEFAULT 'unfixed',
       job_exp INTEGER NOT NULL DEFAULT 0,
       owns_home INTEGER NOT NULL DEFAULT 0, rental_name TEXT NOT NULL DEFAULT '',
@@ -506,7 +518,7 @@ async function takeAction(request: Request, env: Env) {
   const current = await upsertPlayer(env.DB, user);
   if (!current) return json({ message: "找不到玩家資料。" }, 404);
 
-  let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number };
+  let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; academy?: string };
   try { body = await request.json(); } catch { return json({ message: "行動資料格式錯誤。" }, 400); }
   const next = { ...current };
   const sharedMinutes = worldMinutes();
@@ -598,6 +610,8 @@ async function takeAction(request: Request, env: Env) {
       const category = categoryInfo(selected.categoryId);
       if (!category) return json({ message: "這個產業不存在。" }, 400);
       if (category.id !== "unfixed" && selected.job !== category.jobs[0]) return json({ message: `進入${category.label}必須從${category.jobs[0]}開始。` }, 400);
+      const entryRequirements = careerRequirements(category.id, 0);
+      if (category.id !== "unfixed" && !meetsCareerRequirements(abilitiesFor(next), entryRequirements)) return json({ message: `進入${category.label}需要${formatRequirements(entryRequirements)}。` }, 400);
       next.current_job = selected.job; next.job_category = selected.categoryId; next.job_exp = 0; minutes = 60;
       title = category.id === "unfixed" ? `狀態變更：${selected.job}` : `進入${selected.categoryLabel}`;
       message = category.id === "unfixed" ? `目前狀態已改為${selected.job}。` : `成功進入「${selected.categoryLabel}」，從${selected.job}開始發展；產業升遷經驗從 0 開始。`; break;
@@ -610,21 +624,34 @@ async function takeAction(request: Request, env: Env) {
       const hours = Number(body.hours);
       if (![1, 4, 8].includes(hours)) return json({ message: "工時選擇不正確。" }, 400);
       if (next.energy < hours * 5) return json({ message: "體力不足，先回家休息吧。" }, 400);
-      const previousCareer = careerForCategory(next.job_category, next.job_exp, next.current_job);
+      const previousCareer = careerForCategory(next.job_category, next.job_exp, next.current_job, abilitiesFor(next));
       const income = hours * previousCareer.hourlyPay;
-      next.cash += income; next.energy = clamp(next.energy - hours * 5); next.health = clamp(next.health - Math.ceil(hours / 2)); next.mood = clamp(next.mood - Math.ceil(hours * .9)); next.hunger = clamp(next.hunger - hours * 2); next.work_exp += hours * 4; next.job_exp += hours * 4; minutes = hours * 60;
-      const newCareer = careerForCategory(next.job_category, next.job_exp, next.current_job);
+      next.cash += income; next.energy = clamp(next.energy - hours * 5); next.health = clamp(next.health - Math.ceil(hours / 2)); next.mood = clamp(next.mood - Math.ceil(hours * .9)); next.hunger = clamp(next.hunger - hours * 2); next.job_exp += hours * 4; minutes = hours * 60;
+      const newCareer = careerForCategory(next.job_category, next.job_exp, next.current_job, abilitiesFor(next));
       next.current_job = newCareer.title;
       title = newCareer.title !== previousCareer.title ? `升遷為${newCareer.title}` : `工作 ${hours} 小時`;
       message = `以${previousCareer.title}完成工作，收入 +NT$${income}，職業經驗 +${hours * 4}。${newCareer.title !== previousCareer.title ? ` 恭喜升遷為${newCareer.title}！` : ""}`; break;
     }
-    case "study":
+    case "study": {
       if (next.location !== "school") return json({ message: "請先前往未來學院。" }, 400);
       if (!isLocationOpen("school", sharedMinutes)) return json({ message: `未來學院開放時間為 ${openingHours.school?.label}。` }, 400);
       if (next.illness) return json({ message: `目前罹患${next.illness}，請先前往醫院治療。` }, 400);
+      const academy = ACADEMIES.find((item) => item.id === body.academy);
+      if (!academy) return json({ message: "這所學院不存在。" }, 400);
       if (next.cash < 500 || next.energy < 10) return json({ message: next.cash < 500 ? "學費不足。" : "體力不足，先休息一下吧。" }, 400);
-      next.cash -= 500; next.energy = clamp(next.energy - 10); next.mood = clamp(next.mood - 3); next.hunger = clamp(next.hunger - 4); next.programming_exp += 25; next.intelligence_exp += 5; minutes = 120;
-      title = "完成程式設計課"; message = "程式設計 EXP +25、知識 EXP +5。"; break;
+      next.cash -= 500; next.energy = clamp(next.energy - 10); next.hunger = clamp(next.hunger - 4);
+      for (const [key, gain] of Object.entries(academy.gains)) {
+        if (key === "physical") next.fitness_exp += gain;
+        if (key === "intelligence") next.intelligence_exp += gain;
+        if (key === "creativity") next.programming_exp += gain;
+        if (key === "social") next.work_exp += gain;
+        if (key === "charisma") next.charisma_exp += gain;
+      }
+      const promoted = careerForCategory(next.job_category, next.job_exp, next.current_job, abilitiesFor(next));
+      const promotionMessage = promoted.title !== next.current_job ? ` 能力達標，升遷為${promoted.title}！` : "";
+      next.current_job = promoted.title; minutes = 120;
+      title = `完成${academy.name}課程`; message = `${formatRequirements(academy.gains)}。${promotionMessage}`; break;
+    }
     case "eat": {
       if (next.location !== "shopping") return json({ message: "請先前往購物街。" }, 400);
       if (!isLocationOpen("shopping", sharedMinutes)) return json({ message: `購物街營業時間為 ${openingHours.shopping?.label}。` }, 400);
@@ -668,7 +695,7 @@ async function takeAction(request: Request, env: Env) {
       message = `${care.name}完成，支付 NT$${care.price}，健康恢復至 ${next.health}${previousIllness ? `，${previousIllness}已痊癒` : ""}。`; break;
     }
     case "reset":
-      Object.assign(next, { cash: 10000, bank_balance: 0, loan_balance: 0, finance_day: Math.floor(sharedMinutes / 1440) + 1, energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, elapsed_minutes: sharedMinutes, location: "realtor" });
+      Object.assign(next, { cash: 10000, bank_balance: 0, loan_balance: 0, finance_day: Math.floor(sharedMinutes / 1440) + 1, energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, elapsed_minutes: sharedMinutes, location: "realtor" });
       title = "重新開始人生"; message = "新的人生已開始，所有進度回到起點。"; tone = "neutral"; break;
     default: return json({ message: "未知的行動。" }, 400);
   }
@@ -697,8 +724,8 @@ async function takeAction(request: Request, env: Env) {
   const now = Date.now();
   const eventId = crypto.randomUUID();
   await env.DB.batch([
-    env.DB.prepare(`UPDATE players SET cash=?, bank_balance=?, loan_balance=?, finance_day=?, energy=?, health=?, mood=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, current_job=?, job_category=?, job_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, elapsed_minutes=?, location=?, updated_at=?, last_seen_at=? WHERE user_id=?`)
-      .bind(next.cash, next.bank_balance, next.loan_balance, next.finance_day, next.energy, next.health, next.mood, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.current_job, next.job_category, next.job_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.elapsed_minutes, next.location, now, now, user.userId),
+    env.DB.prepare(`UPDATE players SET cash=?, bank_balance=?, loan_balance=?, finance_day=?, energy=?, health=?, mood=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, charisma_exp=?, current_job=?, job_category=?, job_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, elapsed_minutes=?, location=?, updated_at=?, last_seen_at=? WHERE user_id=?`)
+      .bind(next.cash, next.bank_balance, next.loan_balance, next.finance_day, next.energy, next.health, next.mood, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.charisma_exp, next.current_job, next.job_category, next.job_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.elapsed_minutes, next.location, now, now, user.userId),
     env.DB.prepare("INSERT INTO game_events (id, user_id, player_name, room_id, title, detail, tone, game_time, created_at) VALUES (?, ?, ?, 'lobby-01', ?, ?, ?, ?, ?)")
       .bind(eventId, user.userId, user.displayName.slice(0, 40), title, message, tone, gameTime, now),
   ]);
