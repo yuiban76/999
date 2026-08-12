@@ -1,4 +1,4 @@
-type LocationId = "home" | "business" | "shopping" | "park" | "school" | "hospital";
+type LocationId = "home" | "realtor" | "business" | "shopping" | "park" | "school" | "hospital";
 
 interface Env { DB?: D1Database; ASSETS?: Fetcher; FRONTEND_ORIGIN?: string }
 
@@ -18,11 +18,14 @@ type PlayerRow = {
   fitness_exp: number;
   work_exp: number;
   illness: string;
+  owns_home: number;
+  rental_name: string;
+  rented_until: number;
   elapsed_minutes: number;
   location: LocationId;
 };
 
-const VALID_LOCATIONS = new Set<LocationId>(["home", "business", "shopping", "park", "school", "hospital"]);
+const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "business", "shopping", "park", "school", "hospital"]);
 const clamp = (value: number) => Math.max(0, Math.min(100, value));
 const CAREERS = [
   { title: "職場實習生", threshold: 0, hourlyPay: 180 },
@@ -96,11 +99,11 @@ async function identity(request: Request, db?: D1Database): Promise<AuthUser | n
 }
 
 function guestPlayer() {
-  return { cash: 10000, energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, programmingExp: 0, fitnessExp: 0, workExp: 0, illness: "", elapsedMinutes: 450, location: "home" as LocationId };
+  return { cash: 10000, energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, programmingExp: 0, fitnessExp: 0, workExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, elapsedMinutes: 450, location: "realtor" as LocationId };
 }
 
 function serializePlayer(row: PlayerRow) {
-  return { cash: row.cash, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, programmingExp: row.programming_exp, fitnessExp: row.fitness_exp, workExp: row.work_exp, illness: row.illness, elapsedMinutes: row.elapsed_minutes, location: row.location };
+  return { cash: row.cash, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, programmingExp: row.programming_exp, fitnessExp: row.fitness_exp, workExp: row.work_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, elapsedMinutes: row.elapsed_minutes, location: row.location };
 }
 
 function profileFor(user: AuthUser) {
@@ -132,8 +135,10 @@ async function ensureSchema(db: D1Database) {
       hunger INTEGER NOT NULL DEFAULT 80, intelligence_exp INTEGER NOT NULL DEFAULT 0,
       programming_exp INTEGER NOT NULL DEFAULT 0, fitness_exp INTEGER NOT NULL DEFAULT 0,
       work_exp INTEGER NOT NULL DEFAULT 0, illness TEXT NOT NULL DEFAULT '',
+      owns_home INTEGER NOT NULL DEFAULT 0, rental_name TEXT NOT NULL DEFAULT '',
+      rented_until INTEGER NOT NULL DEFAULT 0,
       elapsed_minutes INTEGER NOT NULL DEFAULT 450,
-      location TEXT NOT NULL DEFAULT 'home', created_at INTEGER NOT NULL,
+      location TEXT NOT NULL DEFAULT 'realtor', created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS game_events (
@@ -152,8 +157,8 @@ async function ensureSchema(db: D1Database) {
 
 async function upsertPlayer(db: D1Database, user: AuthUser) {
   const now = Date.now();
-  await db.prepare(`INSERT INTO players (user_id, display_name, email, created_at, updated_at, last_seen_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+  await db.prepare(`INSERT INTO players (user_id, display_name, email, location, created_at, updated_at, last_seen_at)
+    VALUES (?, ?, ?, 'realtor', ?, ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET display_name = excluded.display_name, email = excluded.email, last_seen_at = excluded.last_seen_at`)
     .bind(user.userId, user.displayName.slice(0, 40), user.email, now, now, now).run();
   return db.prepare("SELECT * FROM players WHERE user_id = ?").bind(user.userId).first<PlayerRow>();
@@ -162,11 +167,14 @@ async function upsertPlayer(db: D1Database, user: AuthUser) {
 async function multiplayer(db: D1Database) {
   const since = Date.now() - 30_000;
   const [players, events] = await Promise.all([
-    db.prepare("SELECT user_id, display_name, location, last_seen_at FROM players WHERE last_seen_at >= ? ORDER BY last_seen_at DESC LIMIT 24").bind(since).all<{ user_id: string; display_name: string; location: LocationId; last_seen_at: number }>(),
+    db.prepare(`SELECT p.user_id, p.display_name, p.location, p.last_seen_at,
+      a.avatar_data IS NOT NULL AS has_avatar, a.avatar_updated_at
+      FROM players p JOIN accounts a ON a.id = p.user_id
+      WHERE p.last_seen_at >= ? ORDER BY p.last_seen_at DESC LIMIT 24`).bind(since).all<{ user_id: string; display_name: string; location: LocationId; last_seen_at: number; has_avatar: number; avatar_updated_at: number | null }>(),
     db.prepare("SELECT id, player_name, title, detail, tone, game_time FROM game_events WHERE room_id = 'lobby-01' ORDER BY created_at DESC LIMIT 12").all<{ id: string; player_name: string; title: string; detail: string; tone: "good" | "neutral" | "warn"; game_time: string }>(),
   ]);
   return {
-    online: players.results.map((row) => ({ id: row.user_id, displayName: row.display_name, location: row.location, updatedAt: row.last_seen_at })),
+    online: players.results.map((row) => ({ id: row.user_id, displayName: row.display_name, location: row.location, updatedAt: row.last_seen_at, avatarUrl: row.has_avatar ? `/api/avatar/${row.user_id}?v=${row.avatar_updated_at ?? 0}` : null })),
     feed: events.results.map((row) => ({ id: row.id, playerName: row.player_name, title: row.title, detail: row.detail, tone: row.tone, time: row.game_time })),
   };
 }
@@ -259,7 +267,7 @@ async function takeAction(request: Request, env: Env) {
   const current = await upsertPlayer(env.DB, user);
   if (!current) return json({ message: "找不到玩家資料。" }, 404);
 
-  let body: { action?: string; location?: string; hours?: number; kind?: string };
+  let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number };
   try { body = await request.json(); } catch { return json({ message: "行動資料格式錯誤。" }, 400); }
   const next = { ...current };
   let title = "完成行動";
@@ -271,9 +279,31 @@ async function takeAction(request: Request, env: Env) {
     case "move": {
       if (!VALID_LOCATIONS.has(body.location as LocationId)) return json({ message: "目的地不存在。" }, 400);
       if (next.location === body.location) return json({ message: "你已經在這裡了。" }, 400);
+      if (body.location === "home" && !next.owns_home && next.rented_until <= next.elapsed_minutes) return json({ message: "你目前沒有住所，請先到房仲租屋或買房。" }, 400);
       next.location = body.location as LocationId; next.energy = clamp(next.energy - 1); next.hunger = clamp(next.hunger - 1); minutes = 10;
-      const placeName = ({ home: "溫暖小屋", business: "商業區", shopping: "購物街", park: "城市公園", school: "未來學院", hospital: "市立醫院" } as Record<LocationId, string>)[next.location as LocationId];
+      const placeName = ({ home: "我的住所", realtor: "安心房仲", business: "商業區", shopping: "購物街", park: "城市公園", school: "未來學院", hospital: "市立醫院" } as Record<LocationId, string>)[next.location as LocationId];
       title = "前往新地點"; message = `花了 10 分鐘抵達${placeName}。`; tone = "neutral"; break;
+    }
+    case "housing": {
+      if (next.location !== "realtor") return json({ message: "請先前往安心房仲。" }, 400);
+      if (body.kind === "rent") {
+        const days = Number(body.days);
+        if (![1, 7, 30].includes(days)) return json({ message: "租屋天數不正確。" }, 400);
+        const dailyRent = 350;
+        const cost = dailyRent * days;
+        if (next.cash < cost) return json({ message: "現金不足，無法支付租金。" }, 400);
+        const leaseStart = Math.max(next.elapsed_minutes, next.rented_until);
+        next.cash -= cost; next.rental_name = "城市小套房"; next.rented_until = leaseStart + days * 1440; minutes = 30;
+        title = `租下城市小套房 ${days} 天`; message = `支付 NT$${cost}，租期增加 ${days} 天。${next.owns_home ? "你原有的自有住宅仍然保留。" : "現在可以回到我的住所休息。"}`; break;
+      }
+      if (body.kind === "buy") {
+        const price = 150_000;
+        if (next.owns_home) return json({ message: "你已經擁有城市小宅，仍可繼續查看租屋方案。" }, 400);
+        if (next.cash < price) return json({ message: "購屋需要 NT$150,000，目前資金不足。" }, 400);
+        next.cash -= price; next.owns_home = 1; minutes = 60;
+        title = "買下城市小宅"; message = "支付 NT$150,000，取得永久住所；你仍可在房仲查看與承租其他房屋。"; break;
+      }
+      return json({ message: "房屋方案不存在。" }, 400);
     }
     case "work": {
       if (next.location !== "business") return json({ message: "請先前往商業區。" }, 400);
@@ -304,6 +334,7 @@ async function takeAction(request: Request, env: Env) {
     }
     case "sleep":
       if (next.location !== "home") return json({ message: "請先回到溫暖小屋。" }, 400);
+      if (!next.owns_home && next.rented_until <= next.elapsed_minutes) return json({ message: "租約已到期，請先到房仲續租。" }, 400);
       next.energy = 100; next.health = clamp(next.health + 5); next.mood = clamp(next.mood + 10); next.hunger = clamp(next.hunger - 12); minutes = 480;
       title = "好好睡了一覺"; message = "體力完全恢復，健康 +5、心情 +10。"; break;
     case "exercise":
@@ -327,7 +358,7 @@ async function takeAction(request: Request, env: Env) {
       message = `${care.name}完成，支付 NT$${care.price}，健康恢復至 ${next.health}${previousIllness ? `，${previousIllness}已痊癒` : ""}。`; break;
     }
     case "reset":
-      Object.assign(next, { cash: 10000, energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, illness: "", elapsed_minutes: 450, location: "home" });
+      Object.assign(next, { cash: 10000, energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, elapsed_minutes: 450, location: "realtor" });
       title = "重新開始人生"; message = "新的人生已開始，所有進度回到起點。"; tone = "neutral"; break;
     default: return json({ message: "未知的行動。" }, 400);
   }
@@ -347,13 +378,17 @@ async function takeAction(request: Request, env: Env) {
   }
 
   next.elapsed_minutes += minutes;
+  if (!next.owns_home && next.rented_until <= next.elapsed_minutes && next.location === "home") {
+    next.location = "realtor";
+    message += " 租約已到期，你已回到房仲尋找住所。";
+  }
   const minuteOfDay = next.elapsed_minutes % 1440;
   const gameTime = `${String(Math.floor(minuteOfDay / 60)).padStart(2, "0")}:${String(minuteOfDay % 60).padStart(2, "0")}`;
   const now = Date.now();
   const eventId = crypto.randomUUID();
   await env.DB.batch([
-    env.DB.prepare(`UPDATE players SET cash=?, energy=?, health=?, mood=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, illness=?, elapsed_minutes=?, location=?, updated_at=?, last_seen_at=? WHERE user_id=?`)
-      .bind(next.cash, next.energy, next.health, next.mood, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.illness, next.elapsed_minutes, next.location, now, now, user.userId),
+    env.DB.prepare(`UPDATE players SET cash=?, energy=?, health=?, mood=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, elapsed_minutes=?, location=?, updated_at=?, last_seen_at=? WHERE user_id=?`)
+      .bind(next.cash, next.energy, next.health, next.mood, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.elapsed_minutes, next.location, now, now, user.userId),
     env.DB.prepare("INSERT INTO game_events (id, user_id, player_name, room_id, title, detail, tone, game_time, created_at) VALUES (?, ?, ?, 'lobby-01', ?, ?, ?, ?, ?)")
       .bind(eventId, user.userId, user.displayName.slice(0, 40), title, message, tone, gameTime, now),
   ]);

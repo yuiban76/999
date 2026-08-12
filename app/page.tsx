@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-type LocationId = "home" | "business" | "shopping" | "park" | "school" | "hospital";
+type LocationId = "home" | "realtor" | "business" | "shopping" | "park" | "school" | "hospital";
 type StatKey = "energy" | "health" | "hunger";
 
 type Player = {
@@ -16,6 +16,9 @@ type Player = {
   fitnessExp: number;
   workExp: number;
   illness: string;
+  ownsHome: boolean;
+  rentalName: string;
+  rentedUntil: number;
   elapsedMinutes: number;
   location: LocationId;
 };
@@ -33,6 +36,7 @@ type OnlinePlayer = {
   displayName: string;
   location: LocationId;
   updatedAt: number;
+  avatarUrl: string | null;
 };
 
 type FeedItem = {
@@ -64,8 +68,11 @@ const INITIAL_PLAYER: Player = {
   fitnessExp: 0,
   workExp: 0,
   illness: "",
+  ownsHome: false,
+  rentalName: "",
+  rentedUntil: 0,
   elapsedMinutes: 450,
-  location: "home",
+  location: "realtor",
 };
 
 const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN as string | undefined)?.replace(/\/$/, "") || "";
@@ -80,7 +87,8 @@ function apiHeaders(jsonBody = false) {
 }
 
 const locations: Array<{ id: LocationId; emoji: string; name: string; caption: string }> = [
-  { id: "home", emoji: "⌂", name: "溫暖小屋", caption: "休息、恢復體力，準備迎接新的一天" },
+  { id: "home", emoji: "⌂", name: "我的住所", caption: "有有效租約或自有住宅後，才能在這裡休息" },
+  { id: "realtor", emoji: "鑰", name: "安心房仲", caption: "按天租屋或購買永久住所，屋主也能繼續查看租屋" },
   { id: "business", emoji: "▦", name: "商業區", caption: "用時間換取收入，累積職涯經驗" },
   { id: "shopping", emoji: "◇", name: "購物街", caption: "補充飽足，偶爾也犒賞一下自己" },
   { id: "park", emoji: "♧", name: "城市公園", caption: "鍛鍊身體，找回健康與好心情" },
@@ -159,7 +167,22 @@ function guestAction(current: Player, action: string, payload: Record<string, un
   if (action === "move") {
     const target = payload.location as LocationId;
     if (!locations.some((item) => item.id === target) || target === next.location) return fail("你已經在這裡了。");
+    if (target === "home" && !next.ownsHome && next.rentedUntil <= next.elapsedMinutes) return fail("你目前沒有住所，請先到安心房仲租屋或買房。");
     next.location = target; next.energy = Math.max(0, next.energy - 1); next.hunger = Math.max(0, next.hunger - 1); minutes = 10; title = "前往新地點"; message = `花了 10 分鐘抵達${locationName(target)}。`;
+  } else if (action === "housing") {
+    if (next.location !== "realtor") return fail("請先前往安心房仲。");
+    if (payload.kind === "rent") {
+      const days = Number(payload.days);
+      if (![1, 7, 30].includes(days)) return fail("租屋天數不正確。");
+      const cost = days * 350;
+      if (next.cash < cost) return fail("現金不足，無法支付租金。");
+      next.cash -= cost; next.rentalName = "城市小套房"; next.rentedUntil = Math.max(next.elapsedMinutes, next.rentedUntil) + days * 1440; minutes = 30;
+      title = `租下城市小套房 ${days} 天`; message = `支付 NT$${cost}，租期增加 ${days} 天。`;
+    } else if (payload.kind === "buy") {
+      if (next.ownsHome) return fail("你已擁有城市小宅，仍可繼續查看租屋方案。");
+      if (next.cash < 150000) return fail("購屋需要 NT$150,000，目前資金不足。");
+      next.cash -= 150000; next.ownsHome = true; minutes = 60; title = "買下城市小宅"; message = "取得永久住所；仍可在房仲查看租屋方案。";
+    } else return fail("房屋方案不存在。");
   } else if (action === "work") {
     const hours = Number(payload.hours);
     if (next.location !== "business" || ![1, 4, 8].includes(hours)) return fail("請先前往商業區。");
@@ -183,6 +206,7 @@ function guestAction(current: Player, action: string, payload: Record<string, un
     next.cash -= meal.price; next.hunger = Math.min(100, next.hunger + meal.hunger); next.mood = Math.min(100, next.mood + meal.mood); minutes = 20; title = `享用${meal.name}`; message = `${meal.name}讓飽足 +${meal.hunger}。`;
   } else if (action === "sleep") {
     if (next.location !== "home") return fail("請先回到溫暖小屋。");
+    if (!next.ownsHome && next.rentedUntil <= next.elapsedMinutes) return fail("租約已到期，請先到房仲續租。");
     next.energy = 100; next.health = Math.min(100, next.health + 5); next.mood = Math.min(100, next.mood + 10); next.hunger = Math.max(0, next.hunger - 12); minutes = 480; title = "好好睡了一覺"; message = "體力完全恢復，健康 +5、心情 +10。";
   } else if (action === "exercise") {
     if (next.location !== "park") return fail("請先前往城市公園。");
@@ -215,6 +239,10 @@ function guestAction(current: Player, action: string, payload: Record<string, un
     }
   }
   next.elapsedMinutes += minutes;
+  if (!next.ownsHome && next.rentedUntil <= next.elapsedMinutes && next.location === "home") {
+    next.location = "realtor";
+    message += " 租約已到期，你已回到房仲尋找住所。";
+  }
   return { player: next, title, message };
 }
 
@@ -235,6 +263,9 @@ export default function Home() {
   const nextCareer = nextCareerFor(player.workExp);
   const careerProgress = nextCareer ? Math.max(0, Math.min(100, ((player.workExp - career.threshold) / (nextCareer.threshold - career.threshold)) * 100)) : 100;
   const avatarSrc = profile?.avatarUrl ? `${API_ORIGIN}${profile.avatarUrl}` : "";
+  const rentalMinutesLeft = Math.max(0, player.rentedUntil - player.elapsedMinutes);
+  const rentalDaysLeft = rentalMinutesLeft ? Math.ceil(rentalMinutesLeft / 1440) : 0;
+  const housingLabel = player.ownsHome ? "自有住宅 · 城市小宅" : rentalDaysLeft ? `租屋 · ${player.rentalName}（剩 ${rentalDaysLeft} 天）` : "目前沒有住所";
 
   const loadWorld = useCallback(async (quiet = false) => {
     try {
@@ -338,6 +369,7 @@ export default function Home() {
       const data = await response.json() as { avatarUrl?: string; message?: string };
       if (!response.ok || !data.avatarUrl) throw new Error(data.message || "大頭貼上傳失敗。");
       setProfile((current) => current ? { ...current, avatarUrl: data.avatarUrl! } : current);
+      setOnline((players) => players.map((item) => item.id === profile.id ? { ...item, avatarUrl: data.avatarUrl! } : item));
       setNotice(data.message || "大頭貼已更新。");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "大頭貼上傳失敗。");
@@ -379,6 +411,7 @@ export default function Home() {
             <div><p>18 歲 · 人生新手</p><h1>{profile?.displayName ?? "旅行者"}</h1><span className="job-tag">{career.title}</span></div>
           </div>
           <div className="cash-card"><span>可用資產</span><strong><small>NT$</small>{formatMoney(player.cash)}</strong><p>{profile ? "伺服器已安全保存" : "訪客模式暫存"}</p></div>
+          <div className={`housing-card ${!player.ownsHome && !rentalDaysLeft ? "homeless" : ""}`}><span>居住狀態</span><strong>{housingLabel}</strong><small>{player.ownsHome ? "永久住所" : rentalDaysLeft ? `租約至遊戲第 ${Math.ceil(player.rentedUntil / 1440)} 天` : "請前往安心房仲"}</small></div>
           <div className="career-card">
             <div><span>目前職業</span><strong>{career.title}</strong></div><small>時薪 NT${formatMoney(career.hourlyPay)}</small>
             <div className="career-track"><i style={{ width: `${careerProgress}%` }} /></div>
@@ -401,6 +434,7 @@ export default function Home() {
             <div className="action-intro"><span>今天，想把時間花在哪裡？</span><h3>{actionTitle(player.location)}</h3><p>{actionDescription(player.location)}</p></div>
             <div className="action-cards">
               {player.location === "home" && <ActionCard icon="☾" title="睡眠 8 小時" meta="體力全滿 · 健康 +5 · 心情 +10" button="好好休息" onClick={() => void act("sleep")} disabled={busy} />}
+              {player.location === "realtor" && <><ActionCard icon="01" title="城市小套房 · 1 天" meta="每日 NT$350 · 租金 NT$350" button="租 1 天" onClick={() => void act("housing", { kind: "rent", days: 1 })} disabled={busy} /><ActionCard icon="07" title="城市小套房 · 7 天" meta="每日 NT$350 · 租金 NT$2,450" button="租 7 天" onClick={() => void act("housing", { kind: "rent", days: 7 })} featured disabled={busy} /><ActionCard icon="買" title="購買城市小宅" meta="NT$150,000 · 永久住所 · 買房後仍可查看租屋" button={player.ownsHome ? "已擁有，仍可看租屋" : "購買房屋"} onClick={() => void act("housing", { kind: "buy" })} disabled={busy} /></>}
               {player.location === "business" && <><ActionCard icon="01" title="短班 1 小時" meta={`收入 NT$${formatMoney(career.hourlyPay)} · 工作 EXP +4`} button="開始工作" onClick={() => void act("work", { hours: 1 })} disabled={busy} /><ActionCard icon="04" title="標準班 4 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 4)} · 工作 EXP +16`} button="開始工作" onClick={() => void act("work", { hours: 4 })} featured disabled={busy} /><ActionCard icon="08" title="長班 8 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 8)} · 工作 EXP +32`} button="開始工作" onClick={() => void act("work", { hours: 8 })} disabled={busy} /></>}
               {player.location === "shopping" && <><ActionCard icon="飯" title="巷口飯糰" meta="NT$45 · 飽足 +20" button="買來吃" onClick={() => void act("eat", { kind: "rice" })} disabled={busy} /><ActionCard icon="餐" title="豐盛便當" meta="NT$100 · 飽足 +45 · 心情 +3" button="享用便當" onClick={() => void act("eat", { kind: "bento" })} featured disabled={busy} /></>}
               {player.location === "park" && <ActionCard icon="跑" title="運動 1 小時" meta="健康 +4 · 心情 +8 · 體能 EXP +15" button="開始鍛鍊" onClick={() => void act("exercise")} featured disabled={busy} />}
@@ -415,7 +449,7 @@ export default function Home() {
           <div className="section-heading story-title"><span>多人世界</span><small>LIVE LOBBY</small></div>
           <div className="online-summary"><strong><i />{online.length} 位在線</strong><span>每 5 秒同步</span></div>
           <ul className="online-list">
-            {online.length ? online.slice(0, 8).map((item) => <li key={item.id}><span className="mini-avatar">{item.displayName.slice(0, 1)}</span><div><strong>{item.displayName}{item.id === profile?.id ? "（你）" : ""}</strong><small>正在 {locationName(item.location)}</small></div></li>) : <li className="empty-online">登入後，你會在這裡遇見其他玩家。</li>}
+            {online.length ? online.slice(0, 8).map((item) => <li key={item.id}><span className={`mini-avatar ${item.avatarUrl ? "has-photo" : ""}`}>{item.avatarUrl ? <img src={`${API_ORIGIN}${item.avatarUrl}`} alt={`${item.displayName}的大頭貼`} /> : item.displayName.slice(0, 1)}</span><div><strong>{item.displayName}{item.id === profile?.id ? "（你）" : ""}</strong><small>正在 {locationName(item.location)}</small></div></li>) : <li className="empty-online">登入後，你會在這裡遇見其他玩家。</li>}
           </ul>
           <div className="section-heading feed-heading"><span>城市動態</span><small>ACTIVITY</small></div>
           <ol className="feed-list">
@@ -451,9 +485,9 @@ function ActionCard({ icon, title, meta, button, featured = false, disabled, onC
 }
 
 function actionTitle(location: LocationId) {
-  return { home: "休息不是停下，而是為下一步蓄力", business: "累積經驗，向下一次升遷前進", shopping: "照顧日常，才能走得更遠", park: "健康是所有選擇的底氣", school: "今天學會的，會成為明天的選項", hospital: "及早治療，才能繼續人生旅程" }[location];
+  return { home: "有一個落腳處，才有安心休息的地方", realtor: "先找到住所，再打造自己的生活", business: "累積經驗，向下一次升遷前進", shopping: "照顧日常，才能走得更遠", park: "健康是所有選擇的底氣", school: "今天學會的，會成為明天的選項", hospital: "及早治療，才能繼續人生旅程" }[location];
 }
 
 function actionDescription(location: LocationId) {
-  return { home: "回到自己的空間。睡一覺能恢復體力與心情，但也別忘了補充飽足。", business: "工作會累積職涯經驗並自動升遷；職位越高，每小時收入越多。長工時也會消耗健康。", shopping: "用合理的花費補充飽足。更豐盛的餐點，也能讓今天的心情好一點。", park: "用一小時運動換取長期健康與體能。當體力太低時，先回家休息。", school: "支付學費與時間，累積程式設計能力。能力提升後，人生將有更多路可以走。", hospital: "健康低於 70 時，行動後可能生病。門診與完整治療都能治癒疾病，完整治療的恢復效果更好。" }[location];
+  return { home: "有效租約或自有住宅才能進入。睡一覺能恢復體力與心情，但租約會隨遊戲天數到期。", realtor: "每個人一開始都沒有房子。租屋每日 NT$350，可逐日或一次租七天；也能買下永久住所。買房後租屋方案仍會保留。", business: "工作會累積職涯經驗並自動升遷；職位越高，每小時收入越多。長工時也會消耗健康。", shopping: "用合理的花費補充飽足。更豐盛的餐點，也能讓今天的心情好一點。", park: "用一小時運動換取長期健康與體能。當體力太低時，先回家休息。", school: "支付學費與時間，累積程式設計能力。能力提升後，人生將有更多路可以走。", hospital: "健康低於 70 時，行動後可能生病。門診與完整治療都能治癒疾病，完整治療的恢復效果更好。" }[location];
 }

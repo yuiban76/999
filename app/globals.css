@@ -139,6 +139,12 @@ button { color: inherit; }
 .cash-card strong small { margin-right: 7px; font-size: 11px; letter-spacing: 0; }
 .cash-card p { margin: 0; font-size: 9px; color: #bfcbbf; }
 
+.housing-card { display: grid; gap: 5px; margin-top: 16px; padding: 12px 13px; border: 1px solid var(--moss); background: #e2e9dd; }
+.housing-card.homeless { border-color: #b64029; background: #fde1d6; }
+.housing-card span { color: var(--muted); font-size: 8px; letter-spacing: .1em; }
+.housing-card strong { font: 700 12px Georgia, "Noto Serif TC", serif; }
+.housing-card small { color: var(--muted); font-size: 8px; }
+
 .career-card { margin-top: 16px; padding: 13px; border: 1px solid #8c9187; background: var(--paper-bright); }
 .career-card > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .career-card span { color: var(--muted); font-size: 9px; }
@@ -173,7 +179,7 @@ button { color: inherit; }
 .location-header h2 span { margin-right: 10px; font-size: 32px; }
 .location-header small { display: block; margin-top: 7px; color: var(--muted); font-size: 11px; }
 
-.location-strip { display: grid; grid-template-columns: repeat(6, 1fr); border-bottom: 1px solid var(--ink); }
+.location-strip { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid var(--ink); }
 .location-strip button { min-height: 72px; padding: 8px 4px; border: 0; border-right: 1px solid var(--line); background: transparent; cursor: pointer; transition: .18s ease; }
 .location-strip button:last-child { border-right: 0; }
 .location-strip button:hover { background: var(--paper-bright); }
@@ -210,7 +216,8 @@ button { color: inherit; }
 .online-list { list-style: none; margin: 0; padding: 4px 0 14px; }
 .online-list li { display: flex; align-items: center; gap: 9px; padding: 9px 0; border-bottom: 1px solid rgba(201,197,183,.65); }
 .online-list .empty-online { color: var(--muted); font-size: 10px; line-height: 1.6; }
-.mini-avatar { flex: 0 0 29px; width: 29px; height: 29px; display: grid; place-items: center; border: 1px solid #84897f; border-radius: 50%; background: #f8f5ec; font: 700 11px Georgia, serif; }
+.mini-avatar { flex: 0 0 29px; width: 29px; height: 29px; display: grid; place-items: center; overflow: hidden; border: 1px solid #84897f; border-radius: 50%; background: #f8f5ec; font: 700 11px Georgia, serif; }
+.mini-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .online-list li div { display: grid; min-width: 0; }
 .online-list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
 .online-list small { margin-top: 3px; color: var(--muted); font-size: 8px; }
@@ -262,7 +269,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
   .skills-block { display: none; }
   .location-header { min-height: 115px; padding: 22px 18px; }
   .location-header h2 { font-size: 30px; }
-  .location-strip { overflow-x: auto; grid-template-columns: repeat(6, minmax(82px, 1fr)); }
+  .location-strip { overflow-x: auto; grid-template-columns: repeat(7, minmax(82px, 1fr)); }
   .action-stage { padding: 28px 18px; }
   .action-cards { grid-template-columns: 1fr; }
   .action-card { min-height: 156px; }
