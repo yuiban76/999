@@ -1,4 +1,4 @@
-import { careerForJob, jobInfo } from "../shared/jobs";
+import { careerForCategory, categoryInfo, jobInfo } from "../shared/jobs";
 
 type LocationId = "home" | "realtor" | "business" | "shopping" | "park" | "school" | "hospital";
 
@@ -266,7 +266,8 @@ async function takeAction(request: Request, env: Env) {
   let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number; job?: string };
   try { body = await request.json(); } catch { return json({ message: "行動資料格式錯誤。" }, 400); }
   const next = { ...current };
-  if (!jobInfo(next.current_job)) { next.current_job = "unemployed"; next.job_category = "unfixed"; next.job_exp = 0; }
+  const storedJob = jobInfo(next.current_job);
+  if (!storedJob || storedJob.categoryId !== next.job_category) { next.current_job = "unemployed"; next.job_category = "unfixed"; next.job_exp = 0; }
   let title = "完成行動";
   let message = "行動完成。";
   let tone: "good" | "neutral" | "warn" = "good";
@@ -307,20 +308,25 @@ async function takeAction(request: Request, env: Env) {
       const selected = jobInfo(body.job || "");
       if (!selected) return json({ message: "這個職業不存在。" }, 400);
       if (next.current_job === selected.job) return json({ message: `你目前已經是${selected.job}。` }, 400);
+      const category = categoryInfo(selected.categoryId);
+      if (!category) return json({ message: "這個產業不存在。" }, 400);
+      if (category.id !== "unfixed" && selected.job !== category.jobs[0]) return json({ message: `進入${category.label}必須從${category.jobs[0]}開始。` }, 400);
       next.current_job = selected.job; next.job_category = selected.categoryId; next.job_exp = 0; minutes = 60;
-      title = `找到工作：${selected.job}`; message = `成功進入「${selected.categoryLabel}」成為見習${selected.job}；此職業的升遷經驗從 0 開始。`; break;
+      title = category.id === "unfixed" ? `狀態變更：${selected.job}` : `進入${selected.categoryLabel}`;
+      message = category.id === "unfixed" ? `目前狀態已改為${selected.job}。` : `成功進入「${selected.categoryLabel}」，從${selected.job}開始發展；產業升遷經驗從 0 開始。`; break;
     }
     case "work": {
       if (next.location !== "business") return json({ message: "請先前往商業區。" }, 400);
       if (next.illness) return json({ message: `目前罹患${next.illness}，請先前往醫院治療。` }, 400);
-      if (next.current_job === "unemployed") return json({ message: "目前是待業者，請先使用找工作選擇職業。" }, 400);
+      if (next.job_category === "unfixed") return json({ message: `目前是${next.current_job === "流浪者" ? "流浪者" : "待業者"}，請先選擇一條產業路線。` }, 400);
       const hours = Number(body.hours);
       if (![1, 4, 8].includes(hours)) return json({ message: "工時選擇不正確。" }, 400);
       if (next.energy < hours * 5) return json({ message: "體力不足，先回家休息吧。" }, 400);
-      const previousCareer = careerForJob(next.current_job, next.job_exp);
+      const previousCareer = careerForCategory(next.job_category, next.job_exp, next.current_job);
       const income = hours * previousCareer.hourlyPay;
       next.cash += income; next.energy = clamp(next.energy - hours * 5); next.health = clamp(next.health - Math.ceil(hours / 2)); next.mood = clamp(next.mood - Math.ceil(hours * .9)); next.hunger = clamp(next.hunger - hours * 2); next.work_exp += hours * 4; next.job_exp += hours * 4; minutes = hours * 60;
-      const newCareer = careerForJob(next.current_job, next.job_exp);
+      const newCareer = careerForCategory(next.job_category, next.job_exp, next.current_job);
+      next.current_job = newCareer.title;
       title = newCareer.title !== previousCareer.title ? `升遷為${newCareer.title}` : `工作 ${hours} 小時`;
       message = `以${previousCareer.title}完成工作，收入 +NT$${income}，職業經驗 +${hours * 4}。${newCareer.title !== previousCareer.title ? ` 恭喜升遷為${newCareer.title}！` : ""}`; break;
     }

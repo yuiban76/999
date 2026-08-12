@@ -111,6 +111,16 @@ button { color: inherit; }
 .job-list button.current { border-color: var(--orange); background: var(--orange-soft); }
 .job-list span { font: 700 13px Georgia, "Noto Serif TC", serif; }
 .job-list small { color: var(--muted); font-size: 8px; }
+.career-route { padding-top: 12px; border-top: 1px solid var(--line); }
+.route-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 7px; }
+.route-steps > div { position: relative; display: grid; gap: 5px; min-height: 92px; padding: 12px; border: 1px solid #9b9d95; background: #f3f0e7; }
+.route-steps > div:not(:last-child)::after { content: "→"; position: absolute; z-index: 1; right: -8px; top: 34px; color: var(--orange); font-weight: 900; }
+.route-steps > div.current { border-color: var(--orange); background: var(--orange-soft); }
+.route-steps small { color: var(--orange); font-size: 8px; }
+.route-steps strong { font: 700 12px Georgia, "Noto Serif TC", serif; }
+.route-steps span { align-self: end; color: var(--muted); font: 8px Consolas, monospace; }
+.enter-industry { width: 100%; margin-top: 14px; padding: 12px; border: 0; background: var(--moss); color: white; font-size: 10px; font-weight: 800; cursor: pointer; }
+.enter-industry:disabled { cursor: default; opacity: .55; }
 
 .marquee {
   min-height: 40px;
