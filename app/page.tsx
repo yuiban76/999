@@ -102,14 +102,14 @@ function apiHeaders(jsonBody = false) {
   };
 }
 
-const locations: Array<{ id: LocationId; emoji: string; name: string; caption: string }> = [
-  { id: "home", emoji: "⌂", name: "我的住所", caption: "有有效租約或自有住宅後，才能在這裡休息" },
-  { id: "realtor", emoji: "鑰", name: "安心房仲", caption: "按天租屋或購買永久住所，屋主也能繼續查看租屋" },
-  { id: "business", emoji: "▦", name: "商業區", caption: "用時間換取收入，累積職涯經驗" },
-  { id: "shopping", emoji: "◇", name: "購物街", caption: "補充飽足，偶爾也犒賞一下自己" },
-  { id: "casino", emoji: "♠", name: "幸運賭場", caption: "最多五位玩家同桌，各自挑戰二十一點莊家" },
-  { id: "school", emoji: "▤", name: "未來學院", caption: "投資自己，讓選擇越來越多" },
-  { id: "hospital", emoji: "✚", name: "市立醫院", caption: "檢查身體、治療疾病，讓健康回到正軌" },
+const locations: Array<{ id: LocationId; emoji: string; name: string; caption: string; hours: string }> = [
+  { id: "home", emoji: "⌂", name: "我的住所", caption: "有有效租約或自有住宅後，才能在這裡休息", hours: "24 小時" },
+  { id: "realtor", emoji: "鑰", name: "安心房仲", caption: "按天租屋或購買永久住所，屋主也能繼續查看租屋", hours: "09:00～18:00" },
+  { id: "business", emoji: "▦", name: "商業區", caption: "用時間換取收入，累積職涯經驗", hours: "08:00～18:00" },
+  { id: "shopping", emoji: "◇", name: "購物街", caption: "補充飽足，偶爾也犒賞一下自己", hours: "10:00～22:00" },
+  { id: "casino", emoji: "♠", name: "幸運賭場", caption: "最多五位玩家同桌，各自挑戰二十一點莊家", hours: "24 小時" },
+  { id: "school", emoji: "▤", name: "未來學院", caption: "投資自己，讓選擇越來越多", hours: "08:00～21:00" },
+  { id: "hospital", emoji: "✚", name: "市立醫院", caption: "一般診療 08:00～20:00，急診全天開放", hours: "急診 24 小時" },
 ];
 
 const statMeta: Array<{ key: StatKey; icon: string; label: string }> = [
@@ -127,14 +127,24 @@ const levelProgress = (exp: number) => {
   return Math.min(100, ((exp - thresholds[current - 1]) / (thresholds[current] - thresholds[current - 1])) * 100);
 };
 
+const WORLD_EPOCH_MS = Date.UTC(2026, 7, 12, 10, 0, 0);
+const WORLD_START_MINUTES = 7 * 60 + 30;
+const worldMinutes = (now = Date.now()) => WORLD_START_MINUTES + Math.max(0, Math.floor((now - WORLD_EPOCH_MS) / 2_000));
+const openingHours: Partial<Record<LocationId, { open: number; close: number }>> = {
+  realtor: { open: 9 * 60, close: 18 * 60 }, business: { open: 8 * 60, close: 18 * 60 }, shopping: { open: 10 * 60, close: 22 * 60 }, school: { open: 8 * 60, close: 21 * 60 },
+};
+const isLocationOpen = (location: LocationId, minutes = worldMinutes()) => {
+  const hours = openingHours[location];
+  if (!hours) return true;
+  const current = ((minutes % 1440) + 1440) % 1440;
+  return current >= hours.open && current < hours.close;
+};
+
 function clock(minutes: number) {
   const totalDays = Math.floor(minutes / 1440);
   const minuteOfDay = minutes % 1440;
-  const date = new Date(2052, 2, 17 + totalDays);
-  const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
   return {
-    date: `${date.getFullYear()} / ${String(date.getMonth() + 1).padStart(2, "0")} / ${String(date.getDate()).padStart(2, "0")}`,
-    weekday: `星期${weekdays[date.getDay()]}`,
+    day: `遊玩第 ${totalDays + 1} 天`,
     time: `${String(Math.floor(minuteOfDay / 60)).padStart(2, "0")}:${String(minuteOfDay % 60).padStart(2, "0")}`,
   };
 }
@@ -164,7 +174,8 @@ async function prepareAvatar(file: File) {
 }
 
 function guestAction(current: Player, action: string, payload: Record<string, unknown>) {
-  const next = { ...current };
+  const sharedMinutes = worldMinutes();
+  const next = { ...current, elapsedMinutes: sharedMinutes };
   let title = "完成行動";
   let message = "行動完成。";
   let minutes = 0;
@@ -172,16 +183,18 @@ function guestAction(current: Player, action: string, payload: Record<string, un
   if (action === "move") {
     const target = payload.location as LocationId;
     if (!locations.some((item) => item.id === target) || target === next.location) return fail("你已經在這裡了。");
-    if (target === "home" && !next.ownsHome && next.rentedUntil <= next.elapsedMinutes) return fail("你目前沒有住所，請先到安心房仲租屋或買房。");
+    if (target === "home" && !next.ownsHome && next.rentedUntil <= sharedMinutes) return fail("你目前沒有住所，請先到安心房仲租屋或買房。");
+    if (!isLocationOpen(target, sharedMinutes)) return fail(`${locations.find((item) => item.id === target)?.hours} 營業，現在已關門。`);
     next.location = target; next.energy = Math.max(0, next.energy - 1); next.hunger = Math.max(0, next.hunger - 1); minutes = 10; title = "前往新地點"; message = `花了 10 分鐘抵達${locationName(target)}。`;
   } else if (action === "housing") {
     if (next.location !== "realtor") return fail("請先前往安心房仲。");
+    if (!isLocationOpen("realtor", sharedMinutes)) return fail("安心房仲營業時間為 09:00～18:00。");
     if (payload.kind === "rent") {
       const days = Number(payload.days);
       if (![1, 7, 30].includes(days)) return fail("租屋天數不正確。");
       const cost = days * 350;
       if (next.cash < cost) return fail("現金不足，無法支付租金。");
-      next.cash -= cost; next.rentalName = "城市小套房"; next.rentedUntil = Math.max(next.elapsedMinutes, next.rentedUntil) + days * 1440; minutes = 30;
+      next.cash -= cost; next.rentalName = "城市小套房"; next.rentedUntil = Math.max(sharedMinutes, next.rentedUntil) + days * 1440; minutes = 30;
       title = `租下城市小套房 ${days} 天`; message = `支付 NT$${cost}，租期增加 ${days} 天。`;
     } else if (payload.kind === "buy") {
       if (next.ownsHome) return fail("你已擁有城市小宅，仍可繼續查看租屋方案。");
@@ -190,6 +203,7 @@ function guestAction(current: Player, action: string, payload: Record<string, un
     } else return fail("房屋方案不存在。");
   } else if (action === "job") {
     if (next.location !== "business") return fail("請先前往商業區的就業服務處。");
+    if (!isLocationOpen("business", sharedMinutes)) return fail("商業區營業時間為 08:00～18:00。");
     const selected = jobInfo(String(payload.job || ""));
     if (!selected) return fail("這個職業不存在。");
     if (next.currentJob === selected.job) return fail(`你目前已經是${selected.job}。`);
@@ -202,6 +216,7 @@ function guestAction(current: Player, action: string, payload: Record<string, un
   } else if (action === "work") {
     const hours = Number(payload.hours);
     if (next.location !== "business" || ![1, 4, 8].includes(hours)) return fail("請先前往商業區。");
+    if (!isLocationOpen("business", sharedMinutes)) return fail("商業區營業時間為 08:00～18:00。");
     if (next.illness) return fail(`目前罹患${next.illness}，請先前往醫院治療。`);
     if (next.jobCategory === "unfixed") return fail(`目前是${next.currentJob}，請先選擇一條產業路線。`);
     if (next.energy < hours * 5) return fail("體力不足，先回家休息吧。");
@@ -214,25 +229,30 @@ function guestAction(current: Player, action: string, payload: Record<string, un
     message = `收入 +NT$${income}、工作經驗 +${hours * 4}。${newCareer.title !== previousCareer.title ? `恭喜升遷為${newCareer.title}！` : ""}`;
   } else if (action === "study") {
     if (next.location !== "school") return fail("請先前往未來學院。");
+    if (!isLocationOpen("school", sharedMinutes)) return fail("未來學院開放時間為 08:00～21:00。");
     if (next.illness) return fail(`目前罹患${next.illness}，請先前往醫院治療。`);
     if (next.cash < 500 || next.energy < 10) return fail(next.cash < 500 ? "學費不足。" : "體力不足。");
     next.cash -= 500; next.energy -= 10; next.mood = Math.max(0, next.mood - 3); next.hunger = Math.max(0, next.hunger - 4); next.programmingExp += 25; next.intelligenceExp += 5; minutes = 120; title = "完成程式設計課"; message = "程式設計 EXP +25、知識 EXP +5。";
   } else if (action === "eat") {
     if (next.location !== "shopping") return fail("請先前往購物街。");
+    if (!isLocationOpen("shopping", sharedMinutes)) return fail("購物街營業時間為 10:00～22:00。");
     const meal = payload.kind === "rice" ? { name: "飯糰", price: 45, hunger: 20, mood: 1 } : { name: "便當", price: 100, hunger: 45, mood: 3 };
     if (next.cash < meal.price) return fail("現金不足。");
     next.cash -= meal.price; next.hunger = Math.min(100, next.hunger + meal.hunger); next.mood = Math.min(100, next.mood + meal.mood); minutes = 20; title = `享用${meal.name}`; message = `${meal.name}讓飽足 +${meal.hunger}。`;
   } else if (action === "sleep") {
     if (next.location !== "home") return fail("請先回到溫暖小屋。");
-    if (!next.ownsHome && next.rentedUntil <= next.elapsedMinutes) return fail("租約已到期，請先到房仲續租。");
+    if (!next.ownsHome && next.rentedUntil <= sharedMinutes) return fail("租約已到期，請先到房仲續租。");
     next.energy = 100; next.health = Math.min(100, next.health + 5); next.mood = Math.min(100, next.mood + 10); next.hunger = Math.max(0, next.hunger - 12); minutes = 480; title = "好好睡了一覺"; message = "體力完全恢復，健康 +5、心情 +10。";
   } else if (action.startsWith("casino_")) {
     return fail("登入帳號後才能加入最多五人的二十一點牌桌。");
   } else if (action === "hospital") {
     if (next.location !== "hospital") return fail("請先前往市立醫院。");
+    if (payload.kind !== "emergency" && !((((sharedMinutes % 1440) + 1440) % 1440) >= 8 * 60 && (((sharedMinutes % 1440) + 1440) % 1440) < 20 * 60)) return fail("一般門診與完整治療時間為 08:00～20:00；急診 24 小時開放。");
     const care = payload.kind === "clinic"
       ? { name: "一般門診", price: 600, health: Math.min(100, next.health + 25), energy: Math.min(100, next.energy + 10), minutes: 60 }
-      : { name: "完整治療", price: 1500, health: Math.max(80, next.health), energy: Math.min(100, next.energy + 30), minutes: 120 };
+      : payload.kind === "treatment"
+        ? { name: "完整治療", price: 1500, health: Math.max(80, next.health), energy: Math.min(100, next.energy + 30), minutes: 120 }
+        : { name: "急診治療", price: 2500, health: Math.max(70, next.health), energy: Math.min(100, next.energy + 20), minutes: 90 };
     if (next.cash < care.price) return fail("醫療費不足。");
     const previousIllness = next.illness;
     next.cash -= care.price; next.health = care.health; next.energy = care.energy; next.illness = ""; minutes = care.minutes;
@@ -244,8 +264,8 @@ function guestAction(current: Player, action: string, payload: Record<string, un
   if (action !== "hospital") {
     if (next.hunger <= 15) next.health = Math.max(0, next.health - 6);
     if (next.energy <= 5) next.health = Math.max(0, next.health - 4);
-    if (!next.illness && next.health < 70) {
-      const chance = next.health < 30 ? .35 : next.health < 50 ? .18 : .08;
+    if (!next.illness && next.health < 50) {
+      const chance = next.health < 20 ? .35 : next.health < 35 ? .22 : .12;
       if (Math.random() < chance) {
         next.illness = next.health < 30 ? "重感冒" : "感冒";
         title = `生病：${next.illness}`;
@@ -253,7 +273,7 @@ function guestAction(current: Player, action: string, payload: Record<string, un
       }
     }
   }
-  next.elapsedMinutes += minutes;
+  next.elapsedMinutes = worldMinutes();
   if (!next.ownsHome && next.rentedUntil <= next.elapsedMinutes && next.location === "home") {
     next.location = "realtor";
     message += " 租約已到期，你已回到房仲尋找住所。";
@@ -275,17 +295,24 @@ export default function Home() {
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authError, setAuthError] = useState("");
   const [notice, setNotice] = useState("正在連接人生世界……");
-  const gameClock = useMemo(() => clock(player.elapsedMinutes), [player.elapsedMinutes]);
+  const [sharedMinutes, setSharedMinutes] = useState(worldMinutes());
+  const gameClock = useMemo(() => clock(sharedMinutes), [sharedMinutes]);
   const currentLocation = locations.find((item) => item.id === player.location)!;
   const career = careerForCategory(player.jobCategory, player.jobExp, player.currentJob);
   const nextCareer = nextCareerForCategory(player.jobCategory, player.jobExp);
   const nextCareerTitle = nextCareer?.title ?? "職涯最高階級";
   const careerProgress = nextCareer ? Math.max(0, Math.min(100, ((player.jobExp - career.threshold) / (nextCareer.threshold - career.threshold)) * 100)) : 100;
   const avatarSrc = profile?.avatarUrl ? `${API_ORIGIN}${profile.avatarUrl}` : "";
-  const rentalMinutesLeft = Math.max(0, player.rentedUntil - player.elapsedMinutes);
+  const rentalMinutesLeft = Math.max(0, player.rentedUntil - sharedMinutes);
   const rentalDaysLeft = rentalMinutesLeft ? Math.ceil(rentalMinutesLeft / 1440) : 0;
   const housingLabel = player.ownsHome ? "自有住宅 · 城市小宅" : rentalDaysLeft ? `租屋 · ${player.rentalName}（剩 ${rentalDaysLeft} 天）` : "目前沒有住所";
   const selectedJobCategory = JOB_CATEGORIES.find((category) => category.id === jobCategory) ?? JOB_CATEGORIES[0];
+  const realtorOpen = isLocationOpen("realtor", sharedMinutes);
+  const businessOpen = isLocationOpen("business", sharedMinutes);
+  const shoppingOpen = isLocationOpen("shopping", sharedMinutes);
+  const schoolOpen = isLocationOpen("school", sharedMinutes);
+  const currentMinute = ((sharedMinutes % 1440) + 1440) % 1440;
+  const hospitalRegularOpen = currentMinute >= 8 * 60 && currentMinute < 20 * 60;
 
   const loadWorld = useCallback(async (quiet = false) => {
     try {
@@ -314,6 +341,13 @@ export default function Home() {
     const timer = window.setInterval(() => void loadWorld(true), 5000);
     return () => window.clearInterval(timer);
   }, [loadWorld]);
+
+  useEffect(() => {
+    const updateClock = () => setSharedMinutes(worldMinutes());
+    updateClock();
+    const timer = window.setInterval(updateClock, 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (casino.hand?.status !== "waiting") return;
@@ -413,7 +447,7 @@ export default function Home() {
           <span className="brand-mark">人</span>
           <span><strong>人生 ONLINE</strong><small>LIFE, ONE CHOICE AT A TIME.</small></span>
         </a>
-        <div className="world-time"><span>{gameClock.date}</span><strong>{gameClock.time}</strong><span>{gameClock.weekday}</span></div>
+        <div className="world-time"><span>{gameClock.day}</span><strong>{gameClock.time}</strong><span>全體玩家同步</span></div>
         <div className="account-area">
           <span className={`connection-dot ${profile ? "connected" : ""}`} />
           {profile ? (
@@ -445,7 +479,7 @@ export default function Home() {
             <div className="career-track"><i style={{ width: `${careerProgress}%` }} /></div>
             <p>{nextCareer && player.jobCategory !== "unfixed" ? `再累積 ${nextCareer.threshold - player.jobExp} 產業 EXP 升遷為${nextCareerTitle}` : player.jobCategory === "unfixed" ? "前往商業區選擇產業路線" : "已達此產業最高職位"}</p>
           </div>
-          {player.illness && <div className="illness-alert"><strong>目前生病：{player.illness}</strong><span>工作、上課與運動暫停，請前往市立醫院。</span></div>}
+          {player.illness && <div className="illness-alert"><strong>目前生病：{player.illness}</strong><span>工作與上課暫停，請前往市立醫院。</span></div>}
           <div className="stat-list">
             {statMeta.map((item) => <div className="stat-row" key={item.key}><span className="stat-label"><span>{item.icon}</span>{item.label}</span><div className="stat-track"><i style={{ width: `${player[item.key]}%` }} /></div><strong>{player[item.key]}</strong></div>)}
           </div>
@@ -453,24 +487,24 @@ export default function Home() {
         </aside>
 
         <section className="world-panel panel">
-          <div className="location-header"><div><p>YOU ARE HERE</p><h2><span>{currentLocation.emoji}</span>{currentLocation.name}</h2><small>{currentLocation.caption}</small></div><span className="map-index">CITY · LOBBY 01</span></div>
+          <div className="location-header"><div><p>YOU ARE HERE</p><h2><span>{currentLocation.emoji}</span>{currentLocation.name}</h2><small>{currentLocation.caption} · {currentLocation.hours}</small></div><span className="map-index">CITY · LOBBY 01</span></div>
           <nav className="location-strip" aria-label="城市地點">
-            {locations.map((item) => <button className={item.id === player.location ? "active" : ""} key={item.id} onClick={() => void act("move", { location: item.id })} disabled={busy}><span>{item.emoji}</span><small>{item.name}</small></button>)}
+            {locations.map((item) => <button className={`${item.id === player.location ? "active" : ""} ${!isLocationOpen(item.id, sharedMinutes) ? "closed" : ""}`} key={item.id} onClick={() => void act("move", { location: item.id })} disabled={busy}><span>{item.emoji}</span><small>{item.name}</small><em>{isLocationOpen(item.id, sharedMinutes) ? item.hours : "已關門"}</em></button>)}
           </nav>
           <div className="action-stage">
             <div className="stage-number">{String(locations.findIndex((item) => item.id === player.location) + 1).padStart(2, "0")}</div>
             <div className="action-intro"><span>今天，想把時間花在哪裡？</span><h3>{actionTitle(player.location)}</h3><p>{actionDescription(player.location)}</p></div>
             <div className="action-cards">
               {player.location === "home" && <ActionCard icon="☾" title="睡眠 8 小時" meta="體力全滿 · 健康 +5 · 心情 +10" button="好好休息" onClick={() => void act("sleep")} disabled={busy} />}
-              {player.location === "realtor" && <><ActionCard icon="01" title="城市小套房 · 1 天" meta="每日 NT$350 · 租金 NT$350" button="租 1 天" onClick={() => void act("housing", { kind: "rent", days: 1 })} disabled={busy} /><ActionCard icon="07" title="城市小套房 · 7 天" meta="每日 NT$350 · 租金 NT$2,450" button="租 7 天" onClick={() => void act("housing", { kind: "rent", days: 7 })} featured disabled={busy} /><ActionCard icon="買" title="購買城市小宅" meta="NT$150,000 · 永久住所 · 買房後仍可查看租屋" button={player.ownsHome ? "已擁有，仍可看租屋" : "購買房屋"} onClick={() => void act("housing", { kind: "buy" })} disabled={busy} /></>}
-              {player.location === "business" && <><ActionCard icon="職" title="找工作" meta="12 條產業升遷路線 · 無固定職業" button="打開產業列表" onClick={() => setJobOpen(true)} featured disabled={busy} /><ActionCard icon="01" title="短班 1 小時" meta={`收入 NT$${formatMoney(career.hourlyPay)} · 產業 EXP +4`} button="開始工作" onClick={() => void act("work", { hours: 1 })} disabled={busy} /><ActionCard icon="04" title="標準班 4 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 4)} · 產業 EXP +16`} button="開始工作" onClick={() => void act("work", { hours: 4 })} disabled={busy} /><ActionCard icon="08" title="長班 8 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 8)} · 產業 EXP +32`} button="開始工作" onClick={() => void act("work", { hours: 8 })} disabled={busy} /></>}
-              {player.location === "shopping" && <><ActionCard icon="飯" title="巷口飯糰" meta="NT$45 · 飽足 +20" button="買來吃" onClick={() => void act("eat", { kind: "rice" })} disabled={busy} /><ActionCard icon="餐" title="豐盛便當" meta="NT$100 · 飽足 +45 · 心情 +3" button="享用便當" onClick={() => void act("eat", { kind: "bento" })} featured disabled={busy} /></>}
+              {player.location === "realtor" && <><ActionCard icon="01" title="城市小套房 · 1 天" meta="每日 NT$350 · 租金 NT$350" button="租 1 天" onClick={() => void act("housing", { kind: "rent", days: 1 })} disabled={busy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /><ActionCard icon="07" title="城市小套房 · 7 天" meta="每日 NT$350 · 租金 NT$2,450" button="租 7 天" onClick={() => void act("housing", { kind: "rent", days: 7 })} featured disabled={busy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /><ActionCard icon="買" title="購買城市小宅" meta="NT$150,000 · 永久住所 · 買房後仍可查看租屋" button={player.ownsHome ? "已擁有，仍可看租屋" : "購買房屋"} onClick={() => void act("housing", { kind: "buy" })} disabled={busy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /></>}
+              {player.location === "business" && <><ActionCard icon="職" title="找工作" meta="12 條產業升遷路線 · 無固定職業" button="打開產業列表" onClick={() => setJobOpen(true)} featured disabled={busy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="01" title="短班 1 小時" meta={`收入 NT$${formatMoney(career.hourlyPay)} · 產業 EXP +4`} button="開始工作" onClick={() => void act("work", { hours: 1 })} disabled={busy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="04" title="標準班 4 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 4)} · 產業 EXP +16`} button="開始工作" onClick={() => void act("work", { hours: 4 })} disabled={busy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="08" title="長班 8 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 8)} · 產業 EXP +32`} button="開始工作" onClick={() => void act("work", { hours: 8 })} disabled={busy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /></>}
+              {player.location === "shopping" && <><ActionCard icon="飯" title="巷口飯糰" meta="NT$45 · 飽足 +20" button="買來吃" onClick={() => void act("eat", { kind: "rice" })} disabled={busy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="餐" title="豐盛便當" meta="NT$100 · 飽足 +45 · 心情 +3" button="享用便當" onClick={() => void act("eat", { kind: "bento" })} featured disabled={busy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /></>}
                 {player.location === "casino" && <CasinoTable state={casino} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`casino_${action}`, payload)} />}
-              {player.location === "school" && <ActionCard icon="學" title="程式設計課" meta="NT$500 · 2 小時 · 程式 EXP +25" button="報名上課" onClick={() => void act("study")} featured disabled={busy} />}
-              {player.location === "hospital" && <><ActionCard icon="診" title="一般門診" meta="NT$600 · 健康 +25 · 治癒疾病" button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={busy} /><ActionCard icon="療" title="完整治療" meta="NT$1,500 · 健康至少恢復至 80 · 治癒疾病" button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} featured disabled={busy} /></>}
+              {player.location === "school" && <ActionCard icon="學" title="程式設計課" meta="NT$500 · 2 小時 · 程式 EXP +25" button="報名上課" onClick={() => void act("study")} featured disabled={busy || !schoolOpen} disabledLabel={!schoolOpen ? "已關門" : undefined} />}
+              {player.location === "hospital" && <><ActionCard icon="急" title="24 小時急診" meta="NT$2,500 · 健康至少恢復至 70 · 全天開放" button="前往急診" onClick={() => void act("hospital", { kind: "emergency" })} featured disabled={busy} /><ActionCard icon="診" title="一般門診" meta="08:00～20:00 · NT$600 · 健康 +25" button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={busy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /><ActionCard icon="療" title="完整治療" meta="08:00～20:00 · NT$1,500 · 健康至少恢復至 80" button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} disabled={busy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /></>}
             </div>
           </div>
-          <footer className="world-footer"><span>遊戲 1 小時 = 現實一次行動</span><button onClick={() => void act("reset")} disabled={busy}>重新開始人生</button></footer>
+          <footer className="world-footer"><span>現實 1 分鐘 = 遊戲 30 分鐘 · 全服同步</span><button onClick={() => void act("reset")} disabled={busy}>重新開始人生</button></footer>
         </section>
 
         <aside className="story-panel panel">
@@ -523,8 +557,8 @@ function Skill({ name, exp }: { name: string; exp: number }) {
   return <div className="skill-row"><div><span>{name}</span><strong>Lv.{level(exp)}</strong></div><div className="skill-track"><i style={{ width: `${levelProgress(exp)}%` }} /></div></div>;
 }
 
-function ActionCard({ icon, title, meta, button, featured = false, disabled, onClick }: { icon: string; title: string; meta: string; button: string; featured?: boolean; disabled: boolean; onClick: () => void }) {
-  return <article className={`action-card ${featured ? "featured" : ""}`}><span className="action-icon">{icon}</span><h4>{title}</h4><p>{meta}</p><button onClick={onClick} disabled={disabled}>{disabled ? "同步中…" : button}<span>→</span></button></article>;
+function ActionCard({ icon, title, meta, button, featured = false, disabled, disabledLabel, onClick }: { icon: string; title: string; meta: string; button: string; featured?: boolean; disabled: boolean; disabledLabel?: string; onClick: () => void }) {
+  return <article className={`action-card ${featured ? "featured" : ""}`}><span className="action-icon">{icon}</span><h4>{title}</h4><p>{meta}</p><button onClick={onClick} disabled={disabled}>{disabled ? disabledLabel ?? "同步中…" : button}<span>→</span></button></article>;
 }
 
 function CasinoTable({ state, signedIn, busy, maxBet, onAction }: { state: CasinoState; signedIn: boolean; busy: boolean; maxBet: number; onAction: (action: string, payload?: Record<string, unknown>) => void }) {
@@ -576,5 +610,5 @@ function actionTitle(location: LocationId) {
 }
 
 function actionDescription(location: LocationId) {
-  return { home: "有效租約或自有住宅才能進入。睡一覺能恢復體力與心情，但租約會隨遊戲天數到期。", realtor: "每個人一開始都沒有房子。租屋每日 NT$350，可逐日或一次租七天；也能買下永久住所。買房後租屋方案仍會保留。", business: "工作會累積職涯經驗並自動升遷；職位越高，每小時收入越多。長工時也會消耗健康。", shopping: "用合理的花費補充飽足。更豐盛的餐點，也能讓今天的心情好一點。", casino: "同一張桌最多五位登入玩家同時遊玩。選擇下注後補牌或停牌，目標是在不超過 21 點下擊敗莊家。", school: "支付學費與時間，累積程式設計能力。能力提升後，人生將有更多路可以走。", hospital: "健康低於 70 時，行動後可能生病。門診與完整治療都能治癒疾病，完整治療的恢復效果更好。" }[location];
+  return { home: "有效租約或自有住宅才能進入，全天 24 小時開放。睡一覺能恢復體力與心情。", realtor: "營業時間 09:00～18:00。租屋每日 NT$350，也能買下永久住所；買房後租屋方案仍會保留。", business: "營業時間 08:00～18:00。工作會累積職涯經驗並自動升遷，職位越高收入越多。", shopping: "營業時間 10:00～22:00。用合理的花費補充飽足，也能讓今天的心情好一點。", casino: "全天 24 小時開放。同一張桌最多五位登入玩家同時挑戰二十一點。", school: "開放時間 08:00～21:00。支付學費，累積程式設計能力。", hospital: "健康低於 50 時，行動後開始有機率生病。急診 24 小時開放；一般診療為 08:00～20:00。" }[location];
 }

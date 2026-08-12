@@ -34,6 +34,22 @@ type CasinoRow = { user_id: string; player_name: string; player_cards: string; d
 
 const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "business", "shopping", "casino", "school", "hospital"]);
 const clamp = (value: number) => Math.max(0, Math.min(100, value));
+const WORLD_EPOCH_MS = Date.UTC(2026, 7, 12, 10, 0, 0);
+const WORLD_START_MINUTES = 7 * 60 + 30;
+const worldMinutes = (now = Date.now()) => WORLD_START_MINUTES + Math.max(0, Math.floor((now - WORLD_EPOCH_MS) / 2_000));
+const minuteOfDay = (minutes = worldMinutes()) => ((minutes % 1440) + 1440) % 1440;
+const openingHours: Partial<Record<LocationId, { open: number; close: number; label: string }>> = {
+  realtor: { open: 9 * 60, close: 18 * 60, label: "09:00～18:00" },
+  business: { open: 8 * 60, close: 18 * 60, label: "08:00～18:00" },
+  shopping: { open: 10 * 60, close: 22 * 60, label: "10:00～22:00" },
+  school: { open: 8 * 60, close: 21 * 60, label: "08:00～21:00" },
+};
+const isLocationOpen = (location: LocationId, minutes = worldMinutes()) => {
+  const hours = openingHours[location];
+  if (!hours) return true;
+  const current = minuteOfDay(minutes);
+  return current >= hours.open && current < hours.close;
+};
 function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 }
@@ -94,13 +110,13 @@ async function identity(request: Request, db?: D1Database): Promise<AuthUser | n
 }
 
 function guestPlayer() {
-  return { cash: 10000, energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, programmingExp: 0, fitnessExp: 0, workExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, elapsedMinutes: 450, location: "realtor" as LocationId };
+  return { cash: 10000, energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, programmingExp: 0, fitnessExp: 0, workExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, elapsedMinutes: worldMinutes(), location: "realtor" as LocationId };
 }
 
 function serializePlayer(row: PlayerRow) {
   const currentJob = jobInfo(row.current_job) ? row.current_job : "待業者";
   const location = VALID_LOCATIONS.has(row.location) ? row.location : "casino";
-  return { cash: row.cash, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, programmingExp: row.programming_exp, fitnessExp: row.fitness_exp, workExp: row.work_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, elapsedMinutes: row.elapsed_minutes, location };
+  return { cash: row.cash, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, programmingExp: row.programming_exp, fitnessExp: row.fitness_exp, workExp: row.work_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, elapsedMinutes: worldMinutes(), location };
 }
 
 function profileFor(user: AuthUser) {
@@ -425,6 +441,8 @@ async function takeAction(request: Request, env: Env) {
   let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number; job?: string };
   try { body = await request.json(); } catch { return json({ message: "行動資料格式錯誤。" }, 400); }
   const next = { ...current };
+  const sharedMinutes = worldMinutes();
+  next.elapsed_minutes = sharedMinutes;
   const storedJob = jobInfo(next.current_job);
   if (!storedJob || storedJob.categoryId !== next.job_category) { next.current_job = "unemployed"; next.job_category = "unfixed"; next.job_exp = 0; }
   let title = "完成行動";
@@ -436,20 +454,23 @@ async function takeAction(request: Request, env: Env) {
     case "move": {
       if (!VALID_LOCATIONS.has(body.location as LocationId)) return json({ message: "目的地不存在。" }, 400);
       if (next.location === body.location) return json({ message: "你已經在這裡了。" }, 400);
-      if (body.location === "home" && !next.owns_home && next.rented_until <= next.elapsed_minutes) return json({ message: "你目前沒有住所，請先到房仲租屋或買房。" }, 400);
+      if (body.location === "home" && !next.owns_home && next.rented_until <= sharedMinutes) return json({ message: "你目前沒有住所，請先到房仲租屋或買房。" }, 400);
+      const target = body.location as LocationId;
+      if (!isLocationOpen(target, sharedMinutes)) return json({ message: `${openingHours[target]?.label} 營業，現在已關門。` }, 400);
       next.location = body.location as LocationId; next.energy = clamp(next.energy - 1); next.hunger = clamp(next.hunger - 1); minutes = 10;
       const placeName = ({ home: "我的住所", realtor: "安心房仲", business: "商業區", shopping: "購物街", casino: "幸運賭場", school: "未來學院", hospital: "市立醫院" } as Record<LocationId, string>)[next.location as LocationId];
       title = "前往新地點"; message = `花了 10 分鐘抵達${placeName}。`; tone = "neutral"; break;
     }
     case "housing": {
       if (next.location !== "realtor") return json({ message: "請先前往安心房仲。" }, 400);
+      if (!isLocationOpen("realtor", sharedMinutes)) return json({ message: `安心房仲營業時間為 ${openingHours.realtor?.label}。` }, 400);
       if (body.kind === "rent") {
         const days = Number(body.days);
         if (![1, 7, 30].includes(days)) return json({ message: "租屋天數不正確。" }, 400);
         const dailyRent = 350;
         const cost = dailyRent * days;
         if (next.cash < cost) return json({ message: "現金不足，無法支付租金。" }, 400);
-        const leaseStart = Math.max(next.elapsed_minutes, next.rented_until);
+        const leaseStart = Math.max(sharedMinutes, next.rented_until);
         next.cash -= cost; next.rental_name = "城市小套房"; next.rented_until = leaseStart + days * 1440; minutes = 30;
         title = `租下城市小套房 ${days} 天`; message = `支付 NT$${cost}，租期增加 ${days} 天。${next.owns_home ? "你原有的自有住宅仍然保留。" : "現在可以回到我的住所休息。"}`; break;
       }
@@ -464,6 +485,7 @@ async function takeAction(request: Request, env: Env) {
     }
     case "job": {
       if (next.location !== "business") return json({ message: "請先前往商業區的就業服務處。" }, 400);
+      if (!isLocationOpen("business", sharedMinutes)) return json({ message: `商業區營業時間為 ${openingHours.business?.label}。` }, 400);
       const selected = jobInfo(body.job || "");
       if (!selected) return json({ message: "這個職業不存在。" }, 400);
       if (next.current_job === selected.job) return json({ message: `你目前已經是${selected.job}。` }, 400);
@@ -476,6 +498,7 @@ async function takeAction(request: Request, env: Env) {
     }
     case "work": {
       if (next.location !== "business") return json({ message: "請先前往商業區。" }, 400);
+      if (!isLocationOpen("business", sharedMinutes)) return json({ message: `商業區營業時間為 ${openingHours.business?.label}。` }, 400);
       if (next.illness) return json({ message: `目前罹患${next.illness}，請先前往醫院治療。` }, 400);
       if (next.job_category === "unfixed") return json({ message: `目前是${next.current_job === "流浪者" ? "流浪者" : "待業者"}，請先選擇一條產業路線。` }, 400);
       const hours = Number(body.hours);
@@ -491,12 +514,14 @@ async function takeAction(request: Request, env: Env) {
     }
     case "study":
       if (next.location !== "school") return json({ message: "請先前往未來學院。" }, 400);
+      if (!isLocationOpen("school", sharedMinutes)) return json({ message: `未來學院開放時間為 ${openingHours.school?.label}。` }, 400);
       if (next.illness) return json({ message: `目前罹患${next.illness}，請先前往醫院治療。` }, 400);
       if (next.cash < 500 || next.energy < 10) return json({ message: next.cash < 500 ? "學費不足。" : "體力不足，先休息一下吧。" }, 400);
       next.cash -= 500; next.energy = clamp(next.energy - 10); next.mood = clamp(next.mood - 3); next.hunger = clamp(next.hunger - 4); next.programming_exp += 25; next.intelligence_exp += 5; minutes = 120;
       title = "完成程式設計課"; message = "程式設計 EXP +25、知識 EXP +5。"; break;
     case "eat": {
       if (next.location !== "shopping") return json({ message: "請先前往購物街。" }, 400);
+      if (!isLocationOpen("shopping", sharedMinutes)) return json({ message: `購物街營業時間為 ${openingHours.shopping?.label}。` }, 400);
       const meal = body.kind === "rice" ? { name: "飯糰", price: 45, hunger: 20, mood: 1 } : body.kind === "bento" ? { name: "便當", price: 100, hunger: 45, mood: 3 } : null;
       if (!meal) return json({ message: "餐點不存在。" }, 400);
       if (next.cash < meal.price) return json({ message: "現金不足。" }, 400);
@@ -505,15 +530,18 @@ async function takeAction(request: Request, env: Env) {
     }
     case "sleep":
       if (next.location !== "home") return json({ message: "請先回到溫暖小屋。" }, 400);
-      if (!next.owns_home && next.rented_until <= next.elapsed_minutes) return json({ message: "租約已到期，請先到房仲續租。" }, 400);
+      if (!next.owns_home && next.rented_until <= sharedMinutes) return json({ message: "租約已到期，請先到房仲續租。" }, 400);
       next.energy = 100; next.health = clamp(next.health + 5); next.mood = clamp(next.mood + 10); next.hunger = clamp(next.hunger - 12); minutes = 480;
       title = "好好睡了一覺"; message = "體力完全恢復，健康 +5、心情 +10。"; break;
     case "hospital": {
       if (next.location !== "hospital") return json({ message: "請先前往市立醫院。" }, 400);
+      if (body.kind !== "emergency" && !(minuteOfDay(sharedMinutes) >= 8 * 60 && minuteOfDay(sharedMinutes) < 20 * 60)) return json({ message: "一般門診與完整治療時間為 08:00～20:00；急診 24 小時開放。" }, 400);
       const care = body.kind === "clinic"
         ? { name: "一般門診", price: 600, minutes: 60, health: Math.min(100, next.health + 25), energy: Math.min(100, next.energy + 10) }
         : body.kind === "treatment"
           ? { name: "完整治療", price: 1500, minutes: 120, health: Math.max(80, next.health), energy: Math.min(100, next.energy + 30) }
+          : body.kind === "emergency"
+            ? { name: "急診治療", price: 2500, minutes: 90, health: Math.max(70, next.health), energy: Math.min(100, next.energy + 20) }
           : null;
       if (!care) return json({ message: "醫療項目不存在。" }, 400);
       if (next.cash < care.price) return json({ message: "醫療費不足。" }, 400);
@@ -531,8 +559,8 @@ async function takeAction(request: Request, env: Env) {
   if (body.action !== "hospital" && body.action !== "reset") {
     if (next.hunger <= 15) next.health = clamp(next.health - 6);
     if (next.energy <= 5) next.health = clamp(next.health - 4);
-    if (!next.illness && next.health < 70) {
-      const chance = next.health < 30 ? 0.35 : next.health < 50 ? 0.18 : 0.08;
+    if (!next.illness && next.health < 50) {
+      const chance = next.health < 20 ? 0.35 : next.health < 35 ? 0.22 : 0.12;
       if (Math.random() < chance) {
         next.illness = next.health < 30 ? "重感冒" : "感冒";
         tone = "warn";
@@ -542,13 +570,13 @@ async function takeAction(request: Request, env: Env) {
     }
   }
 
-  next.elapsed_minutes += minutes;
+  next.elapsed_minutes = worldMinutes();
   if (!next.owns_home && next.rented_until <= next.elapsed_minutes && next.location === "home") {
     next.location = "realtor";
     message += " 租約已到期，你已回到房仲尋找住所。";
   }
-  const minuteOfDay = next.elapsed_minutes % 1440;
-  const gameTime = `${String(Math.floor(minuteOfDay / 60)).padStart(2, "0")}:${String(minuteOfDay % 60).padStart(2, "0")}`;
+  const eventMinute = minuteOfDay(next.elapsed_minutes);
+  const gameTime = `${String(Math.floor(eventMinute / 60)).padStart(2, "0")}:${String(eventMinute % 60).padStart(2, "0")}`;
   const now = Date.now();
   const eventId = crypto.randomUUID();
   await env.DB.batch([

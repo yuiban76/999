@@ -208,6 +208,11 @@ button { color: inherit; }
 .location-strip button.active { background: var(--moss); color: white; }
 .location-strip button span { display: block; margin-bottom: 4px; font-size: 22px; filter: grayscale(.25); }
 .location-strip button small { font-size: 10px; font-weight: 700; }
+.location-strip button em { display: block; margin-top: 3px; color: var(--muted); font-size: 7px; font-style: normal; }
+.location-strip button.active em { color: rgba(255,255,255,.75); }
+.location-strip button.closed:not(.active) { background: rgba(31,37,31,.07); color: #777b75; }
+.location-strip button.closed:not(.active) span { opacity: .45; }
+.location-strip button.closed:not(.active) em { color: #b54a37; font-weight: 800; }
 
 .action-stage { position: relative; flex: 1; padding: 36px 34px; overflow: hidden; background: linear-gradient(155deg, rgba(255,255,255,.42), transparent 52%); }
 .stage-number { position: absolute; right: 20px; top: 4px; color: rgba(31,37,31,.045); font: 700 140px/1 Georgia, serif; }
