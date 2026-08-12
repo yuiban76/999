@@ -15,6 +15,7 @@ type PlayerRow = {
   bank_balance: number;
   loan_balance: number;
   finance_day: number;
+  main_story: string;
   energy: number;
   health: number;
   mood: number;
@@ -120,13 +121,13 @@ async function identity(request: Request, db?: D1Database): Promise<AuthUser | n
 }
 
 function guestPlayer() {
-  return { cash: 10000, bankBalance: 0, loanBalance: 0, energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, creativityExp: 0, physicalExp: 0, socialExp: 0, charismaExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, elapsedMinutes: worldMinutes(), location: "realtor" as LocationId };
+  return { cash: 10000, bankBalance: 0, loanBalance: 0, mainStory: "legacy", energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, creativityExp: 0, physicalExp: 0, socialExp: 0, charismaExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, elapsedMinutes: worldMinutes(), location: "realtor" as LocationId };
 }
 
 function serializePlayer(row: PlayerRow) {
   const currentJob = jobInfo(row.current_job) ? row.current_job : "待業者";
   const location = VALID_LOCATIONS.has(row.location) ? row.location : "casino";
-  return { cash: row.cash, bankBalance: row.bank_balance, loanBalance: row.loan_balance, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, creativityExp: row.programming_exp, physicalExp: row.fitness_exp, socialExp: row.work_exp, charismaExp: row.charisma_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, elapsedMinutes: worldMinutes(), location };
+  return { cash: row.cash, bankBalance: row.bank_balance, loanBalance: row.loan_balance, mainStory: row.main_story, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, creativityExp: row.programming_exp, physicalExp: row.fitness_exp, socialExp: row.work_exp, charismaExp: row.charisma_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, elapsedMinutes: worldMinutes(), location };
 }
 
 function profileFor(user: AuthUser) {
@@ -155,6 +156,7 @@ async function ensureSchema(db: D1Database) {
       user_id TEXT PRIMARY KEY, display_name TEXT NOT NULL, email TEXT NOT NULL,
       cash INTEGER NOT NULL DEFAULT 10000, bank_balance INTEGER NOT NULL DEFAULT 0,
       loan_balance INTEGER NOT NULL DEFAULT 0, finance_day INTEGER NOT NULL DEFAULT 0,
+      main_story TEXT NOT NULL DEFAULT 'legacy',
       energy INTEGER NOT NULL DEFAULT 100,
       health INTEGER NOT NULL DEFAULT 100, mood INTEGER NOT NULL DEFAULT 80,
       hunger INTEGER NOT NULL DEFAULT 80, intelligence_exp INTEGER NOT NULL DEFAULT 0,
@@ -203,8 +205,8 @@ async function ensureSchema(db: D1Database) {
 
 async function upsertPlayer(db: D1Database, user: AuthUser) {
   const now = Date.now();
-  await db.prepare(`INSERT INTO players (user_id, display_name, email, current_job, location, created_at, updated_at, last_seen_at)
-    VALUES (?, ?, ?, 'unemployed', 'realtor', ?, ?, ?)
+  await db.prepare(`INSERT INTO players (user_id, display_name, email, main_story, current_job, location, created_at, updated_at, last_seen_at)
+    VALUES (?, ?, ?, 'unselected', 'unemployed', 'realtor', ?, ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET display_name = excluded.display_name, email = excluded.email, last_seen_at = excluded.last_seen_at`)
     .bind(user.userId, user.displayName.slice(0, 40), user.email, now, now, now).run();
   const row = await db.prepare("SELECT * FROM players WHERE user_id = ?").bind(user.userId).first<PlayerRow>();
@@ -677,8 +679,9 @@ async function takeAction(request: Request, env: Env) {
   const current = await upsertPlayer(env.DB, user);
   if (!current) return json({ message: "找不到玩家資料。" }, 404);
 
-  let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; academy?: string };
+  let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; academy?: string; story?: string };
   try { body = await request.json(); } catch { return json({ message: "行動資料格式錯誤。" }, 400); }
+  if (current.main_story === "unselected" && body.action !== "choose_story") return json({ message: "請先選擇人生主線。" }, 409);
   const next = { ...current };
   const sharedMinutes = worldMinutes();
   next.elapsed_minutes = sharedMinutes;
@@ -691,6 +694,11 @@ async function takeAction(request: Request, env: Env) {
   let scratch: { price: number; prize: number } | null = null;
 
   switch (body.action) {
+    case "choose_story":
+      if (next.main_story !== "unselected") return json({ message: "人生主線選定後不能再次更換。" }, 409);
+      if (body.story !== "prodigal_return") return json({ message: "這條人生主線目前尚未開放。" }, 400);
+      Object.assign(next, { cash: 37, bank_balance: 0, loan_balance: 250_000, main_story: "prodigal_return", finance_day: Math.floor(sharedMinutes / 1440) + 1, energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, location: "realtor" });
+      title = "選擇主線：《浪子回頭》"; message = "你帶著 NT$37 與 NT$250,000 負債，決定承認失敗並重新開始。"; tone = "neutral"; break;
     case "move": {
       if (!VALID_LOCATIONS.has(body.location as LocationId)) return json({ message: "目的地不存在。" }, 400);
       if (next.location === body.location) return json({ message: "你已經在這裡了。" }, 400);
@@ -854,7 +862,7 @@ async function takeAction(request: Request, env: Env) {
       message = `${care.name}完成，支付 NT$${care.price}，健康恢復至 ${next.health}${previousIllness ? `，${previousIllness}已痊癒` : ""}。`; break;
     }
     case "reset":
-      Object.assign(next, { cash: 10000, bank_balance: 0, loan_balance: 0, finance_day: Math.floor(sharedMinutes / 1440) + 1, energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, elapsed_minutes: sharedMinutes, location: "realtor" });
+      Object.assign(next, { cash: next.main_story === "prodigal_return" ? 37 : 10000, bank_balance: 0, loan_balance: next.main_story === "prodigal_return" ? 250_000 : 0, finance_day: Math.floor(sharedMinutes / 1440) + 1, energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, elapsed_minutes: sharedMinutes, location: "realtor" });
       title = "重新開始人生"; message = "新的人生已開始，所有進度回到起點。"; tone = "neutral"; break;
     default: return json({ message: "未知的行動。" }, 400);
   }
@@ -882,8 +890,8 @@ async function takeAction(request: Request, env: Env) {
   const gameTime = `${String(Math.floor(eventMinute / 60)).padStart(2, "0")}:${String(eventMinute % 60).padStart(2, "0")}`;
   const now = Date.now();
   const eventId = crypto.randomUUID();
-  const statements = [env.DB.prepare(`UPDATE players SET cash=?, bank_balance=?, loan_balance=?, finance_day=?, energy=?, health=?, mood=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, charisma_exp=?, current_job=?, job_category=?, job_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, elapsed_minutes=?, location=?, updated_at=?, last_seen_at=? WHERE user_id=?`)
-    .bind(next.cash, next.bank_balance, next.loan_balance, next.finance_day, next.energy, next.health, next.mood, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.charisma_exp, next.current_job, next.job_category, next.job_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.elapsed_minutes, next.location, now, now, user.userId)];
+  const statements = [env.DB.prepare(`UPDATE players SET cash=?, bank_balance=?, loan_balance=?, finance_day=?, main_story=?, energy=?, health=?, mood=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, charisma_exp=?, current_job=?, job_category=?, job_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, elapsed_minutes=?, location=?, updated_at=?, last_seen_at=? WHERE user_id=?`)
+    .bind(next.cash, next.bank_balance, next.loan_balance, next.finance_day, next.main_story, next.energy, next.health, next.mood, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.charisma_exp, next.current_job, next.job_category, next.job_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.elapsed_minutes, next.location, now, now, user.userId)];
   if (body.action !== "move") statements.push(env.DB.prepare("INSERT INTO game_events (id, user_id, player_name, room_id, title, detail, tone, game_time, created_at) VALUES (?, ?, ?, 'lobby-01', ?, ?, ?, ?, ?)")
     .bind(eventId, user.userId, user.displayName.slice(0, 40), title, message, tone, gameTime, now));
   await env.DB.batch(statements);

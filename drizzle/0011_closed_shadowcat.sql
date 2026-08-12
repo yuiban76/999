@@ -1,0 +1,1 @@
+ALTER TABLE `players` ADD `main_story` text DEFAULT 'legacy' NOT NULL;

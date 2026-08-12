@@ -11,6 +11,7 @@ type Player = {
   cash: number;
   bankBalance: number;
   loanBalance: number;
+  mainStory: string;
   energy: number;
   health: number;
   mood: number;
@@ -99,6 +100,7 @@ const INITIAL_PLAYER: Player = {
   cash: 10000,
   bankBalance: 0,
   loanBalance: 0,
+  mainStory: "legacy",
   energy: 100,
   health: 100,
   mood: 80,
@@ -121,6 +123,26 @@ const INITIAL_PLAYER: Player = {
 
 const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN as string | undefined)?.replace(/\/$/, "") || "";
 const TOKEN_KEY = "life-online-session";
+const PRODIGAL_RETURN_STORY = [
+  "凌晨四點，城市還沒醒。",
+  "你坐在便利商店外的塑膠椅上，口袋裡只剩下三十七元。手機螢幕不斷亮起——銀行催繳、房東警告、公司未接來電，還有母親昨晚傳來的一句話：",
+  "「今年生日，會回來吃飯嗎？」",
+  "你沒有回覆。",
+  "三年前，你曾經擁有一份穩定的工作、一群願意相信你的朋友，還有一個說過會陪你走到最後的人。那時的你相信，只要贏一次大的，所有問題都能解決。",
+  "第一次進賭場，你贏了半個月的薪水。",
+  "第二次，你贏回了一台新車。",
+  "第三次開始，你只記得自己一直在追——追輸掉的錢、追曾經的運氣，也追那個好像無所不能的自己。",
+  "最後，存款沒了，工作丟了，朋友不再接電話。你甚至偷拿父親留下的手錶去典當，只為了相信下一局真的會不一樣。",
+  "但下一局從來沒有來。",
+  "清晨的雨落在街道上。你低頭看著手中的名片，那是昨晚離開賭場時，一名陌生人塞給你的。",
+  "「重新開始人生互助中心」",
+  "背面只有一行手寫的字：",
+  "「承認自己輸了，不代表你的人生也輸了。」",
+  "你望向街道另一端。左邊是仍亮著霓虹燈的地下賭場；右邊是即將發出第一班車的公車站。再過兩個小時，母親就會起床。再過四個小時，曾經的主管也許願意給你最後一次解釋的機會。",
+  "你的債務沒有消失，失去的信任也不會一夜恢復。",
+  "但這一次，你終於沒有把最後的三十七元換成籌碼。",
+  "你站起身，走進雨中。",
+];
 
 function apiHeaders(jsonBody = false) {
   const token = window.localStorage.getItem(TOKEN_KEY);
@@ -570,7 +592,7 @@ export default function Home() {
               {avatarSrc ? <img src={avatarSrc} alt={`${profile?.displayName}的大頭貼`} /> : (profile?.displayName.slice(0, 1) ?? "旅")}
               {profile && <label className="avatar-upload" title="上傳自己的照片">換照片<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => void uploadAvatar(event)} disabled={busy} /></label>}
             </div>
-            <div><p>18 歲 · 人生新手</p><h1>{profile?.displayName ?? "旅行者"}</h1><span className="job-tag">{career.title}</span></div>
+            <div><p>18 歲 · 人生新手</p><h1>{profile?.displayName ?? "旅行者"}</h1><span className="job-tag">{career.title}</span>{player.mainStory === "prodigal_return" && <span className="story-tag">主線 · 浪子回頭</span>}</div>
           </div>
           <div className="cash-card"><span>資產概況</span><strong><small>手上 NT$</small>{formatMoney(player.cash)}</strong><div className="cash-breakdown"><p><span>銀行存款</span><b>NT${formatMoney(player.bankBalance)}</b></p><p className={player.loanBalance ? "debt" : ""}><span>貸款餘額</span><b>NT${formatMoney(player.loanBalance)}</b></p></div><small>{profile ? "伺服器已安全保存" : "訪客模式暫存"}</small></div>
           <div className={`housing-card ${!player.ownsHome && !rentalDaysLeft ? "homeless" : ""}`}><span>居住狀態</span><strong>{housingLabel}</strong><small>{player.ownsHome ? "永久住所" : rentalDaysLeft ? `租約至遊戲第 ${Math.ceil(player.rentedUntil / 1440)} 天` : "請前往安心房仲"}</small></div>
@@ -622,6 +644,9 @@ export default function Home() {
           <div className="next-goal"><span>職涯里程碑</span><strong>{player.jobCategory === "unfixed" ? "先選擇一條產業路線" : nextCareer ? `升遷：${nextCareerTitle}` : "此產業最高職位"}</strong><div><i style={{ width: `${player.jobCategory === "unfixed" ? 0 : careerProgress}%` }} /></div><small>{player.jobCategory === "unfixed" ? "商業區 · 找工作" : nextCareer ? `${player.jobExp} / ${nextCareer.threshold} EXP · ${formatRequirements(nextCareer.requirements)}` : `${player.jobExp} 產業 EXP`}</small></div>
         </aside>
       </div>
+      {profile && player.mainStory === "unselected" && <div className="story-select-overlay" role="dialog" aria-modal="true" aria-labelledby="story-select-title">
+        <section className="story-select-card"><header><span>CHOOSE YOUR LIFE STORY</span><h2 id="story-select-title">選擇人生主線</h2><p>主線選定後不能更換，並會決定你的初始條件。</p></header><article><div className="story-choice-title"><span>MAIN STORY 01</span><h3>《浪子回頭》</h3></div><div className="story-prologue">{PRODIGAL_RETURN_STORY.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div><div className="story-starting-stats"><div><span>初始金錢</span><strong>NT$37</strong></div><div className="debt"><span>初始負債</span><strong>NT$250,000</strong></div></div><button type="button" onClick={() => void act("choose_story", { story: "prodigal_return" })} disabled={busy}>{busy ? "正在開始人生……" : "選擇《浪子回頭》並開始"}<span>→</span></button></article></section>
+      </div>}
       {enlargedPlayer && <div className="avatar-lightbox" role="dialog" aria-modal="true" aria-labelledby="avatar-lightbox-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setEnlargedPlayer(null); }}>
         <section><button className="auth-close" type="button" aria-label="關閉大頭貼" onClick={() => setEnlargedPlayer(null)}>×</button><div className={`enlarged-avatar ${enlargedPlayer.avatarUrl ? "has-photo" : ""}`}>{enlargedPlayer.avatarUrl ? <img src={`${API_ORIGIN}${enlargedPlayer.avatarUrl}`} alt={`${enlargedPlayer.displayName}的大頭貼`} /> : enlargedPlayer.displayName.slice(0, 1)}</div><h2 id="avatar-lightbox-title">{enlargedPlayer.displayName}</h2><p>現金 NT${formatMoney(enlargedPlayer.cash)} · 貸款 NT${formatMoney(enlargedPlayer.loanBalance)}</p></section>
       </div>}

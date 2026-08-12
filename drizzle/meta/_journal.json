@@ -78,6 +78,13 @@
       "when": 1786534393368,
       "tag": "0010_ambiguous_prowler",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1786535916103,
+      "tag": "0011_closed_shadowcat",
+      "breakpoints": true
     }
   ]
 }

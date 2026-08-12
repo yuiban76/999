@@ -28,6 +28,7 @@ export const players = sqliteTable("players", {
   bankBalance: integer("bank_balance").notNull().default(0),
   loanBalance: integer("loan_balance").notNull().default(0),
   financeDay: integer("finance_day").notNull().default(0),
+  mainStory: text("main_story").notNull().default("legacy"),
   energy: integer("energy").notNull().default(100),
   health: integer("health").notNull().default(100),
   mood: integer("mood").notNull().default(80),
