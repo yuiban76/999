@@ -11,6 +11,10 @@ type Player = {
   cash: number;
   bankBalance: number;
   loanBalance: number;
+  dailyMinimumPayment: number;
+  dailyPaymentMade: number;
+  missedPaymentDays: number;
+  gameOver: string;
   mainStory: string;
   energy: number;
   health: number;
@@ -105,6 +109,10 @@ const INITIAL_PLAYER: Player = {
   cash: 10000,
   bankBalance: 0,
   loanBalance: 0,
+  dailyMinimumPayment: 0,
+  dailyPaymentMade: 0,
+  missedPaymentDays: 0,
+  gameOver: "",
   mainStory: "legacy",
   energy: 100,
   health: 100,
@@ -149,6 +157,25 @@ const PRODIGAL_RETURN_STORY = [
   "你的債務沒有消失，失去的信任也不會一夜恢復。",
   "但這一次，你終於沒有把最後的三十七元換成籌碼。",
   "你站起身，走進雨中。",
+];
+
+const PRODIGAL_FAILURE_STORY = [
+  "還款期限的最後一天",
+  "你坐在空蕩蕩的房間裡，一遍又一遍重新整理銀行頁面。",
+  "你賣掉了手機、家具，以及父親留下的手錶。能借錢的人都已經借過，願意相信你的人也早已離開。",
+  "午夜十二點，畫面上的日期跳到了下個月。",
+  "沒有奇蹟發生。",
+  "幾天後，催收通知正式寄達。你的帳戶遭到限制，僅剩的資產被處理，房東也要求你搬離住處。新工作因為連續缺勤而失去，母親最後一次打來的電話，你仍然沒有勇氣接聽。",
+  "你拖著唯一的行李箱離開房間。",
+  "外面下著和故事開始時一樣的雨。街道左邊依然是閃爍著霓虹燈的賭場，右邊則是你曾經沒有踏上的回家之路。",
+  "你曾經得到過重新選擇的機會。",
+  "但你用新的貸款填補舊的債務，用下一次翻本逃避這一次失敗。直到所有期限同時到來，你才發現，人生並不會永遠等待你準備好面對它。",
+  "手機在被停用前收到最後一封通知：",
+  "「債務協商申請已逾期，案件結束。」",
+  "你望著雨中的城市，卻再也找不到一扇願意為你打開的門。",
+  "你未能在期限內繳納貸款，也沒有保住任何維持生活的收入或資產。",
+  "「壓垮你的不是最後一筆貸款，而是每一次以為明天還能補救的選擇。」",
+  "——遊戲結束——",
 ];
 
 function apiHeaders(jsonBody = false) {
@@ -618,6 +645,7 @@ export default function Home() {
             <div><p>18 歲 · 人生新手</p><h1>{profile?.displayName ?? "旅行者"}</h1><span className="job-tag">{career.title}</span>{player.mainStory === "prodigal_return" && <span className="story-tag">主線 · 浪子回頭</span>}</div>
           </div>
           <div className="cash-card"><span>資產概況</span><strong><small>手上 NT$</small>{formatMoney(player.cash)}</strong><div className="cash-breakdown"><p><span>銀行存款</span><b>NT${formatMoney(player.bankBalance)}</b></p><p className={player.loanBalance ? "debt" : ""}><span>貸款餘額</span><b>NT${formatMoney(player.loanBalance)}</b></p></div><small>{profile ? "伺服器已安全保存" : "訪客模式暫存"}</small></div>
+          {player.mainStory === "prodigal_return" && player.loanBalance > 0 && <div className={`debt-deadline ${player.missedPaymentDays ? "warning" : ""}`}><span>本日最低繳款</span><strong>NT${formatMoney(player.dailyMinimumPayment)}</strong><small>已繳 NT${formatMoney(player.dailyPaymentMade)} · 尚欠 NT${formatMoney(Math.max(0, player.dailyMinimumPayment - player.dailyPaymentMade))} · 連續欠繳 {player.missedPaymentDays}/2 天</small></div>}
           <div className={`housing-card ${!player.ownsHome && !rentalDaysLeft ? "homeless" : ""}`}><span>居住狀態</span><strong>{housingLabel}</strong><small>{player.ownsHome ? "永久住所" : rentalDaysLeft ? `租約至遊戲第 ${Math.ceil(player.rentedUntil / 1440)} 天` : "請前往安心房仲"}</small></div>
           <div className="career-card">
             <div><span>目前職業</span><strong>{career.title}</strong></div><small>時薪 NT${formatMoney(career.hourlyPay)}</small>
@@ -669,6 +697,9 @@ export default function Home() {
       </div>
       {profile && player.mainStory === "unselected" && <div className="story-select-overlay" role="dialog" aria-modal="true" aria-labelledby="story-select-title">
         <section className="story-select-card"><header><span>CHOOSE YOUR LIFE STORY</span><h2 id="story-select-title">選擇人生主線</h2><p>主線選定後不能更換，並會決定你的初始條件。</p></header><article><div className="story-choice-title"><span>MAIN STORY 01</span><h3>《浪子回頭》</h3></div><div className="story-prologue">{PRODIGAL_RETURN_STORY.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div><div className="story-starting-stats"><div><span>初始金錢</span><strong>NT$37</strong></div><div className="debt"><span>初始負債</span><strong>NT$250,000</strong></div></div><button type="button" onClick={() => void act("choose_story", { story: "prodigal_return" })} disabled={busy}>{busy ? "正在開始人生……" : "選擇《浪子回頭》並開始"}<span>→</span></button></article></section>
+      </div>}
+      {profile && player.gameOver === "prodigal_insolvent" && <div className="story-select-overlay game-over-overlay" role="dialog" aria-modal="true" aria-labelledby="game-over-title">
+        <section className="story-select-card game-over-card"><header><span>BAD ENDING</span><h2 id="game-over-title">《浪子回頭：無力償還》</h2><p>連續兩個遊戲日未繳足每日最低還款額</p></header><article><div className="story-prologue">{PRODIGAL_FAILURE_STORY.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div><button type="button" onClick={() => void act("reset")} disabled={busy}>{busy ? "正在重新開始……" : "重新開始《浪子回頭》"}<span>↻</span></button></article></section>
       </div>}
       {enlargedPlayer && <div className="avatar-lightbox" role="dialog" aria-modal="true" aria-labelledby="avatar-lightbox-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setEnlargedPlayer(null); }}>
         <section><button className="auth-close" type="button" aria-label="關閉大頭貼" onClick={() => setEnlargedPlayer(null)}>×</button><div className={`enlarged-avatar ${enlargedPlayer.avatarUrl ? "has-photo" : ""}`}>{enlargedPlayer.avatarUrl ? <img src={`${API_ORIGIN}${enlargedPlayer.avatarUrl}`} alt={`${enlargedPlayer.displayName}的大頭貼`} /> : enlargedPlayer.displayName.slice(0, 1)}</div><h2 id="avatar-lightbox-title">{enlargedPlayer.displayName}</h2><p>現金 NT${formatMoney(enlargedPlayer.cash)} · 貸款 NT${formatMoney(enlargedPlayer.loanBalance)}</p></section>
@@ -730,6 +761,7 @@ function BankPanel({ player, busy, closed, onAction }: { player: Player; busy: b
   return <section className="bank-panel">
     <header><div><span>BANK ACCOUNT</span><strong>存款 NT${formatMoney(player.bankBalance)}</strong></div><div><span>LOAN BALANCE</span><strong className={player.loanBalance ? "debt" : ""}>貸款 NT${formatMoney(player.loanBalance)}</strong></div></header>
     <p>存款每個遊戲日複利 0.1%；一般貸款每日增加 0.5%，《浪子回頭》主線債務每日增加 0.2%。每個遊戲日等於現實 24 分鐘。</p>
+    {player.mainStory === "prodigal_return" && player.loanBalance > 0 && <div className={`bank-payment-status ${player.missedPaymentDays ? "warning" : ""}`}><strong>本日最低繳款 NT${formatMoney(player.dailyMinimumPayment)}</strong><span>已繳 NT${formatMoney(player.dailyPaymentMade)} · 尚欠 NT${formatMoney(Math.max(0, player.dailyMinimumPayment - player.dailyPaymentMade))}</span><small>連續欠繳 {player.missedPaymentDays}/2 天；連續兩天未繳足將觸發遊戲結束。</small></div>}
     <label>輸入金額<div><span>NT$</span><input type="number" inputMode="numeric" min="1" step="1" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={busy} /></div></label>
     <div className="bank-actions">
       <button onClick={() => onAction("deposit", value)} disabled={busy || !valid}>存款</button>

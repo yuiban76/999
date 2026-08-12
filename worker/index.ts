@@ -15,6 +15,10 @@ type PlayerRow = {
   bank_balance: number;
   loan_balance: number;
   finance_day: number;
+  daily_minimum_payment: number;
+  daily_payment_made: number;
+  missed_payment_days: number;
+  game_over: string;
   main_story: string;
   energy: number;
   health: number;
@@ -54,6 +58,8 @@ const abilitiesFor = (player: PlayerRow): Abilities => ({
 const formatRequirements = (requirements: Partial<Abilities>) => Object.entries(requirements)
   .map(([key, value]) => `${ABILITY_LABELS[key as keyof Abilities]} ${value}`)
   .join("、");
+const PRODIGAL_FAILURE_ENDING = "prodigal_insolvent";
+const prodigalMinimumPayment = (balance: number) => balance > 0 ? Math.max(1, Math.ceil(balance * .003)) : 0;
 function scratchPrize() {
   const roll = crypto.getRandomValues(new Uint32Array(1))[0] / 4_294_967_296;
   if (roll < 0.62) return 0;
@@ -129,13 +135,13 @@ async function identity(request: Request, db?: D1Database): Promise<AuthUser | n
 }
 
 function guestPlayer() {
-  return { cash: 10000, bankBalance: 0, loanBalance: 0, mainStory: "legacy", energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, creativityExp: 0, physicalExp: 0, socialExp: 0, charismaExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, actionAvailableAt: 0, actionLabel: "", elapsedMinutes: worldMinutes(), location: "realtor" as LocationId };
+  return { cash: 10000, bankBalance: 0, loanBalance: 0, dailyMinimumPayment: 0, dailyPaymentMade: 0, missedPaymentDays: 0, gameOver: "", mainStory: "legacy", energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, creativityExp: 0, physicalExp: 0, socialExp: 0, charismaExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, actionAvailableAt: 0, actionLabel: "", elapsedMinutes: worldMinutes(), location: "realtor" as LocationId };
 }
 
 function serializePlayer(row: PlayerRow) {
   const currentJob = jobInfo(row.current_job) ? row.current_job : "待業者";
   const location = VALID_LOCATIONS.has(row.location) ? row.location : "casino";
-  return { cash: row.cash, bankBalance: row.bank_balance, loanBalance: row.loan_balance, mainStory: row.main_story, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, creativityExp: row.programming_exp, physicalExp: row.fitness_exp, socialExp: row.work_exp, charismaExp: row.charisma_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, actionAvailableAt: row.action_available_at, actionLabel: row.action_label, elapsedMinutes: worldMinutes(), location };
+  return { cash: row.cash, bankBalance: row.bank_balance, loanBalance: row.loan_balance, dailyMinimumPayment: row.daily_minimum_payment, dailyPaymentMade: row.daily_payment_made, missedPaymentDays: row.missed_payment_days, gameOver: row.game_over, mainStory: row.main_story, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, creativityExp: row.programming_exp, physicalExp: row.fitness_exp, socialExp: row.work_exp, charismaExp: row.charisma_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, actionAvailableAt: row.action_available_at, actionLabel: row.action_label, elapsedMinutes: worldMinutes(), location };
 }
 
 function profileFor(user: AuthUser) {
@@ -164,6 +170,8 @@ async function ensureSchema(db: D1Database) {
       user_id TEXT PRIMARY KEY, display_name TEXT NOT NULL, email TEXT NOT NULL,
       cash INTEGER NOT NULL DEFAULT 10000, bank_balance INTEGER NOT NULL DEFAULT 0,
       loan_balance INTEGER NOT NULL DEFAULT 0, finance_day INTEGER NOT NULL DEFAULT 0,
+      daily_minimum_payment INTEGER NOT NULL DEFAULT 0, daily_payment_made INTEGER NOT NULL DEFAULT 0,
+      missed_payment_days INTEGER NOT NULL DEFAULT 0, game_over TEXT NOT NULL DEFAULT '',
       main_story TEXT NOT NULL DEFAULT 'legacy',
       energy INTEGER NOT NULL DEFAULT 100,
       health INTEGER NOT NULL DEFAULT 100, mood INTEGER NOT NULL DEFAULT 80,
@@ -231,21 +239,40 @@ async function upsertPlayer(db: D1Database, user: AuthUser) {
   const row = await db.prepare("SELECT * FROM players WHERE user_id = ?").bind(user.userId).first<PlayerRow>();
   if (!row) return null;
   const today = Math.floor(worldMinutes() / 1440) + 1;
+  // Existing story saves receive a fresh first deadline when this system is introduced.
+  if (row.main_story === "prodigal_return" && row.loan_balance > 0 && row.daily_minimum_payment <= 0 && !row.game_over) {
+    const minimumPayment = prodigalMinimumPayment(row.loan_balance);
+    await db.prepare("UPDATE players SET finance_day=?, daily_minimum_payment=?, daily_payment_made=0, missed_payment_days=0, updated_at=? WHERE user_id=?")
+      .bind(today, minimumPayment, now, user.userId).run();
+    row.finance_day = today; row.daily_minimum_payment = minimumPayment; row.daily_payment_made = 0; row.missed_payment_days = 0;
+    return row;
+  }
   if (row.finance_day <= 0) {
-    await db.prepare("UPDATE players SET finance_day=? WHERE user_id=?").bind(today, user.userId).run();
-    row.finance_day = today;
+    const minimumPayment = row.main_story === "prodigal_return" ? prodigalMinimumPayment(row.loan_balance) : 0;
+    await db.prepare("UPDATE players SET finance_day=?, daily_minimum_payment=? WHERE user_id=?").bind(today, minimumPayment, user.userId).run();
+    row.finance_day = today; row.daily_minimum_payment = minimumPayment;
   } else if (today > row.finance_day) {
     const elapsedDays = today - row.finance_day;
     let bankBalance = row.bank_balance;
     let loanBalance = row.loan_balance;
+    let minimumPayment = row.daily_minimum_payment || (row.main_story === "prodigal_return" ? prodigalMinimumPayment(loanBalance) : 0);
+    let paymentMade = row.daily_payment_made;
+    let missedPaymentDays = row.missed_payment_days;
+    let gameOver = row.game_over;
     for (let day = 0; day < elapsedDays; day += 1) {
+      if (row.main_story === "prodigal_return" && loanBalance > 0 && !gameOver) {
+        missedPaymentDays = paymentMade < minimumPayment ? missedPaymentDays + 1 : 0;
+        if (missedPaymentDays >= 2) gameOver = PRODIGAL_FAILURE_ENDING;
+      } else if (loanBalance <= 0) missedPaymentDays = 0;
       bankBalance = Math.min(9_000_000_000_000_000, Math.floor(bankBalance * 1.001));
       const dailyLoanRate = row.main_story === "prodigal_return" ? 1.002 : 1.005;
       loanBalance = Math.min(9_000_000_000_000_000, Math.ceil(loanBalance * dailyLoanRate));
+      paymentMade = 0;
+      minimumPayment = row.main_story === "prodigal_return" && !gameOver ? prodigalMinimumPayment(loanBalance) : 0;
     }
-    await db.prepare("UPDATE players SET bank_balance=?, loan_balance=?, finance_day=?, updated_at=? WHERE user_id=?")
-      .bind(bankBalance, loanBalance, today, now, user.userId).run();
-    row.bank_balance = bankBalance; row.loan_balance = loanBalance; row.finance_day = today;
+    await db.prepare("UPDATE players SET bank_balance=?, loan_balance=?, finance_day=?, daily_minimum_payment=?, daily_payment_made=?, missed_payment_days=?, game_over=?, updated_at=? WHERE user_id=?")
+      .bind(bankBalance, loanBalance, today, minimumPayment, paymentMade, missedPaymentDays, gameOver, now, user.userId).run();
+    row.bank_balance = bankBalance; row.loan_balance = loanBalance; row.finance_day = today; row.daily_minimum_payment = minimumPayment; row.daily_payment_made = paymentMade; row.missed_payment_days = missedPaymentDays; row.game_over = gameOver;
   }
   return row;
 }
@@ -384,6 +411,7 @@ async function casinoAction(request: Request, env: Env) {
   await ensureSchema(env.DB);
   const player = await upsertPlayer(env.DB, user);
   if (!player) return json({ message: "找不到玩家資料。" }, 404);
+  if (player.game_over) return json({ message: "這段人生已經結束，請重新開始。" }, 409);
   if (player.location !== "casino") return json({ message: "請先前往幸運賭場。" }, 400);
   await expireIdleBlackjackSeats(env.DB);
   let body: { action?: string; bet?: number; seatNo?: number };
@@ -604,6 +632,7 @@ async function pokerAction(request: Request, env: Env) {
   if (!user || !env.DB) return json({ message: "請先登入才能加入德州撲克牌桌。" }, 401);
   await ensureSchema(env.DB);
   const player = await upsertPlayer(env.DB, user);
+  if (player?.game_over) return json({ message: "這段人生已經結束，請重新開始。" }, 409);
   if (!player || player.location !== "casino") return json({ message: "請先前往幸運賭場。" }, 400);
   await expireIdlePokerSeats(env.DB);
   let body: { action?: string; bet?: number; seatNo?: number; amount?: number };
@@ -756,6 +785,7 @@ async function takeAction(request: Request, env: Env) {
 
   let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; academy?: string; story?: string };
   try { body = await request.json(); } catch { return json({ message: "行動資料格式錯誤。" }, 400); }
+  if (current.game_over && body.action !== "reset") return json({ message: "這段人生已經結束，請重新開始。" }, 409);
   if (current.main_story === "unselected" && body.action !== "choose_story") return json({ message: "請先選擇人生主線。" }, 409);
   if (!["move", "choose_story", "reset"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
   const next = { ...current };
@@ -773,7 +803,7 @@ async function takeAction(request: Request, env: Env) {
     case "choose_story":
       if (next.main_story !== "unselected") return json({ message: "人生主線選定後不能再次更換。" }, 409);
       if (body.story !== "prodigal_return") return json({ message: "這條人生主線目前尚未開放。" }, 400);
-      Object.assign(next, { cash: 37, bank_balance: 0, loan_balance: 250_000, main_story: "prodigal_return", finance_day: Math.floor(sharedMinutes / 1440) + 1, energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", location: "realtor" });
+      Object.assign(next, { cash: 37, bank_balance: 0, loan_balance: 250_000, main_story: "prodigal_return", finance_day: Math.floor(sharedMinutes / 1440) + 1, daily_minimum_payment: 750, daily_payment_made: 0, missed_payment_days: 0, game_over: "", energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", location: "realtor" });
       title = "選擇主線：《浪子回頭》"; message = "你帶著 NT$37 與 NT$250,000 負債，決定承認失敗並重新開始。"; tone = "neutral"; break;
     case "move": {
       if (!VALID_LOCATIONS.has(body.location as LocationId)) return json({ message: "目的地不存在。" }, 400);
@@ -826,7 +856,9 @@ async function takeAction(request: Request, env: Env) {
         if (next.loan_balance <= 0) return json({ message: "目前沒有貸款。" }, 400);
         if (amount > next.loan_balance) return json({ message: "還款金額不能超過貸款餘額。" }, 400);
         if (next.cash < amount) return json({ message: "手上現金不足。" }, 400);
-        next.cash -= amount; next.loan_balance -= amount; title = "償還貸款"; message = `已償還 NT$${amount}，剩餘貸款 NT$${next.loan_balance}。`;
+        next.cash -= amount; next.loan_balance -= amount;
+        if (next.main_story === "prodigal_return") next.daily_payment_made += amount;
+        title = "償還貸款"; message = `已償還 NT$${amount}，剩餘貸款 NT$${next.loan_balance}。${next.main_story === "prodigal_return" ? ` 本日累計已繳 NT$${next.daily_payment_made}／最低 NT$${next.daily_minimum_payment}。` : ""}`;
       } else return json({ message: "銀行服務不存在。" }, 400);
       minutes = 10; break;
     }
@@ -944,7 +976,7 @@ async function takeAction(request: Request, env: Env) {
       message = `${care.name}完成，支付 NT$${care.price}，健康恢復至 ${next.health}${previousIllness ? `，${previousIllness}已痊癒` : ""}。`; break;
     }
     case "reset":
-      Object.assign(next, { cash: next.main_story === "prodigal_return" ? 37 : 10000, bank_balance: 0, loan_balance: next.main_story === "prodigal_return" ? 250_000 : 0, finance_day: Math.floor(sharedMinutes / 1440) + 1, energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", elapsed_minutes: sharedMinutes, location: "realtor" });
+      Object.assign(next, { cash: next.main_story === "prodigal_return" ? 37 : 10000, bank_balance: 0, loan_balance: next.main_story === "prodigal_return" ? 250_000 : 0, finance_day: Math.floor(sharedMinutes / 1440) + 1, daily_minimum_payment: next.main_story === "prodigal_return" ? 750 : 0, daily_payment_made: 0, missed_payment_days: 0, game_over: "", energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", elapsed_minutes: sharedMinutes, location: "realtor" });
       title = "重新開始人生"; message = "新的人生已開始，所有進度回到起點。"; tone = "neutral"; break;
     default: return json({ message: "未知的行動。" }, 400);
   }
@@ -980,8 +1012,8 @@ async function takeAction(request: Request, env: Env) {
   const gameTime = `${String(Math.floor(eventMinute / 60)).padStart(2, "0")}:${String(eventMinute % 60).padStart(2, "0")}`;
   const now = Date.now();
   const eventId = crypto.randomUUID();
-  const statements = [env.DB.prepare(`UPDATE players SET cash=?, bank_balance=?, loan_balance=?, finance_day=?, main_story=?, energy=?, health=?, mood=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, charisma_exp=?, current_job=?, job_category=?, job_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, action_available_at=?, action_label=?, elapsed_minutes=?, location=?, updated_at=?, last_seen_at=? WHERE user_id=?`)
-    .bind(next.cash, next.bank_balance, next.loan_balance, next.finance_day, next.main_story, next.energy, next.health, next.mood, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.charisma_exp, next.current_job, next.job_category, next.job_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.action_available_at, next.action_label, next.elapsed_minutes, next.location, now, now, user.userId)];
+  const statements = [env.DB.prepare(`UPDATE players SET cash=?, bank_balance=?, loan_balance=?, finance_day=?, daily_minimum_payment=?, daily_payment_made=?, missed_payment_days=?, game_over=?, main_story=?, energy=?, health=?, mood=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, charisma_exp=?, current_job=?, job_category=?, job_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, action_available_at=?, action_label=?, elapsed_minutes=?, location=?, updated_at=?, last_seen_at=? WHERE user_id=?`)
+    .bind(next.cash, next.bank_balance, next.loan_balance, next.finance_day, next.daily_minimum_payment, next.daily_payment_made, next.missed_payment_days, next.game_over, next.main_story, next.energy, next.health, next.mood, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.charisma_exp, next.current_job, next.job_category, next.job_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.action_available_at, next.action_label, next.elapsed_minutes, next.location, now, now, user.userId)];
   if (body.action !== "move") statements.push(env.DB.prepare("INSERT INTO game_events (id, user_id, player_name, room_id, title, detail, tone, game_time, created_at) VALUES (?, ?, ?, 'lobby-01', ?, ?, ?, ?, ?)")
     .bind(eventId, user.userId, user.displayName.slice(0, 40), title, message, tone, gameTime, now));
   await env.DB.batch(statements);

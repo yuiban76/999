@@ -175,6 +175,11 @@ button { color: inherit; }
 .cash-breakdown b { color: white; font: 700 10px Consolas, monospace; }
 .cash-breakdown p.debt b { color: #ffb09b; }
 .cash-card > small { color: #bfcbbf; font-size: 9px; }
+.debt-deadline { display: grid; gap: 5px; padding: 12px 14px; border: 1px solid #9a4935; background: #fff1e8; box-shadow: 4px 4px 0 #d8a18f; }
+.debt-deadline span { color: #8a3d2e; font-size: 9px; font-weight: 800; letter-spacing: .08em; }
+.debt-deadline strong { color: #a13e2c; font: 700 20px Consolas, monospace; }
+.debt-deadline small { color: #6f5048; font-size: 8px; line-height: 1.5; }
+.debt-deadline.warning { background: #ffe0d4; box-shadow: 4px 4px 0 #b64a34; }
 
 .housing-card { display: grid; gap: 5px; margin-top: 16px; padding: 12px 13px; border: 1px solid var(--moss); background: #e2e9dd; }
 .housing-card.homeless { border-color: #b64029; background: #fde1d6; }
@@ -254,6 +259,10 @@ button { color: inherit; }
 .bank-panel > header strong { display: block; margin-top: 6px; font: 700 18px Georgia, "Noto Serif TC", serif; }
 .bank-panel > header strong.debt { color: #b54a37; }
 .bank-panel > p { margin: 14px 0; color: var(--muted); font-size: 10px; line-height: 1.6; }
+.bank-payment-status { display: grid; gap: 5px; margin: 0 0 14px; padding: 12px 14px; border: 1px solid #9a4935; background: #fff8ef; }
+.bank-payment-status strong { color: #9a3f2e; font: 700 14px Georgia, "Noto Serif TC", serif; }
+.bank-payment-status span, .bank-payment-status small { color: #6f5048; font-size: 9px; line-height: 1.5; }
+.bank-payment-status.warning { background: #ffe0d4; }
 .bank-panel > label { display: grid; gap: 6px; max-width: 430px; font-size: 9px; font-weight: 800; }
 .bank-panel > label > div { display: grid; grid-template-columns: auto 1fr; align-items: center; border: 1px solid #728176; background: white; }
 .bank-panel > label span { padding-left: 11px; font-size: 10px; }
@@ -378,6 +387,12 @@ button { color: inherit; }
 .story-select-card article > button { width: 100%; display: flex; justify-content: space-between; padding: 14px 16px; border: 0; background: var(--orange); color: white; cursor: pointer; font-size: 11px; font-weight: 900; }
 .story-select-card article > button:hover { background: #a6462e; }
 .story-select-card article > button:disabled { cursor: wait; opacity: .6; }
+.game-over-overlay { background: rgba(28,14,12,.94); }
+.game-over-card { border-color: #401c17; box-shadow: 12px 12px 0 #401c17; }
+.game-over-card > header { background: #681f19; }
+.game-over-card > header > span, .game-over-card > header p { color: #f0c1b6; }
+.game-over-card .story-prologue p:first-child { color: #8c2e22; font-size: 16px; font-weight: 800; }
+.game-over-card .story-prologue p:last-child { color: #681f19; font-size: 15px; font-weight: 900; text-align: center; }
 .feed-heading { margin-top: 4px; }
 .day-stamp { display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
 .day-stamp strong { color: var(--orange); font: 700 19px Georgia, serif; }
