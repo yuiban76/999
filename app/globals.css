@@ -283,6 +283,23 @@ button { color: inherit; }
 .casino-waiting p, .casino-next-round { color: #d9e6dc; font-size: 10px; }
 .casino-waiting button { margin-top: 8px; padding: 7px 10px; border: 1px solid rgba(255,255,255,.4); background: transparent; color: white; cursor: pointer; font-size: 8px; }
 .casino-next-round { margin: 14px 0 0; }
+.shared-blackjack-board { padding: 16px 18px; border-bottom: 1px solid rgba(255,255,255,.18); background: rgba(0,0,0,.1); }
+.shared-dealer { padding-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,.18); }
+.shared-dealer > span { display: block; margin-bottom: 9px; color: #f3d987; font-size: 10px; font-weight: 800; }
+.table-card-row { display: flex; flex-wrap: wrap; gap: 6px; min-height: 43px; }
+.table-card-row i { width: 31px; height: 42px; display: grid; place-items: center; border-radius: 3px; background: #fffdf7; color: #1f251f; box-shadow: 0 2px 0 rgba(0,0,0,.3); font: 700 11px Georgia, serif; font-style: normal; }
+.table-card-row i.red { color: #b7312d; }
+.shared-player-hands { display: grid; grid-template-columns: repeat(5, minmax(105px, 1fr)); gap: 8px; margin-top: 14px; overflow-x: auto; }
+.shared-player-hands article { min-width: 105px; padding: 9px; border: 1px solid rgba(255,255,255,.18); background: rgba(0,0,0,.12); }
+.shared-player-hands article.mine { border-color: #f3d987; box-shadow: inset 0 0 0 1px #f3d987; }
+.shared-player-hands article > header { min-height: 36px; display: grid; gap: 3px; margin-bottom: 7px; }
+.shared-player-hands article > header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8px; }
+.shared-player-hands article > header small { color: #d8b86b; font-size: 7px; }
+.shared-player-hands article > p { margin: 11px 0; color: rgba(255,255,255,.55); font-size: 8px; text-align: center; }
+.shared-player-hands article > em { display: block; margin-top: 7px; color: #ffe39b; font-size: 7px; font-style: normal; line-height: 1.4; }
+.casino-round-actions { padding-bottom: 16px; }
+.casino-round-actions .custom-bet { padding-top: 4px; }
+.table-leave { display: block; margin: 0 auto; padding: 7px 11px; border: 1px solid rgba(255,255,255,.42); background: transparent; color: white; cursor: pointer; font-size: 8px; }
 .casino-table > footer { padding: 9px 18px; border-top: 1px solid rgba(255,255,255,.18); color: rgba(255,255,255,.62); background: rgba(0,0,0,.12); font-size: 8px; line-height: 1.5; }
 
 .world-footer { min-height: 43px; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; border-top: 1px solid var(--line); color: var(--muted); font: 9px Consolas, monospace; }
@@ -356,6 +373,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
   .casino-seats { grid-template-columns: repeat(5, minmax(80px, 1fr)); overflow-x: auto; }
   .casino-table > header { align-items: flex-start; }
   .card-hand i { width: 37px; height: 51px; }
+  .shared-player-hands { grid-template-columns: repeat(5, minmax(120px, 1fr)); }
   .world-footer { padding: 0 18px; }
   .story-panel { padding: 22px 18px; }
   .feed-list { display: block; }

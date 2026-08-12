@@ -39,6 +39,7 @@ type OnlinePlayer = {
   id: string;
   displayName: string;
   location: LocationId;
+  cash: number;
   updatedAt: number;
   avatarUrl: string | null;
 };
@@ -54,9 +55,14 @@ type FeedItem = {
 
 type CasinoState = {
   capacity: number;
+  bettingSeconds?: number;
   activeCount: number;
   serverNow?: number;
-  seats: Array<{ id: string; displayName: string; seatNo: number; status: string; bet: number; isMine: boolean }>;
+  phase?: "idle" | "waiting" | "playing";
+  revealAt?: number;
+  dealerCards?: string[];
+  dealerScore?: number | null;
+  seats: Array<{ id: string; displayName: string; seatNo: number; status: string; bet: number; cards: string[]; score: number | null; result: string; isMine: boolean }>;
   hand: null | { playerCards: string[]; dealerCards: string[]; playerScore: number; dealerScore: number | null; bet: number; seatNo: number | null; revealAt: number; status: string; result: string };
 };
 
@@ -356,10 +362,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (casino.hand?.status !== "waiting") return;
+    if (!casino.phase || casino.phase === "idle") return;
     const timer = window.setInterval(() => void loadWorld(true), 750);
     return () => window.clearInterval(timer);
-  }, [casino.hand?.status, loadWorld]);
+  }, [casino.phase, loadWorld]);
 
   async function act(action: string, payload: Record<string, unknown> = {}) {
     if (busy) return;
@@ -518,7 +524,7 @@ export default function Home() {
           <div className="section-heading story-title"><span>多人世界</span><small>LIVE LOBBY</small></div>
           <div className="online-summary"><strong><i />{online.length} 位在線</strong><span>每 5 秒同步</span></div>
           <ul className="online-list">
-            {online.length ? online.slice(0, 8).map((item) => <li key={item.id}><span className={`mini-avatar ${item.avatarUrl ? "has-photo" : ""}`}>{item.avatarUrl ? <img src={`${API_ORIGIN}${item.avatarUrl}`} alt={`${item.displayName}的大頭貼`} /> : item.displayName.slice(0, 1)}</span><div><strong>{item.displayName}{item.id === profile?.id ? "（你）" : ""}</strong><small>正在 {locationName(item.location)}</small></div></li>) : <li className="empty-online">登入後，你會在這裡遇見其他玩家。</li>}
+            {online.length ? online.slice(0, 8).map((item) => <li key={item.id}><span className={`mini-avatar ${item.avatarUrl ? "has-photo" : ""}`}>{item.avatarUrl ? <img src={`${API_ORIGIN}${item.avatarUrl}`} alt={`${item.displayName}的大頭貼`} /> : item.displayName.slice(0, 1)}</span><div><strong>{item.displayName}{item.id === profile?.id ? "（你）" : ""}</strong><small>正在 {locationName(item.location)} · NT${formatMoney(item.cash)}</small></div></li>) : <li className="empty-online">登入後，你會在這裡遇見其他玩家。</li>}
           </ul>
           <div className="section-heading feed-heading"><span>城市動態</span><small>ACTIVITY</small></div>
           <ol className="feed-list">
@@ -580,45 +586,57 @@ function ActionCard({ icon, title, meta, button, featured = false, disabled, dis
 function CasinoTable({ state, signedIn, busy, maxBet, onAction }: { state: CasinoState; signedIn: boolean; busy: boolean; maxBet: number; onAction: (action: string, payload?: Record<string, unknown>) => void }) {
   const [bet, setBet] = useState("100");
   const [now, setNow] = useState(Date.now());
-  const active = state.hand && ["seated", "waiting", "playing"].includes(state.hand.status);
+  const active = state.hand && ["seated", "waiting", "playing", "stood", "settling"].includes(state.hand.status);
   const playing = state.hand?.status === "playing";
-  const waiting = state.hand?.status === "waiting";
-  const remaining = waiting ? Math.max(0, Math.ceil((state.hand!.revealAt - now) / 1000)) : 0;
+  const waiting = state.phase === "waiting";
+  const roundPlaying = state.phase === "playing";
+  const remaining = waiting ? Math.max(0, Math.ceil(((state.revealAt ?? 0) - now) / 1000)) : 0;
   useEffect(() => {
     if (!waiting) return;
     setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 200);
     return () => window.clearInterval(timer);
-  }, [waiting, state.hand?.revealAt]);
+  }, [waiting, state.revealAt]);
   const submitBet = (event: React.FormEvent) => {
     event.preventDefault();
     const amount = Number(bet);
     if (Number.isSafeInteger(amount) && amount > 0) onAction("deal", { bet: amount });
   };
   return <section className="casino-table">
-    <header><div><span>BLACKJACK TABLE 01</span><h4>二十一點</h4></div><strong>{state.activeCount} / {state.capacity} 位遊玩中</strong></header>
+    <header><div><span>BLACKJACK TABLE 01</span><h4>二十一點同桌遊戲</h4></div><strong>{state.activeCount} / {state.capacity} 位在座 · {waiting ? `下注倒數 ${remaining} 秒` : roundPlaying ? "本局進行中" : "等待開局"}</strong></header>
     <div className="casino-seats">{Array.from({ length: 5 }, (_, index) => {
       const seatNo = index + 1;
       const seat = state.seats.find((item) => item.seatNo === seatNo);
       return <div className={`${seat ? "occupied" : ""} ${seat?.isMine ? "mine" : ""}`} key={seatNo}>
         <span>{seatNo}</span><strong>{seat?.isMine ? `${seat.displayName}（你）` : seat?.displayName ?? "空位"}</strong>
         {!seat && signedIn && !active && <button onClick={() => onAction("join", { seatNo })} disabled={busy}>加入遊戲</button>}
-        {seat && <small>{seat.status === "waiting" ? `已下注 NT$${formatMoney(seat.bet)}` : seat.status === "playing" ? "遊戲中" : "等待下注"}</small>}
+        {seat && <small>{seat.status === "waiting" ? `已下注 NT$${formatMoney(seat.bet)}` : seat.status === "playing" ? `行動中 · ${seat.score} 點` : seat.status === "stood" || seat.status === "settling" ? `已停牌 · ${seat.score} 點` : roundPlaying ? "觀賽中" : "等待下注"}</small>}
       </div>;
     })}</div>
-    {!signedIn ? <p className="casino-message">登入帳號後，請在 1～5 號空位點「加入遊戲」。</p> : state.hand?.status === "seated" ? <form className="custom-bet" onSubmit={submitBet}>
-      <label>輸入下注金額 <small>目前現金 NT${formatMoney(maxBet)}</small></label>
-      <div><span>NT$</span><input type="number" inputMode="numeric" min="1" max={Math.min(maxBet, 1_000_000)} step="1" value={bet} onChange={(event) => setBet(event.target.value)} required /><button disabled={busy || maxBet < 1}>確定下注</button></div>
-      <button className="leave-seat" type="button" onClick={() => onAction("leave")} disabled={busy}>離開座位</button>
-    </form> : waiting ? <div className="casino-waiting"><strong>{remaining}</strong><h5>秒後翻牌</h5><p>第一位玩家已下注，其他空位仍可加入並下注。</p><button onClick={() => onAction("leave")} disabled={busy}>離開牌桌（下注不退）</button></div> : state.hand && (playing || state.hand.result) ? <div className="blackjack-board">
-      <div className="card-hand"><span>莊家 {state.hand.dealerScore === null ? "" : `· ${state.hand.dealerScore} 點`}</span><div>{state.hand.dealerCards.map((card, index) => <i className={/[♥♦]/.test(card) ? "red" : ""} key={`${card}-${index}`}>{card}</i>)}</div></div>
-      <div className="card-hand"><span>你的手牌 · {state.hand.playerScore} 點 · 下注 NT${formatMoney(state.hand.bet)}</span><div>{state.hand.playerCards.map((card, index) => <i className={/[♥♦]/.test(card) ? "red" : ""} key={`${card}-${index}`}>{card}</i>)}</div></div>
-      {state.hand.result && <p className={`casino-result ${state.hand.status}`}>{state.hand.result}</p>}
-      {playing && <div className="casino-controls"><button onClick={() => onAction("hit")} disabled={busy}>補牌</button><button onClick={() => onAction("stand")} disabled={busy}>停牌</button><button className="leave" onClick={() => onAction("leave")} disabled={busy}>離桌</button></div>}
-      {!playing && <p className="casino-next-round">請從上方空位加入下一局。</p>}
-    </div> : <p className="casino-message">請選擇上方任一空位加入遊戲。</p>}
-    <footer>先選座位再自訂下注 · 第一筆下注後等待 5 秒才翻牌 · Blackjack 賠付 1.5 倍 · 平手退回下注</footer>
+    {(roundPlaying || (state.dealerCards?.length ?? 0) > 0) && <div className="shared-blackjack-board">
+      <div className="shared-dealer"><span>共同莊家 {state.dealerScore === null ? "· 等所有下注玩家完成後開牌" : state.dealerScore === undefined ? "" : `· ${state.dealerScore} 點`}</span><CardRow cards={state.dealerCards ?? []} /></div>
+      <div className="shared-player-hands">{state.seats.map((seat) => <article className={`${seat.isMine ? "mine" : ""} ${seat.cards.length ? "has-cards" : "spectator"}`} key={seat.id}>
+        <header><strong>{seat.seatNo} 號 · {seat.displayName}{seat.isMine ? "（你）" : ""}</strong><small>{seat.cards.length ? `${seat.score} 點 · 下注 NT$${formatMoney(seat.bet)}` : "未下注 · 觀賽"}</small></header>
+        {seat.cards.length ? <CardRow cards={seat.cards} /> : <p>本局觀賽中</p>}
+        {seat.result && <em>{seat.result}</em>}
+      </article>)}</div>
+    </div>}
+    {!signedIn ? <p className="casino-message">登入帳號後，請在 1～5 號空位點「加入遊戲」。</p> : waiting ? <div className="casino-round-actions">
+      <div className="casino-waiting"><strong>{remaining}</strong><h5>秒後全桌翻牌</h5><p>未下注玩家不會被移除，可留在原座位觀賽。</p></div>
+      {state.hand?.status === "seated" ? <BetForm bet={bet} setBet={setBet} maxBet={maxBet} busy={busy} submitBet={submitBet} onLeave={() => onAction("leave")} /> : state.hand?.status === "waiting" ? <button className="table-leave" onClick={() => onAction("leave")} disabled={busy}>離開牌桌（下注不退）</button> : !active ? <p className="casino-message">選擇空位加入後，仍可在倒數結束前下注。</p> : null}
+    </div> : roundPlaying ? <div className="casino-round-actions">
+      {playing ? <div className="casino-controls"><button onClick={() => onAction("hit")} disabled={busy}>補牌</button><button onClick={() => onAction("stand")} disabled={busy}>停牌</button><button className="leave" onClick={() => onAction("leave")} disabled={busy}>離桌</button></div> : active ? <><p className="casino-message">{state.hand?.status === "seated" ? "你本局未下注，正在原座位觀賽。" : "你已完成行動，正在等待其他玩家。"}</p><button className="table-leave" onClick={() => onAction("leave")} disabled={busy}>離開牌桌</button></> : <p className="casino-message">目前正在觀賽，下一局可選擇空位加入。</p>}
+    </div> : state.hand?.status === "seated" ? <><BetForm bet={bet} setBet={setBet} maxBet={maxBet} busy={busy} submitBet={submitBet} onLeave={() => onAction("leave")} />{state.hand.result && <p className="casino-result">{state.hand.result}</p>}</> : <p className="casino-message">請選擇上方任一空位加入遊戲。</p>}
+    <footer>先選座位再自訂下注 · 第一筆下注後等待 10 秒 · 未下注可留座觀賽或自由離場 · 全桌同步顯示手牌</footer>
   </section>;
+}
+
+function CardRow({ cards }: { cards: string[] }) {
+  return <div className="table-card-row">{cards.map((card, index) => <i className={/[♥♦]/.test(card) ? "red" : ""} key={`${card}-${index}`}>{card}</i>)}</div>;
+}
+
+function BetForm({ bet, setBet, maxBet, busy, submitBet, onLeave }: { bet: string; setBet: (value: string) => void; maxBet: number; busy: boolean; submitBet: (event: React.FormEvent) => void; onLeave: () => void }) {
+  return <form className="custom-bet" onSubmit={submitBet}><label>輸入下注金額 <small>目前現金 NT${formatMoney(maxBet)}</small></label><div><span>NT$</span><input type="number" inputMode="numeric" min="1" max={Math.min(maxBet, 1_000_000)} step="1" value={bet} onChange={(event) => setBet(event.target.value)} required /><button disabled={busy || maxBet < 1}>確定下注</button></div><button className="leave-seat" type="button" onClick={onLeave} disabled={busy}>不下注，離開座位</button></form>;
 }
 
 function actionTitle(location: LocationId) {
