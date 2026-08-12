@@ -838,6 +838,12 @@ async function takeAction(request: Request, env: Env) {
         next.cash -= 1_200; next.energy = 100; next.health = clamp(next.health + 3); next.hunger = clamp(next.hunger - 12); minutes = 480;
         title = "入住不夜旅店"; message = "支付 NT$1,200，體力全滿、健康 +3。"; break;
       }
+      if (body.kind === "work") {
+        if (next.illness) return json({ message: `目前罹患${next.illness}，請先前往醫院治療。` }, 400);
+        if (next.energy < 5) return json({ message: "體力不足，先休息後再打工吧。" }, 400);
+        next.cash += 120; next.energy = clamp(next.energy - 5); next.hunger = clamp(next.hunger - 2); minutes = 60;
+        title = "完成旅店臨時工"; message = "收入 +NT$120；這份臨時工作不增加職業經驗或能力。"; break;
+      }
       const meal = body.kind === "meal" ? { name: "旅店餐", price: 250, hunger: 45 } : body.kind === "luxury" ? { name: "豪華餐", price: 500, hunger: 80 } : null;
       if (!meal) return json({ message: "旅店服務不存在。" }, 400);
       if (next.cash < meal.price) return json({ message: "手上現金不足。" }, 400);
