@@ -57,6 +57,13 @@
       "when": 1786528364655,
       "tag": "0007_strong_stryfe",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1786531925897,
+      "tag": "0008_numerous_vengeance",
+      "breakpoints": true
     }
   ]
 }

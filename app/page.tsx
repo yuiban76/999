@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { careerForCategory, categoryInfo, JOB_CATEGORIES, jobInfo, nextCareerForCategory } from "../shared/jobs";
 
-type LocationId = "home" | "realtor" | "business" | "shopping" | "casino" | "school" | "hospital";
+type LocationId = "home" | "realtor" | "bank" | "business" | "shopping" | "hotel" | "casino" | "school" | "hospital";
 type StatKey = "energy" | "health" | "hunger";
 
 type Player = {
   cash: number;
+  bankBalance: number;
+  loanBalance: number;
   energy: number;
   health: number;
   mood: number;
@@ -78,6 +80,8 @@ type Bootstrap = {
 
 const INITIAL_PLAYER: Player = {
   cash: 10000,
+  bankBalance: 0,
+  loanBalance: 0,
   energy: 100,
   health: 100,
   mood: 80,
@@ -111,8 +115,10 @@ function apiHeaders(jsonBody = false) {
 const locations: Array<{ id: LocationId; emoji: string; name: string; caption: string; hours: string }> = [
   { id: "home", emoji: "⌂", name: "我的住所", caption: "有有效租約或自有住宅後，才能在這裡休息", hours: "24 小時" },
   { id: "realtor", emoji: "鑰", name: "安心房仲", caption: "按天租屋或購買永久住所，屋主也能繼續查看租屋", hours: "09:00～18:00" },
+  { id: "bank", emoji: "銀", name: "城市銀行", caption: "存款每日收益 3%，貸款每日利息 5%", hours: "09:00～17:00" },
   { id: "business", emoji: "▦", name: "商業區", caption: "用時間換取收入，累積職涯經驗", hours: "08:00～18:00" },
   { id: "shopping", emoji: "◇", name: "購物街", caption: "補充飽足，偶爾也犒賞一下自己", hours: "10:00～22:00" },
+  { id: "hotel", emoji: "旅", name: "不夜旅店", caption: "沒有住所也能住宿，餐點較貴但全天供應", hours: "24 小時" },
   { id: "casino", emoji: "♠", name: "幸運賭場", caption: "最多五位玩家同桌，各自挑戰二十一點莊家", hours: "24 小時" },
   { id: "school", emoji: "▤", name: "未來學院", caption: "投資自己，讓選擇越來越多", hours: "08:00～21:00" },
   { id: "hospital", emoji: "✚", name: "市立醫院", caption: "一般診療 08:00～20:00，急診全天開放", hours: "急診 24 小時" },
@@ -138,6 +144,7 @@ const WORLD_START_MINUTES = 7 * 60 + 30;
 const worldMinutes = (now = Date.now()) => WORLD_START_MINUTES + Math.max(0, Math.floor((now - WORLD_EPOCH_MS) / 2_000));
 const openingHours: Partial<Record<LocationId, { open: number; close: number }>> = {
   realtor: { open: 9 * 60, close: 18 * 60 }, business: { open: 8 * 60, close: 18 * 60 }, shopping: { open: 10 * 60, close: 22 * 60 }, school: { open: 8 * 60, close: 21 * 60 },
+  bank: { open: 9 * 60, close: 17 * 60 },
 };
 const isLocationOpen = (location: LocationId, minutes = worldMinutes()) => {
   const hours = openingHours[location];
@@ -207,6 +214,40 @@ function guestAction(current: Player, action: string, payload: Record<string, un
       if (next.cash < 150000) return fail("購屋需要 NT$150,000，目前資金不足。");
       next.cash -= 150000; next.ownsHome = true; minutes = 60; title = "買下城市小宅"; message = "取得永久住所；仍可在房仲查看租屋方案。";
     } else return fail("房屋方案不存在。");
+  } else if (action === "bank") {
+    if (next.location !== "bank") return fail("請先前往城市銀行。");
+    if (!isLocationOpen("bank", sharedMinutes)) return fail("城市銀行營業時間為 09:00～17:00。");
+    const amount = Number(payload.amount);
+    if (!Number.isSafeInteger(amount) || amount < 1) return fail("請輸入有效的整數金額。");
+    if (payload.kind === "deposit") {
+      if (next.cash < amount) return fail("手上現金不足。");
+      next.cash -= amount; next.bankBalance += amount; title = "存入銀行"; message = `已存入 NT$${formatMoney(amount)}。`;
+    } else if (payload.kind === "withdraw") {
+      if (next.bankBalance < amount) return fail("銀行存款不足。");
+      next.bankBalance -= amount; next.cash += amount; title = "提領存款"; message = `已提領 NT$${formatMoney(amount)}。`;
+    } else if (payload.kind === "borrow") {
+      if (next.loanBalance > 0) return fail("請先還清目前貸款。");
+      if (amount > 50_000) return fail("單筆貸款上限為 NT$50,000。");
+      next.loanBalance = amount; next.cash += amount; title = "銀行貸款"; message = `借入 NT$${formatMoney(amount)}，每日利息 5%。`;
+    } else if (payload.kind === "repay") {
+      if (next.loanBalance <= 0) return fail("目前沒有貸款。");
+      if (amount > next.loanBalance) return fail("還款金額不能超過貸款餘額。");
+      if (next.cash < amount) return fail("手上現金不足。");
+      next.cash -= amount; next.loanBalance -= amount; title = "償還貸款"; message = `已還款 NT$${formatMoney(amount)}。`;
+    } else return fail("銀行服務不存在。");
+    minutes = 10;
+  } else if (action === "hotel") {
+    if (next.location !== "hotel") return fail("請先前往不夜旅店。");
+    if (payload.kind === "stay") {
+      if (next.ownsHome || next.rentedUntil > sharedMinutes) return fail("你目前已有住所，不需要入住旅店。");
+      if (next.cash < 1_200) return fail("住宿需要 NT$1,200，目前現金不足。");
+      next.cash -= 1_200; next.energy = 100; next.health = Math.min(100, next.health + 3); next.hunger = Math.max(0, next.hunger - 12); minutes = 480; title = "入住不夜旅店"; message = "支付 NT$1,200，體力全滿、健康 +3。";
+    } else {
+      const meal = payload.kind === "meal" ? { name: "旅店餐", price: 250, hunger: 45 } : payload.kind === "luxury" ? { name: "豪華餐", price: 500, hunger: 80 } : null;
+      if (!meal) return fail("旅店服務不存在。");
+      if (next.cash < meal.price) return fail("手上現金不足。");
+      next.cash -= meal.price; next.hunger = Math.min(100, next.hunger + meal.hunger); minutes = 20; title = `享用${meal.name}`; message = `${meal.name}讓飽足 +${meal.hunger}。`;
+    }
   } else if (action === "job") {
     if (next.location !== "business") return fail("請先前往商業區的就業服務處。");
     if (!isLocationOpen("business", sharedMinutes)) return fail("商業區營業時間為 08:00～18:00。");
@@ -320,6 +361,7 @@ export default function Home() {
   const housingLabel = player.ownsHome ? "自有住宅 · 城市小宅" : rentalDaysLeft ? `租屋 · ${player.rentalName}（剩 ${rentalDaysLeft} 天）` : "目前沒有住所";
   const selectedJobCategory = JOB_CATEGORIES.find((category) => category.id === jobCategory) ?? JOB_CATEGORIES[0];
   const realtorOpen = isLocationOpen("realtor", sharedMinutes);
+  const bankOpen = isLocationOpen("bank", sharedMinutes);
   const businessOpen = isLocationOpen("business", sharedMinutes);
   const shoppingOpen = isLocationOpen("shopping", sharedMinutes);
   const schoolOpen = isLocationOpen("school", sharedMinutes);
@@ -510,8 +552,10 @@ export default function Home() {
             <div className="action-cards">
               {player.location === "home" && <ActionCard icon="☾" title="睡眠 8 小時" meta="體力全滿 · 健康 +5 · 心情 +10" button="好好休息" onClick={() => void act("sleep")} disabled={busy} />}
               {player.location === "realtor" && <><ActionCard icon="01" title="城市小套房 · 1 天" meta="每日 NT$350 · 租金 NT$350" button="租 1 天" onClick={() => void act("housing", { kind: "rent", days: 1 })} disabled={busy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /><ActionCard icon="07" title="城市小套房 · 7 天" meta="每日 NT$350 · 租金 NT$2,450" button="租 7 天" onClick={() => void act("housing", { kind: "rent", days: 7 })} featured disabled={busy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /><ActionCard icon="買" title="購買城市小宅" meta="NT$150,000 · 永久住所 · 買房後仍可查看租屋" button={player.ownsHome ? "已擁有，仍可看租屋" : "購買房屋"} onClick={() => void act("housing", { kind: "buy" })} disabled={busy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /></>}
+              {player.location === "bank" && <BankPanel player={player} busy={busy || !bankOpen} closed={!bankOpen} onAction={(kind, amount) => void act("bank", { kind, amount })} />}
               {player.location === "business" && <><ActionCard icon="職" title="找工作" meta="12 條產業升遷路線 · 無固定職業" button="打開產業列表" onClick={() => setJobOpen(true)} featured disabled={busy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="01" title="短班 1 小時" meta={`收入 NT$${formatMoney(career.hourlyPay)} · 產業 EXP +4`} button="開始工作" onClick={() => void act("work", { hours: 1 })} disabled={busy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="04" title="標準班 4 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 4)} · 產業 EXP +16`} button="開始工作" onClick={() => void act("work", { hours: 4 })} disabled={busy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="08" title="長班 8 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 8)} · 產業 EXP +32`} button="開始工作" onClick={() => void act("work", { hours: 8 })} disabled={busy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /></>}
               {player.location === "shopping" && <><ActionCard icon="刮" title="幸運刮刮樂" meta="每張 NT$100 · 最高獎金 NT$50,000" button="購買並刮開" onClick={() => void act("scratch")} featured disabled={busy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="飯" title="巷口飯糰" meta="NT$45 · 飽足 +20" button="買來吃" onClick={() => void act("eat", { kind: "rice" })} disabled={busy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="餐" title="豐盛便當" meta="NT$100 · 飽足 +45 · 心情 +3" button="享用便當" onClick={() => void act("eat", { kind: "bento" })} disabled={busy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /></>}
+              {player.location === "hotel" && <><ActionCard icon="宿" title="旅店住宿一晚" meta="NT$1,200 · 體力全滿 · 健康 +3 · 僅限無住所" button="辦理入住" onClick={() => void act("hotel", { kind: "stay" })} featured disabled={busy || player.ownsHome || rentalDaysLeft > 0} disabledLabel={player.ownsHome || rentalDaysLeft > 0 ? "已有住所" : undefined} /><ActionCard icon="餐" title="24 小時旅店餐" meta="NT$250 · 飽足 +45" button="購買旅店餐" onClick={() => void act("hotel", { kind: "meal" })} disabled={busy} /><ActionCard icon="豪" title="24 小時豪華餐" meta="NT$500 · 飽足 +80" button="購買豪華餐" onClick={() => void act("hotel", { kind: "luxury" })} disabled={busy} /></>}
                 {player.location === "casino" && <CasinoTable state={casino} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`casino_${action}`, payload)} />}
               {player.location === "school" && <ActionCard icon="學" title="程式設計課" meta="NT$500 · 2 小時 · 程式 EXP +25" button="報名上課" onClick={() => void act("study")} featured disabled={busy || !schoolOpen} disabledLabel={!schoolOpen ? "已關門" : undefined} />}
               {player.location === "hospital" && <><ActionCard icon="急" title="24 小時急診" meta="NT$2,500 · 健康至少恢復至 70 · 全天開放" button="前往急診" onClick={() => void act("hospital", { kind: "emergency" })} featured disabled={busy} /><ActionCard icon="診" title="一般門診" meta="08:00～20:00 · NT$600 · 健康 +25" button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={busy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /><ActionCard icon="療" title="完整治療" meta="08:00～20:00 · NT$1,500 · 健康至少恢復至 80" button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} disabled={busy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /></>}
@@ -583,6 +627,24 @@ function ActionCard({ icon, title, meta, button, featured = false, disabled, dis
   return <article className={`action-card ${featured ? "featured" : ""}`}><span className="action-icon">{icon}</span><h4>{title}</h4><p>{meta}</p><button onClick={onClick} disabled={disabled}>{disabled ? disabledLabel ?? "同步中…" : button}<span>→</span></button></article>;
 }
 
+function BankPanel({ player, busy, closed, onAction }: { player: Player; busy: boolean; closed: boolean; onAction: (kind: "deposit" | "withdraw" | "borrow" | "repay", amount: number) => void }) {
+  const [amount, setAmount] = useState("1000");
+  const value = Number(amount);
+  const valid = Number.isSafeInteger(value) && value > 0;
+  return <section className="bank-panel">
+    <header><div><span>BANK ACCOUNT</span><strong>存款 NT${formatMoney(player.bankBalance)}</strong></div><div><span>LOAN BALANCE</span><strong className={player.loanBalance ? "debt" : ""}>貸款 NT${formatMoney(player.loanBalance)}</strong></div></header>
+    <p>存款每個遊戲日複利 3%；貸款每個遊戲日增加 5% 利息。每個遊戲日等於現實 48 分鐘。</p>
+    <label>輸入金額<div><span>NT$</span><input type="number" inputMode="numeric" min="1" step="1" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={busy} /></div></label>
+    <div className="bank-actions">
+      <button onClick={() => onAction("deposit", value)} disabled={busy || !valid}>存款</button>
+      <button onClick={() => onAction("withdraw", value)} disabled={busy || !valid}>提款</button>
+      <button onClick={() => onAction("borrow", value)} disabled={busy || !valid || value > 50_000 || player.loanBalance > 0}>貸款</button>
+      <button onClick={() => onAction("repay", value)} disabled={busy || !valid || player.loanBalance <= 0}>還款</button>
+    </div>
+    <small>{closed ? "銀行目前已關門，營業時間為 09:00～17:00。" : player.loanBalance ? "貸款未清前不能再次借款。" : "單筆貸款上限 NT$50,000。"}</small>
+  </section>;
+}
+
 function CasinoTable({ state, signedIn, busy, maxBet, onAction }: { state: CasinoState; signedIn: boolean; busy: boolean; maxBet: number; onAction: (action: string, payload?: Record<string, unknown>) => void }) {
   const [bet, setBet] = useState("100");
   const [now, setNow] = useState(Date.now());
@@ -640,9 +702,9 @@ function BetForm({ bet, setBet, maxBet, busy, submitBet, onLeave }: { bet: strin
 }
 
 function actionTitle(location: LocationId) {
-  return { home: "有一個落腳處，才有安心休息的地方", realtor: "先找到住所，再打造自己的生活", business: "累積經驗，向下一次升遷前進", shopping: "照顧日常，才能走得更遠", casino: "五人同桌，各自挑戰二十一點", school: "今天學會的，會成為明天的選項", hospital: "及早治療，才能繼續人生旅程" }[location];
+  return { home: "有一個落腳處，才有安心休息的地方", realtor: "先找到住所，再打造自己的生活", bank: "管理資產，也要衡量借貸成本", business: "累積經驗，向下一次升遷前進", shopping: "照顧日常，才能走得更遠", hotel: "沒有住所，也能有一晚落腳處", casino: "五人同桌，各自挑戰二十一點", school: "今天學會的，會成為明天的選項", hospital: "及早治療，才能繼續人生旅程" }[location];
 }
 
 function actionDescription(location: LocationId) {
-  return { home: "有效租約或自有住宅才能進入，全天 24 小時開放。睡一覺能恢復體力與心情。", realtor: "營業時間 09:00～18:00。租屋每日 NT$350，也能買下永久住所；買房後租屋方案仍會保留。", business: "營業時間 08:00～18:00。工作會累積職涯經驗並自動升遷，職位越高收入越多。", shopping: "營業時間 10:00～22:00。用合理的花費補充飽足，也能讓今天的心情好一點。", casino: "全天 24 小時開放。同一張桌最多五位登入玩家同時挑戰二十一點。", school: "開放時間 08:00～21:00。支付學費，累積程式設計能力。", hospital: "健康低於 50 時，行動後開始有機率生病。急診 24 小時開放；一般診療為 08:00～20:00。" }[location];
+  return { home: "有效租約或自有住宅才能進入，全天 24 小時開放。睡一覺能恢復體力與健康。", realtor: "營業時間 09:00～18:00。租屋每日 NT$350，也能買下永久住所；買房後租屋方案仍會保留。", bank: "營業時間 09:00～17:00。存款每日收益 3%；貸款上限 NT$50,000，每日利息 5%。", business: "營業時間 08:00～18:00。工作會累積職涯經驗並自動升遷，職位越高收入越多。", shopping: "營業時間 10:00～22:00。用合理的花費補充飽足，也能購買刮刮樂。", hotel: "全天 24 小時營業。無住所玩家可花 NT$1,200 住宿；餐點全天供應，但價格較高。", casino: "全天 24 小時開放。同一張桌最多五位登入玩家同時挑戰二十一點。", school: "開放時間 08:00～21:00。支付學費，累積程式設計能力。", hospital: "健康低於 50 時，行動後開始有機率生病。急診 24 小時開放；一般診療為 08:00～20:00。" }[location];
 }

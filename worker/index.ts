@@ -1,6 +1,6 @@
 import { careerForCategory, categoryInfo, jobInfo } from "../shared/jobs";
 
-type LocationId = "home" | "realtor" | "business" | "shopping" | "casino" | "school" | "hospital";
+type LocationId = "home" | "realtor" | "bank" | "business" | "shopping" | "hotel" | "casino" | "school" | "hospital";
 
 interface Env { DB?: D1Database; ASSETS?: Fetcher; FRONTEND_ORIGIN?: string }
 
@@ -11,6 +11,9 @@ type PlayerRow = {
   display_name: string;
   email: string;
   cash: number;
+  bank_balance: number;
+  loan_balance: number;
+  finance_day: number;
   energy: number;
   health: number;
   mood: number;
@@ -32,7 +35,7 @@ type PlayerRow = {
 
 type CasinoRow = { user_id: string; player_name: string; player_cards: string; dealer_cards: string; bet: number; status: string; result: string; seat_no: number | null; reveal_at: number; updated_at: number };
 
-const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "business", "shopping", "casino", "school", "hospital"]);
+const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "bank", "business", "shopping", "hotel", "casino", "school", "hospital"]);
 const clamp = (value: number) => Math.max(0, Math.min(100, value));
 const WORLD_EPOCH_MS = Date.UTC(2026, 7, 12, 10, 0, 0);
 const WORLD_START_MINUTES = 7 * 60 + 30;
@@ -40,6 +43,7 @@ const worldMinutes = (now = Date.now()) => WORLD_START_MINUTES + Math.max(0, Mat
 const minuteOfDay = (minutes = worldMinutes()) => ((minutes % 1440) + 1440) % 1440;
 const openingHours: Partial<Record<LocationId, { open: number; close: number; label: string }>> = {
   realtor: { open: 9 * 60, close: 18 * 60, label: "09:00～18:00" },
+  bank: { open: 9 * 60, close: 17 * 60, label: "09:00～17:00" },
   business: { open: 8 * 60, close: 18 * 60, label: "08:00～18:00" },
   shopping: { open: 10 * 60, close: 22 * 60, label: "10:00～22:00" },
   school: { open: 8 * 60, close: 21 * 60, label: "08:00～21:00" },
@@ -120,13 +124,13 @@ async function identity(request: Request, db?: D1Database): Promise<AuthUser | n
 }
 
 function guestPlayer() {
-  return { cash: 10000, energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, programmingExp: 0, fitnessExp: 0, workExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, elapsedMinutes: worldMinutes(), location: "realtor" as LocationId };
+  return { cash: 10000, bankBalance: 0, loanBalance: 0, energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, programmingExp: 0, fitnessExp: 0, workExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, elapsedMinutes: worldMinutes(), location: "realtor" as LocationId };
 }
 
 function serializePlayer(row: PlayerRow) {
   const currentJob = jobInfo(row.current_job) ? row.current_job : "待業者";
   const location = VALID_LOCATIONS.has(row.location) ? row.location : "casino";
-  return { cash: row.cash, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, programmingExp: row.programming_exp, fitnessExp: row.fitness_exp, workExp: row.work_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, elapsedMinutes: worldMinutes(), location };
+  return { cash: row.cash, bankBalance: row.bank_balance, loanBalance: row.loan_balance, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, programmingExp: row.programming_exp, fitnessExp: row.fitness_exp, workExp: row.work_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, elapsedMinutes: worldMinutes(), location };
 }
 
 function profileFor(user: AuthUser) {
@@ -153,7 +157,9 @@ async function ensureSchema(db: D1Database) {
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS players (
       user_id TEXT PRIMARY KEY, display_name TEXT NOT NULL, email TEXT NOT NULL,
-      cash INTEGER NOT NULL DEFAULT 10000, energy INTEGER NOT NULL DEFAULT 100,
+      cash INTEGER NOT NULL DEFAULT 10000, bank_balance INTEGER NOT NULL DEFAULT 0,
+      loan_balance INTEGER NOT NULL DEFAULT 0, finance_day INTEGER NOT NULL DEFAULT 0,
+      energy INTEGER NOT NULL DEFAULT 100,
       health INTEGER NOT NULL DEFAULT 100, mood INTEGER NOT NULL DEFAULT 80,
       hunger INTEGER NOT NULL DEFAULT 80, intelligence_exp INTEGER NOT NULL DEFAULT 0,
       programming_exp INTEGER NOT NULL DEFAULT 0, fitness_exp INTEGER NOT NULL DEFAULT 0,
@@ -195,7 +201,25 @@ async function upsertPlayer(db: D1Database, user: AuthUser) {
     VALUES (?, ?, ?, 'unemployed', 'realtor', ?, ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET display_name = excluded.display_name, email = excluded.email, last_seen_at = excluded.last_seen_at`)
     .bind(user.userId, user.displayName.slice(0, 40), user.email, now, now, now).run();
-  return db.prepare("SELECT * FROM players WHERE user_id = ?").bind(user.userId).first<PlayerRow>();
+  const row = await db.prepare("SELECT * FROM players WHERE user_id = ?").bind(user.userId).first<PlayerRow>();
+  if (!row) return null;
+  const today = Math.floor(worldMinutes() / 1440) + 1;
+  if (row.finance_day <= 0) {
+    await db.prepare("UPDATE players SET finance_day=? WHERE user_id=?").bind(today, user.userId).run();
+    row.finance_day = today;
+  } else if (today > row.finance_day) {
+    const elapsedDays = today - row.finance_day;
+    let bankBalance = row.bank_balance;
+    let loanBalance = row.loan_balance;
+    for (let day = 0; day < elapsedDays; day += 1) {
+      bankBalance = Math.min(9_000_000_000_000_000, Math.floor(bankBalance * 1.03));
+      loanBalance = Math.min(9_000_000_000_000_000, Math.ceil(loanBalance * 1.05));
+    }
+    await db.prepare("UPDATE players SET bank_balance=?, loan_balance=?, finance_day=?, updated_at=? WHERE user_id=?")
+      .bind(bankBalance, loanBalance, today, now, user.userId).run();
+    row.bank_balance = bankBalance; row.loan_balance = loanBalance; row.finance_day = today;
+  }
+  return row;
 }
 
 async function multiplayer(db: D1Database) {
@@ -482,7 +506,7 @@ async function takeAction(request: Request, env: Env) {
   const current = await upsertPlayer(env.DB, user);
   if (!current) return json({ message: "找不到玩家資料。" }, 404);
 
-  let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number; job?: string };
+  let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number };
   try { body = await request.json(); } catch { return json({ message: "行動資料格式錯誤。" }, 400); }
   const next = { ...current };
   const sharedMinutes = worldMinutes();
@@ -503,7 +527,7 @@ async function takeAction(request: Request, env: Env) {
       const target = body.location as LocationId;
       if (!isLocationOpen(target, sharedMinutes)) return json({ message: `${openingHours[target]?.label} 營業，現在已關門。` }, 400);
       next.location = body.location as LocationId; next.energy = clamp(next.energy - 1); next.hunger = clamp(next.hunger - 1); minutes = 10;
-      const placeName = ({ home: "我的住所", realtor: "安心房仲", business: "商業區", shopping: "購物街", casino: "幸運賭場", school: "未來學院", hospital: "市立醫院" } as Record<LocationId, string>)[next.location as LocationId];
+      const placeName = ({ home: "我的住所", realtor: "安心房仲", bank: "城市銀行", business: "商業區", shopping: "購物街", hotel: "不夜旅店", casino: "幸運賭場", school: "未來學院", hospital: "市立醫院" } as Record<LocationId, string>)[next.location as LocationId];
       title = "前往新地點"; message = `花了 10 分鐘抵達${placeName}。`; tone = "neutral"; break;
     }
     case "housing": {
@@ -527,6 +551,43 @@ async function takeAction(request: Request, env: Env) {
         title = "買下城市小宅"; message = "支付 NT$150,000，取得永久住所；你仍可在房仲查看與承租其他房屋。"; break;
       }
       return json({ message: "房屋方案不存在。" }, 400);
+    }
+    case "bank": {
+      if (next.location !== "bank") return json({ message: "請先前往城市銀行。" }, 400);
+      if (!isLocationOpen("bank", sharedMinutes)) return json({ message: `城市銀行營業時間為 ${openingHours.bank?.label}。` }, 400);
+      const amount = Number(body.amount);
+      if (!Number.isSafeInteger(amount) || amount < 1 || amount > 9_000_000_000_000_000) return json({ message: "請輸入有效的整數金額。" }, 400);
+      if (body.kind === "deposit") {
+        if (next.cash < amount) return json({ message: "手上現金不足。" }, 400);
+        next.cash -= amount; next.bank_balance += amount; title = "存入銀行"; message = `已存入 NT$${amount}；每個遊戲日結算 3% 收益。`;
+      } else if (body.kind === "withdraw") {
+        if (next.bank_balance < amount) return json({ message: "銀行存款不足。" }, 400);
+        next.bank_balance -= amount; next.cash += amount; title = "提領存款"; message = `已從銀行提領 NT$${amount}。`;
+      } else if (body.kind === "borrow") {
+        if (next.loan_balance > 0) return json({ message: "請先還清目前貸款，才能再次借款。" }, 400);
+        if (amount > 50_000) return json({ message: "單筆貸款上限為 NT$50,000。" }, 400);
+        next.loan_balance = amount; next.cash += amount; title = "銀行貸款"; message = `借入 NT$${amount}；每個遊戲日結算 5% 利息。`;
+      } else if (body.kind === "repay") {
+        if (next.loan_balance <= 0) return json({ message: "目前沒有貸款。" }, 400);
+        if (amount > next.loan_balance) return json({ message: "還款金額不能超過貸款餘額。" }, 400);
+        if (next.cash < amount) return json({ message: "手上現金不足。" }, 400);
+        next.cash -= amount; next.loan_balance -= amount; title = "償還貸款"; message = `已償還 NT$${amount}，剩餘貸款 NT$${next.loan_balance}。`;
+      } else return json({ message: "銀行服務不存在。" }, 400);
+      minutes = 10; break;
+    }
+    case "hotel": {
+      if (next.location !== "hotel") return json({ message: "請先前往不夜旅店。" }, 400);
+      if (body.kind === "stay") {
+        if (next.owns_home || next.rented_until > sharedMinutes) return json({ message: "你目前已有住所，不需要入住旅店。" }, 400);
+        if (next.cash < 1_200) return json({ message: "住宿需要 NT$1,200，目前現金不足。" }, 400);
+        next.cash -= 1_200; next.energy = 100; next.health = clamp(next.health + 3); next.hunger = clamp(next.hunger - 12); minutes = 480;
+        title = "入住不夜旅店"; message = "支付 NT$1,200，體力全滿、健康 +3。"; break;
+      }
+      const meal = body.kind === "meal" ? { name: "旅店餐", price: 250, hunger: 45 } : body.kind === "luxury" ? { name: "豪華餐", price: 500, hunger: 80 } : null;
+      if (!meal) return json({ message: "旅店服務不存在。" }, 400);
+      if (next.cash < meal.price) return json({ message: "手上現金不足。" }, 400);
+      next.cash -= meal.price; next.hunger = clamp(next.hunger + meal.hunger); minutes = 20;
+      title = `享用${meal.name}`; message = `${meal.name}讓飽足 +${meal.hunger}。`; break;
     }
     case "job": {
       if (next.location !== "business") return json({ message: "請先前往商業區的就業服務處。" }, 400);
@@ -607,7 +668,7 @@ async function takeAction(request: Request, env: Env) {
       message = `${care.name}完成，支付 NT$${care.price}，健康恢復至 ${next.health}${previousIllness ? `，${previousIllness}已痊癒` : ""}。`; break;
     }
     case "reset":
-      Object.assign(next, { cash: 10000, energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, elapsed_minutes: 450, location: "realtor" });
+      Object.assign(next, { cash: 10000, bank_balance: 0, loan_balance: 0, finance_day: Math.floor(sharedMinutes / 1440) + 1, energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, elapsed_minutes: sharedMinutes, location: "realtor" });
       title = "重新開始人生"; message = "新的人生已開始，所有進度回到起點。"; tone = "neutral"; break;
     default: return json({ message: "未知的行動。" }, 400);
   }
@@ -636,8 +697,8 @@ async function takeAction(request: Request, env: Env) {
   const now = Date.now();
   const eventId = crypto.randomUUID();
   await env.DB.batch([
-    env.DB.prepare(`UPDATE players SET cash=?, energy=?, health=?, mood=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, current_job=?, job_category=?, job_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, elapsed_minutes=?, location=?, updated_at=?, last_seen_at=? WHERE user_id=?`)
-      .bind(next.cash, next.energy, next.health, next.mood, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.current_job, next.job_category, next.job_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.elapsed_minutes, next.location, now, now, user.userId),
+    env.DB.prepare(`UPDATE players SET cash=?, bank_balance=?, loan_balance=?, finance_day=?, energy=?, health=?, mood=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, current_job=?, job_category=?, job_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, elapsed_minutes=?, location=?, updated_at=?, last_seen_at=? WHERE user_id=?`)
+      .bind(next.cash, next.bank_balance, next.loan_balance, next.finance_day, next.energy, next.health, next.mood, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.current_job, next.job_category, next.job_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.elapsed_minutes, next.location, now, now, user.userId),
     env.DB.prepare("INSERT INTO game_events (id, user_id, player_name, room_id, title, detail, tone, game_time, created_at) VALUES (?, ?, ?, 'lobby-01', ?, ?, ?, ?, ?)")
       .bind(eventId, user.userId, user.displayName.slice(0, 40), title, message, tone, gameTime, now),
   ]);

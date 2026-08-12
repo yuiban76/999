@@ -211,7 +211,7 @@ button { color: inherit; }
 .location-header h2 span { margin-right: 10px; font-size: 32px; }
 .location-header small { display: block; margin-top: 7px; color: var(--muted); font-size: 11px; }
 
-.location-strip { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid var(--ink); }
+.location-strip { display: grid; grid-template-columns: repeat(9, 1fr); border-bottom: 1px solid var(--ink); }
 .location-strip button { min-height: 72px; padding: 8px 4px; border: 0; border-right: 1px solid var(--line); background: transparent; cursor: pointer; transition: .18s ease; }
 .location-strip button:last-child { border-right: 0; }
 .location-strip button:hover { background: var(--paper-bright); }
@@ -241,6 +241,23 @@ button { color: inherit; }
 .action-card button:hover { background: var(--orange); transform: translateY(-1px); }
 .action-card button:active { transform: translateY(1px); }
 .action-card button:disabled, .location-strip button:disabled, .world-footer button:disabled { cursor: wait; opacity: .58; }
+
+.bank-panel { grid-column: 1 / -1; padding: 20px; border: 1px solid var(--ink); background: #e8eee8; box-shadow: 5px 5px 0 var(--moss); }
+.bank-panel > header { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.bank-panel > header > div { padding: 14px; border: 1px solid #728176; background: var(--paper-bright); }
+.bank-panel > header span { display: block; color: var(--muted); font: 8px Consolas, monospace; letter-spacing: .12em; }
+.bank-panel > header strong { display: block; margin-top: 6px; font: 700 18px Georgia, "Noto Serif TC", serif; }
+.bank-panel > header strong.debt { color: #b54a37; }
+.bank-panel > p { margin: 14px 0; color: var(--muted); font-size: 10px; line-height: 1.6; }
+.bank-panel > label { display: grid; gap: 6px; max-width: 430px; font-size: 9px; font-weight: 800; }
+.bank-panel > label > div { display: grid; grid-template-columns: auto 1fr; align-items: center; border: 1px solid #728176; background: white; }
+.bank-panel > label span { padding-left: 11px; font-size: 10px; }
+.bank-panel input { min-width: 0; padding: 11px 8px; border: 0; outline: 0; background: transparent; font: 700 14px Consolas, monospace; }
+.bank-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+.bank-actions button { min-width: 92px; padding: 9px 13px; border: 0; background: var(--ink); color: white; cursor: pointer; font-size: 9px; font-weight: 800; }
+.bank-actions button:hover { background: var(--orange); }
+.bank-actions button:disabled { cursor: not-allowed; opacity: .4; }
+.bank-panel > small { display: block; margin-top: 11px; color: #9a4935; font-size: 8px; }
 
 .casino-table { grid-column: 1 / -1; overflow: hidden; border: 1px solid #102b20; background: #174833; color: #fffaf0; box-shadow: 5px 5px 0 #102b20; }
 .casino-table > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px; border-bottom: 1px solid rgba(255,255,255,.2); background: #123a29; }
@@ -366,10 +383,11 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
   .skills-block { display: none; }
   .location-header { min-height: 115px; padding: 22px 18px; }
   .location-header h2 { font-size: 30px; }
-  .location-strip { overflow-x: auto; grid-template-columns: repeat(7, minmax(82px, 1fr)); }
+  .location-strip { overflow-x: auto; grid-template-columns: repeat(9, minmax(82px, 1fr)); }
   .action-stage { padding: 28px 18px; }
   .action-cards { grid-template-columns: 1fr; }
   .action-card { min-height: 156px; }
+  .bank-panel > header { grid-template-columns: 1fr; }
   .casino-seats { grid-template-columns: repeat(5, minmax(80px, 1fr)); overflow-x: auto; }
   .casino-table > header { align-items: flex-start; }
   .card-hand i { width: 37px; height: 51px; }
