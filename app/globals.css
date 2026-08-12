@@ -259,7 +259,11 @@ button { color: inherit; }
 .bank-actions button:disabled { cursor: not-allowed; opacity: .4; }
 .bank-panel > small { display: block; margin-top: 11px; color: #9a4935; font-size: 8px; }
 
-.casino-table { grid-column: 1 / -1; overflow: hidden; border: 1px solid #102b20; background: #174833; color: #fffaf0; box-shadow: 5px 5px 0 #102b20; }
+.casino-games { grid-column: 1 / -1; }
+.casino-game-tabs { display: flex; gap: 7px; margin-bottom: 10px; }
+.casino-game-tabs button { flex: 1; padding: 11px; border: 1px solid var(--ink); background: var(--paper-bright); color: var(--ink); cursor: pointer; font-size: 10px; font-weight: 800; }
+.casino-game-tabs button.active { background: var(--ink); color: white; }
+.casino-table { overflow: hidden; border: 1px solid #102b20; background: #174833; color: #fffaf0; box-shadow: 5px 5px 0 #102b20; }
 .casino-table > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px; border-bottom: 1px solid rgba(255,255,255,.2); background: #123a29; }
 .casino-table > header span { color: #d8b86b; font: 8px Consolas, monospace; letter-spacing: .15em; }
 .casino-table > header h4 { margin: 4px 0 0; font: 700 20px Georgia, "Noto Serif TC", serif; }
@@ -301,6 +305,12 @@ button { color: inherit; }
 .casino-waiting button { margin-top: 8px; padding: 7px 10px; border: 1px solid rgba(255,255,255,.4); background: transparent; color: white; cursor: pointer; font-size: 8px; }
 .casino-next-round { margin: 14px 0 0; }
 .shared-blackjack-board { padding: 16px 18px; border-bottom: 1px solid rgba(255,255,255,.18); background: rgba(0,0,0,.1); }
+.poker-table { background: #244268; box-shadow: 5px 5px 0 #14263f; }
+.poker-table > header { background: #1a3455; }
+.poker-board { padding: 16px 18px; border-bottom: 1px solid rgba(255,255,255,.18); background: rgba(0,0,0,.12); }
+.poker-community { padding-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,.18); }
+.poker-community > span { display: block; margin-bottom: 9px; color: #f3d987; font-size: 10px; font-weight: 800; }
+.poker-community > p { margin: 13px 0 0; color: #d9e6dc; font-size: 9px; }
 .shared-dealer { padding-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,.18); }
 .shared-dealer > span { display: block; margin-bottom: 9px; color: #f3d987; font-size: 10px; font-weight: 800; }
 .table-card-row { display: flex; flex-wrap: wrap; gap: 6px; min-height: 43px; }

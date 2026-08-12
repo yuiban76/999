@@ -71,6 +71,13 @@
       "when": 1786532912109,
       "tag": "0009_bored_famine",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1786534393368,
+      "tag": "0010_ambiguous_prowler",
+      "breakpoints": true
     }
   ]
 }

@@ -69,6 +69,19 @@ type CasinoState = {
   hand: null | { playerCards: string[]; dealerCards: string[]; playerScore: number; dealerScore: number | null; bet: number; seatNo: number | null; revealAt: number; status: string; result: string };
 };
 
+type PokerState = {
+  capacity: number;
+  bettingSeconds?: number;
+  activeCount: number;
+  serverNow?: number;
+  phase?: "idle" | "waiting";
+  revealAt?: number;
+  communityCards: string[];
+  pot: number;
+  seats: Array<{ id: string; displayName: string; seatNo: number; status: string; bet: number; cards: string[]; result: string; isMine: boolean }>;
+  hand: null | { cards: string[]; bet: number; seatNo: number | null; status: string; result: string };
+};
+
 type Bootstrap = {
   authenticated: boolean;
   profile: Profile | null;
@@ -77,6 +90,7 @@ type Bootstrap = {
   online: OnlinePlayer[];
   feed: FeedItem[];
   casino: CasinoState;
+  poker: PokerState;
 };
 
 const INITIAL_PLAYER: Player = {
@@ -365,6 +379,8 @@ export default function Home() {
   const [online, setOnline] = useState<OnlinePlayer[]>([]);
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [casino, setCasino] = useState<CasinoState>({ capacity: 5, activeCount: 0, seats: [], hand: null });
+  const [poker, setPoker] = useState<PokerState>({ capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 });
+  const [casinoGame, setCasinoGame] = useState<"blackjack" | "poker">("blackjack");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
@@ -407,6 +423,7 @@ export default function Home() {
       setOnline(data.online);
       setFeed(data.feed);
       setCasino(data.casino);
+      if (data.poker) setPoker(data.poker);
       if (!quiet) {
         setNotice(data.authenticated ? `歡迎回來，${data.profile?.displayName}。進度已同步。` : "目前是訪客試玩；登入後即可永久保存並加入多人世界。");
       }
@@ -431,10 +448,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!casino.phase || casino.phase === "idle") return;
+    if ((!casino.phase || casino.phase === "idle") && (!poker.phase || poker.phase === "idle")) return;
     const timer = window.setInterval(() => void loadWorld(true), 750);
     return () => window.clearInterval(timer);
-  }, [casino.phase, loadWorld]);
+  }, [casino.phase, poker.phase, loadWorld]);
 
   async function act(action: string, payload: Record<string, unknown> = {}) {
     if (busy) return;
@@ -452,17 +469,18 @@ export default function Home() {
       return;
     }
     try {
-      const response = await fetch(`${API_ORIGIN}${action.startsWith("casino_") ? "/api/casino/action" : "/api/game/action"}`, {
+      const response = await fetch(`${API_ORIGIN}${action.startsWith("casino_") ? "/api/casino/action" : action.startsWith("poker_") ? "/api/poker/action" : "/api/game/action"}`, {
         method: "POST",
         headers: apiHeaders(true),
-        body: JSON.stringify({ action: action.startsWith("casino_") ? action.slice(7) : action, ...payload }),
+        body: JSON.stringify({ action: action.startsWith("casino_") ? action.slice(7) : action.startsWith("poker_") ? action.slice(6) : action, ...payload }),
       });
-      const data = await response.json() as { player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; scratch?: { price: number; prize: number } | null; message?: string };
+      const data = await response.json() as { player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; scratch?: { price: number; prize: number } | null; message?: string };
       if (!response.ok || !data.player) throw new Error(data.message || "行動失敗");
       setPlayer(data.player);
       if (data.online) setOnline(data.online);
       if (data.feed) setFeed(data.feed);
       if (data.casino) setCasino(data.casino);
+      if (data.poker) setPoker(data.poker);
       if (data.scratch) setScratchResult(data.scratch);
       setNotice(data.message || "行動完成");
     } catch (error) {
@@ -583,7 +601,7 @@ export default function Home() {
               {player.location === "business" && <><ActionCard icon="職" title="找工作" meta="12 條產業升遷路線 · 無固定職業" button="打開產業列表" onClick={() => setJobOpen(true)} featured disabled={busy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="01" title="短班 1 小時" meta={`收入 NT$${formatMoney(career.hourlyPay)} · 產業 EXP +4`} button="開始工作" onClick={() => void act("work", { hours: 1 })} disabled={busy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="04" title="標準班 4 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 4)} · 產業 EXP +16`} button="開始工作" onClick={() => void act("work", { hours: 4 })} disabled={busy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="08" title="長班 8 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 8)} · 產業 EXP +32`} button="開始工作" onClick={() => void act("work", { hours: 8 })} disabled={busy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /></>}
               {player.location === "shopping" && <><ActionCard icon="刮" title="幸運刮刮樂" meta="每張 NT$100 · 最高獎金 NT$50,000" button="購買並刮開" onClick={() => void act("scratch")} featured disabled={busy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="飯" title="巷口飯糰" meta="NT$45 · 飽足 +20" button="買來吃" onClick={() => void act("eat", { kind: "rice" })} disabled={busy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="餐" title="豐盛便當" meta="NT$100 · 飽足 +45 · 心情 +3" button="享用便當" onClick={() => void act("eat", { kind: "bento" })} disabled={busy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /></>}
               {player.location === "hotel" && <><ActionCard icon="宿" title="旅店住宿一晚" meta="NT$1,200 · 體力全滿 · 健康 +3 · 僅限無住所" button="辦理入住" onClick={() => void act("hotel", { kind: "stay" })} featured disabled={busy || player.ownsHome || rentalDaysLeft > 0} disabledLabel={player.ownsHome || rentalDaysLeft > 0 ? "已有住所" : undefined} /><ActionCard icon="餐" title="24 小時旅店餐" meta="NT$250 · 飽足 +45" button="購買旅店餐" onClick={() => void act("hotel", { kind: "meal" })} disabled={busy} /><ActionCard icon="豪" title="24 小時豪華餐" meta="NT$500 · 飽足 +80" button="購買豪華餐" onClick={() => void act("hotel", { kind: "luxury" })} disabled={busy} /></>}
-                {player.location === "casino" && <CasinoTable state={casino} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`casino_${action}`, payload)} />}
+                {player.location === "casino" && <div className="casino-games"><div className="casino-game-tabs"><button className={casinoGame === "blackjack" ? "active" : ""} onClick={() => setCasinoGame("blackjack")}>二十一點</button><button className={casinoGame === "poker" ? "active" : ""} onClick={() => setCasinoGame("poker")}>德州撲克</button></div>{casinoGame === "blackjack" ? <CasinoTable state={casino} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`casino_${action}`, payload)} /> : <PokerTable state={poker} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`poker_${action}`, payload)} />}</div>}
               {player.location === "school" && ACADEMIES.map((academy, index) => <ActionCard key={academy.id} icon={academy.icon} title={academy.name} meta={`NT$500 · 2 小時 · ${formatRequirements(academy.gains)}`} button="報名上課" onClick={() => void act("study", { academy: academy.id })} featured={index === 0} disabled={busy || !schoolOpen} disabledLabel={!schoolOpen ? "已關門" : undefined} />)}
               {player.location === "hospital" && <><ActionCard icon="急" title="24 小時急診" meta="NT$2,500 · 健康至少恢復至 70 · 全天開放" button="前往急診" onClick={() => void act("hospital", { kind: "emergency" })} featured disabled={busy} /><ActionCard icon="診" title="一般門診" meta="08:00～20:00 · NT$600 · 健康 +25" button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={busy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /><ActionCard icon="療" title="完整治療" meta="08:00～20:00 · NT$1,500 · 健康至少恢復至 80" button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} disabled={busy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /></>}
             </div>
@@ -716,7 +734,50 @@ function CasinoTable({ state, signedIn, busy, maxBet, onAction }: { state: Casin
     </div> : roundPlaying ? <div className="casino-round-actions">
       {playing ? <div className="casino-controls"><button onClick={() => onAction("hit")} disabled={busy}>補牌</button><button onClick={() => onAction("stand")} disabled={busy}>停牌</button><button className="leave" onClick={() => onAction("leave")} disabled={busy}>離桌</button></div> : active ? <><p className="casino-message">{state.hand?.status === "seated" ? "你本局未下注，正在原座位觀賽。" : "你已完成行動，正在等待其他玩家。"}</p><button className="table-leave" onClick={() => onAction("leave")} disabled={busy}>離開牌桌</button></> : <p className="casino-message">目前正在觀賽，下一局可選擇空位加入。</p>}
     </div> : state.hand?.status === "seated" ? <><BetForm bet={bet} setBet={setBet} maxBet={maxBet} busy={busy} submitBet={submitBet} onLeave={() => onAction("leave")} />{state.hand.result && <p className="casino-result">{state.hand.result}</p>}</> : <p className="casino-message">請選擇上方任一空位加入遊戲。</p>}
-    <footer>先選座位再自訂下注 · 第一筆下注後等待 10 秒 · 未下注可留座觀賽或自由離場 · 全桌同步顯示手牌</footer>
+    <footer>先選座位再自訂下注 · 第一筆下注後等待 5 秒 · 未下注可留座觀賽或自由離場 · 全桌同步顯示手牌</footer>
+  </section>;
+}
+
+function PokerTable({ state, signedIn, busy, maxBet, onAction }: { state: PokerState; signedIn: boolean; busy: boolean; maxBet: number; onAction: (action: string, payload?: Record<string, unknown>) => void }) {
+  const [bet, setBet] = useState("100");
+  const [now, setNow] = useState(Date.now());
+  const active = state.hand && ["seated", "waiting", "settling"].includes(state.hand.status);
+  const waiting = state.phase === "waiting";
+  const remaining = waiting ? Math.max(0, Math.ceil(((state.revealAt ?? 0) - now) / 1000)) : 0;
+  useEffect(() => {
+    if (!waiting) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 200);
+    return () => window.clearInterval(timer);
+  }, [waiting, state.revealAt]);
+  const submitBet = (event: React.FormEvent) => {
+    event.preventDefault();
+    const amount = Number(bet);
+    if (Number.isSafeInteger(amount) && amount > 0) onAction("deal", { bet: amount });
+  };
+  return <section className="casino-table poker-table">
+    <header><div><span>TEXAS HOLD&apos;EM TABLE 01</span><h4>五人同步德州撲克</h4></div><strong>{state.activeCount} / {state.capacity} 位在座 · {waiting ? `下注倒數 ${remaining} 秒` : "等待新局"}</strong></header>
+    <div className="casino-seats">{Array.from({ length: 5 }, (_, index) => {
+      const seatNo = index + 1; const seat = state.seats.find((item) => item.seatNo === seatNo);
+      return <div className={`${seat ? "occupied" : ""} ${seat?.isMine ? "mine" : ""}`} key={seatNo}>
+        <span>{seatNo}</span><strong>{seat?.isMine ? `${seat.displayName}（你）` : seat?.displayName ?? "空位"}</strong>
+        {!seat && signedIn && !active && <button onClick={() => onAction("join", { seatNo })} disabled={busy}>加入遊戲</button>}
+        {seat && <small>{seat.status === "waiting" ? `已下注 NT$${formatMoney(seat.bet)}` : seat.result ? "本局已攤牌" : "等待下注"}</small>}
+      </div>;
+    })}</div>
+    {(state.communityCards.length > 0 || waiting) && <div className="poker-board">
+      <div className="poker-community"><span>公共牌 · 本局獎池 NT$${formatMoney(state.pot || state.seats.reduce((sum, seat) => sum + seat.bet, 0))}</span>{state.communityCards.length ? <CardRow cards={state.communityCards} /> : <p>倒數結束後同步攤牌</p>}</div>
+      <div className="shared-player-hands">{state.seats.map((seat) => <article className={`${seat.isMine ? "mine" : ""} ${seat.cards.length ? "has-cards" : "spectator"}`} key={seat.id}>
+        <header><strong>{seat.seatNo} 號 · {seat.displayName}{seat.isMine ? "（你）" : ""}</strong><small>{seat.status === "waiting" ? `下注 NT$${formatMoney(seat.bet)}` : seat.cards.length ? `底牌 · 下注 NT$${formatMoney(seat.bet)}` : "未下注 · 觀賽"}</small></header>
+        {seat.cards.length ? <CardRow cards={seat.cards} /> : <p>{seat.status === "waiting" ? "等待發牌" : "本局觀賽中"}</p>}
+        {seat.result && <em>{seat.result}</em>}
+      </article>)}</div>
+    </div>}
+    {!signedIn ? <p className="casino-message">登入後才能加入五人德州撲克牌桌。</p> : waiting ? <div className="casino-round-actions">
+      <div className="casino-waiting"><strong>{remaining}</strong><h5>秒後全桌攤牌</h5><p>至少兩位下注才開局；未下注玩家可留座觀賽。</p></div>
+      {state.hand?.status === "seated" ? <BetForm bet={bet} setBet={setBet} maxBet={maxBet} busy={busy} submitBet={submitBet} onLeave={() => onAction("leave")} /> : state.hand?.status === "waiting" ? <p className="casino-message">你已下注，請等待同步攤牌。</p> : null}
+    </div> : state.hand?.status === "seated" ? <><BetForm bet={bet} setBet={setBet} maxBet={maxBet} busy={busy} submitBet={submitBet} onLeave={() => onAction("leave")} />{state.hand.result && <p className="casino-result">{state.hand.result}</p>}</> : <p className="casino-message">請選擇上方任一空位加入遊戲。</p>}
+    <footer>五人全下攤牌局 · 第一筆下注後等待 5 秒 · 至少兩位下注 · 同副牌不重複發牌 · 標準牌型比較並平分獎池</footer>
   </section>;
 }
 
@@ -729,9 +790,9 @@ function BetForm({ bet, setBet, maxBet, busy, submitBet, onLeave }: { bet: strin
 }
 
 function actionTitle(location: LocationId) {
-  return { home: "有一個落腳處，才有安心休息的地方", realtor: "先找到住所，再打造自己的生活", bank: "管理資產，也要衡量借貸成本", business: "累積經驗，向下一次升遷前進", shopping: "照顧日常，才能走得更遠", hotel: "沒有住所，也能有一晚落腳處", casino: "五人同桌，各自挑戰二十一點", school: "今天學會的，會成為明天的選項", hospital: "及早治療，才能繼續人生旅程" }[location];
+  return { home: "有一個落腳處，才有安心休息的地方", realtor: "先找到住所，再打造自己的生活", bank: "管理資產，也要衡量借貸成本", business: "累積經驗，向下一次升遷前進", shopping: "照顧日常，才能走得更遠", hotel: "沒有住所，也能有一晚落腳處", casino: "五人同桌，挑戰二十一點與德州撲克", school: "今天學會的，會成為明天的選項", hospital: "及早治療，才能繼續人生旅程" }[location];
 }
 
 function actionDescription(location: LocationId) {
-  return { home: "有效租約或自有住宅才能進入，全天 24 小時開放。睡一覺能恢復體力與健康。", realtor: "營業時間 09:00～18:00。租屋每日 NT$350，也能買下永久住所；買房後租屋方案仍會保留。", bank: "營業時間 09:00～17:00。存款每日收益 3%；貸款上限 NT$50,000，每日利息 5%。", business: "營業時間 08:00～18:00。工作會累積職涯經驗；經驗與指定能力都達標後才會升遷。", shopping: "營業時間 10:00～22:00。用合理的花費補充飽足，也能購買刮刮樂。", hotel: "全天 24 小時營業。無住所玩家可花 NT$1,200 住宿；餐點全天供應，但價格較高。", casino: "全天 24 小時開放。同一張桌最多五位登入玩家同時挑戰二十一點。", school: "開放時間 08:00～21:00。五所學院分別培養體力、智力、創造力、社交與魅力。", hospital: "健康低於 50 時，行動後開始有機率生病。急診 24 小時開放；一般診療為 08:00～20:00。" }[location];
+  return { home: "有效租約或自有住宅才能進入，全天 24 小時開放。睡一覺能恢復體力與健康。", realtor: "營業時間 09:00～18:00。租屋每日 NT$350，也能買下永久住所；買房後租屋方案仍會保留。", bank: "營業時間 09:00～17:00。存款每日收益 3%；貸款上限 NT$50,000，每日利息 5%。", business: "營業時間 08:00～18:00。工作會累積職涯經驗；經驗與指定能力都達標後才會升遷。", shopping: "營業時間 10:00～22:00。用合理的花費補充飽足，也能購買刮刮樂。", hotel: "全天 24 小時營業。無住所玩家可花 NT$1,200 住宿；餐點全天供應，但價格較高。", casino: "全天 24 小時開放。二十一點與德州撲克各有一張最多五人的同步牌桌。", school: "開放時間 08:00～21:00。五所學院分別培養體力、智力、創造力、社交與魅力。", hospital: "健康低於 50 時，行動後開始有機率生病。急診 24 小時開放；一般診療為 08:00～20:00。" }[location];
 }

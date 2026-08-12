@@ -75,3 +75,16 @@ export const casinoHands = sqliteTable("casino_hands", {
   revealAt: integer("reveal_at").notNull().default(0),
   updatedAt: integer("updated_at").notNull(),
 }, (table) => [index("idx_casino_status_updated").on(table.status, table.updatedAt), uniqueIndex("idx_casino_seat").on(table.seatNo)]);
+
+export const pokerHands = sqliteTable("poker_hands", {
+  userId: text("user_id").primaryKey(),
+  playerName: text("player_name").notNull(),
+  holeCards: text("hole_cards").notNull().default("[]"),
+  communityCards: text("community_cards").notNull().default("[]"),
+  bet: integer("bet").notNull().default(0),
+  status: text("status").notNull().default("idle"),
+  result: text("result").notNull().default(""),
+  seatNo: integer("seat_no"),
+  revealAt: integer("reveal_at").notNull().default(0),
+  updatedAt: integer("updated_at").notNull(),
+}, (table) => [index("idx_poker_status_updated").on(table.status, table.updatedAt), uniqueIndex("idx_poker_seat").on(table.seatNo)]);
