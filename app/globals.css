@@ -466,3 +466,513 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
 }
+
+/* Apple-inspired interface refresh. Gameplay layout and behavior stay unchanged. */
+:root {
+  --ink: #1d1d1f;
+  --paper: #f5f5f7;
+  --paper-bright: #ffffff;
+  --line: #e2e2e7;
+  --moss: #0071e3;
+  --moss-dark: #0058b0;
+  --orange: #0071e3;
+  --orange-soft: #eaf4ff;
+  --muted: #6e6e73;
+}
+
+html { background: #f5f5f7; }
+
+body {
+  color: #1d1d1f;
+  background:
+    radial-gradient(circle at 16% -8%, rgba(108, 181, 255, .2), transparent 30rem),
+    #f5f5f7;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+}
+
+.game-shell {
+  width: min(1480px, calc(100% - 40px));
+  min-height: calc(100vh - 40px);
+  margin: 20px auto;
+  border: 1px solid rgba(0, 0, 0, .1);
+  border-radius: 24px;
+  background: #f5f5f7;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .13);
+}
+
+.topbar {
+  height: 66px;
+  padding: 0 22px;
+  border-bottom: 1px solid rgba(0, 0, 0, .08);
+  background: rgba(255, 255, 255, .9);
+  color: #1d1d1f;
+  backdrop-filter: saturate(180%) blur(22px);
+}
+
+.brand { gap: 10px; }
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 11px;
+  background: linear-gradient(145deg, #58b4ff, #1768df);
+  color: #fff;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .42), 0 5px 14px rgba(0, 113, 227, .2);
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 19px;
+}
+
+.brand strong {
+  color: #1d1d1f;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+}
+
+.brand small { margin-top: 3px; color: #86868b; font-size: 8px; letter-spacing: .08em; }
+.world-time { gap: 10px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+.world-time strong { color: #1d1d1f; font-size: 22px; letter-spacing: -.02em; }
+.world-time span { color: #6e6e73; font-size: 10px; letter-spacing: 0; }
+.account-area { gap: 9px; }
+.account-area strong { color: #1d1d1f; font-size: 12px; }
+.account-area small { color: #86868b; font-size: 9px; }
+.connection-dot { width: 8px; height: 8px; background: #8e8e93; box-shadow: none; }
+.connection-dot.connected { background: #34c759; box-shadow: 0 0 0 4px rgba(52, 199, 89, .12); }
+.account-area a,
+.account-button {
+  min-height: 34px;
+  padding: 7px 13px;
+  border: 0;
+  border-radius: 999px;
+  background: #e9e9ed;
+  color: #1d1d1f;
+  font-size: 11px;
+}
+.account-area .login-link { border: 0; background: #0071e3; color: #fff; }
+
+.marquee {
+  min-height: 42px;
+  gap: 14px;
+  padding: 0 22px;
+  border-bottom: 1px solid #d7e7f7;
+  background: #edf6ff;
+  font-size: 12px;
+}
+.marquee-label {
+  align-self: center;
+  margin: 0;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #0071e3;
+  font-size: 9px;
+  letter-spacing: .06em;
+}
+.marquee p { color: #31516f; font-weight: 500; }
+.weather { color: #5c7891; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+
+.game-grid {
+  grid-template-columns: 248px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  min-height: calc(100vh - 150px);
+  background: #f5f5f7;
+}
+.character-panel {
+  grid-row: 1 / 3;
+  padding: 22px 18px;
+  border-right: 1px solid #dedee3;
+  background: #eeeef1;
+}
+.world-panel { grid-column: 2; background: #f5f5f7; }
+.story-panel {
+  grid-column: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-content: start;
+  column-gap: 22px;
+  padding: 24px;
+  border: 0;
+  border-top: 1px solid #dedee3;
+  background: #f5f5f7;
+}
+
+.panel-kicker,
+.map-index { color: #86868b; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 10px; letter-spacing: .08em; }
+.identity { gap: 13px; margin: 17px 0 19px; }
+.avatar {
+  flex-basis: 66px;
+  width: 66px;
+  height: 66px;
+  border: 3px solid #fff;
+  background: linear-gradient(145deg, #d9ebff, #a7cff5);
+  box-shadow: 0 3px 13px rgba(0, 0, 0, .11);
+  font-size: 28px;
+}
+.avatar-upload { padding: 5px 2px; background: rgba(0, 0, 0, .62); font-size: 9px; }
+.identity p { color: #86868b; font-size: 10px; letter-spacing: 0; }
+.identity h1 {
+  margin-bottom: 8px;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -.03em;
+}
+.job-tag { padding: 4px 8px; border: 0; background: #dedee3; color: #515154; font-size: 10px; }
+.story-tag { color: #0071e3; }
+
+.cash-card {
+  padding: 16px;
+  border: 1px solid #cfe4f9;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #ffffff, #edf6ff);
+  color: #1d1d1f;
+  box-shadow: 0 7px 22px rgba(0, 80, 160, .08);
+}
+.cash-card > span,
+.cash-card > small { color: #6e6e73; }
+.cash-card strong {
+  color: #1d1d1f;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 27px;
+  letter-spacing: -.04em;
+}
+.cash-breakdown { border-color: #d9e7f4; }
+.cash-breakdown p { color: #6e6e73; font-size: 10px; }
+.cash-breakdown b { color: #1d1d1f; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 10px; }
+.cash-breakdown p.debt b { color: #d92d20; }
+
+.debt-deadline,
+.housing-card,
+.career-card,
+.illness-alert {
+  border-radius: 13px;
+  box-shadow: none;
+}
+.debt-deadline { border-color: #ffd0ca; background: #fff1ef; }
+.debt-deadline strong { color: #c72f22; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+.debt-deadline.warning { background: #ffe7e2; box-shadow: none; }
+.housing-card { border: 0; background: #e8f5ec; }
+.housing-card.homeless { border: 0; background: #fff0ed; }
+.career-card { border-color: #dedee3; background: #fff; }
+.career-card strong { font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", sans-serif; font-weight: 700; }
+.career-card > small { color: #0071e3; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+.career-track,
+.stat-track,
+.skill-track { overflow: hidden; border-radius: 999px; background: #d8d8dd; }
+.career-track i,
+.stat-track i { border-radius: inherit; background: #34c759; }
+.skill-track i { border-radius: inherit; background: #0071e3; }
+.illness-alert { border: 0; background: #fff0ed; color: #b42318; }
+.stat-list { margin: 22px 0; }
+.stat-row { grid-template-columns: 62px 1fr 28px; margin: 14px 0; }
+.stat-label { font-size: 12px; font-weight: 600; }
+.stat-label span { color: #0071e3; }
+.stat-row > strong { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 11px; }
+.section-heading { border-color: #cfcfd4; font-size: 13px; }
+.section-heading small { color: #86868b; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+.skill-row > div:first-child { font-size: 11px; }
+.skill-row strong { color: #0071e3; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+
+.location-header {
+  min-height: 160px;
+  margin: 24px 24px 14px;
+  padding: 28px;
+  border: 0;
+  border-radius: 20px;
+  background: linear-gradient(125deg, #173a69, #0878d7 65%, #5ab5ff);
+  color: #fff;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .22), 0 12px 30px rgba(0, 94, 185, .14);
+}
+.location-header p { color: rgba(255, 255, 255, .72); font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 10px; letter-spacing: .08em; }
+.location-header h2 {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", sans-serif;
+  font-size: 38px;
+  font-weight: 700;
+  letter-spacing: -.04em;
+}
+.location-header small { color: rgba(255, 255, 255, .8); font-size: 12px; }
+.location-header .map-index { align-self: flex-start; padding: 8px 11px; border-radius: 999px; background: rgba(255, 255, 255, .15); color: #fff; letter-spacing: .04em; }
+
+.location-strip {
+  display: flex;
+  gap: 6px;
+  margin: 0 24px;
+  padding: 0 0 10px;
+  overflow-x: auto;
+  border: 0;
+  scrollbar-width: thin;
+}
+.location-strip button {
+  flex: 1 0 82px;
+  min-height: 74px;
+  padding: 9px 7px;
+  border: 1px solid #dedee3;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 3px 9px rgba(0, 0, 0, .04);
+}
+.location-strip button:last-child { border-right: 1px solid #dedee3; }
+.location-strip button:hover { border-color: #9ccaff; background: #f4f9ff; }
+.location-strip button.active { border-color: #0071e3; background: #0071e3; color: #fff; box-shadow: 0 6px 16px rgba(0, 113, 227, .2); }
+.location-strip button span { font-size: 20px; }
+.location-strip button small { font-size: 10px; }
+.location-strip button em { color: #86868b; font-size: 8px; }
+.location-strip button.closed:not(.active) { background: #eeeef0; color: #85858a; }
+.location-strip button.closed:not(.active) em { color: #d92d20; }
+
+.action-stage { padding: 24px; background: transparent; }
+.stage-number { right: 26px; top: -4px; color: rgba(0, 113, 227, .045); font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+.action-intro > span { color: #0071e3; font-size: 10px; letter-spacing: .08em; }
+.action-intro h3 {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", sans-serif;
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: -.025em;
+}
+.action-intro p { color: #6e6e73; font-size: 12px; line-height: 1.65; }
+.action-cards { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-top: 22px; }
+.action-card {
+  min-height: 174px;
+  padding: 18px;
+  border: 1px solid #dedee3;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 5px 18px rgba(0, 0, 0, .055);
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.action-card:hover { transform: translateY(-2px); border-color: #a7cfff; box-shadow: 0 10px 24px rgba(0, 80, 160, .1); }
+.action-card.featured { border-color: #c7e2ff; background: #eff7ff; box-shadow: 0 5px 18px rgba(0, 91, 181, .07); }
+.action-icon { width: 38px; height: 38px; border: 0; border-radius: 12px; background: #eaf4ff; color: #0066cc; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+.action-card h4 { margin: 17px 0 6px; font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", sans-serif; font-size: 15px; font-weight: 700; }
+.action-card p { color: #6e6e73; font-size: 11px; line-height: 1.55; }
+.action-card button,
+.bank-actions button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 999px;
+  background: #0071e3;
+  color: #fff;
+  font-size: 11px;
+}
+.action-card button:hover,
+.bank-actions button:hover { background: #0077ed; }
+.action-card button:disabled { background: #d5d5da; color: #7d7d82; }
+
+.bank-panel {
+  padding: 20px;
+  border: 1px solid #dedee3;
+  border-radius: 17px;
+  background: #fff;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .06);
+}
+.bank-panel > header > div { border: 0; border-radius: 13px; background: #f5f5f7; }
+.bank-panel > header span { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 10px; letter-spacing: .05em; }
+.bank-panel > header strong { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+.bank-panel > label { font-size: 11px; }
+.bank-panel > label > div { overflow: hidden; border-color: #d2d2d7; border-radius: 11px; }
+.bank-panel input { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+.bank-payment-status { border: 0; border-radius: 12px; background: #fff1ef; }
+.bank-payment-status.warning { background: #ffe6e1; }
+
+.world-footer { min-height: 48px; padding: 0 24px; border-color: #dedee3; color: #86868b; background: #fff; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+.world-footer button { color: #0071e3; text-decoration: none; }
+
+.story-title { grid-column: 1; margin: 0; }
+.online-summary { grid-column: 1; padding: 12px 0; border-color: #dedee3; }
+.online-summary strong i { background: #34c759; box-shadow: 0 0 0 4px rgba(52, 199, 89, .12); }
+.online-summary span { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+.online-list {
+  grid-column: 1;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #dedee3;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 5px 18px rgba(0, 0, 0, .045);
+}
+.online-list li { padding: 13px 15px; border-color: #ebebee; }
+.online-list li:last-child { border-bottom: 0; }
+.mini-avatar { flex-basis: 44px; width: 44px; height: 44px; border: 2px solid #fff; background: #dbeeff; box-shadow: 0 2px 8px rgba(0, 0, 0, .12); font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+.online-list strong { font-size: 12px; }
+.online-list small { color: #6e6e73; font-size: 10px; }
+.online-finance { color: #0071e3; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 10px; }
+.feed-heading { grid-column: 2; grid-row: 1; margin: 0; }
+.feed-list {
+  grid-column: 2;
+  grid-row: 2 / span 2;
+  display: block;
+  margin: 0;
+  padding: 0 15px;
+  border: 1px solid #dedee3;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 5px 18px rgba(0, 0, 0, .045);
+}
+.feed-list li { grid-template-columns: 45px 1fr; padding: 14px 0; border-color: #ebebee; }
+.feed-list li:last-child { border-bottom: 0; }
+.feed-list li::before { left: 39px; background: #8e8e93; }
+.feed-list li.good::before { background: #34c759; }
+.feed-list li.warn::before { background: #ff9f0a; }
+.feed-list time { color: #86868b; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+.feed-list p { color: #6e6e73; }
+.next-goal {
+  grid-column: 1 / -1;
+  margin-top: 18px;
+  padding: 17px;
+  border: 1px solid #cfe4f9;
+  border-radius: 16px;
+  background: #edf6ff;
+  box-shadow: none;
+}
+.next-goal > div { overflow: hidden; border-radius: 999px; background: #cfe5f8; }
+.next-goal > div i { border-radius: inherit; background: #0071e3; }
+.next-goal small { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+
+.auth-overlay,
+.story-select-overlay,
+.avatar-lightbox { background: rgba(20, 20, 22, .62); backdrop-filter: blur(18px); }
+.auth-card,
+.job-board,
+.avatar-lightbox > section,
+.story-select-card {
+  border: 1px solid rgba(255, 255, 255, .3);
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .25);
+}
+.auth-card h2,
+.job-board h2,
+.avatar-lightbox h2,
+.story-select-card > header h2,
+.story-choice-title h3 {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", sans-serif;
+  font-weight: 700;
+  letter-spacing: -.03em;
+}
+.auth-card input { border-color: #c9c9ce; border-radius: 11px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+.auth-submit,
+.enter-industry,
+.story-select-card article > button { border-radius: 999px; background: #0071e3; }
+.auth-switch { color: #0071e3; text-decoration: none; }
+.auth-close { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 50%; background: #ededf0; color: #515154; }
+.job-categories button { border: 0; border-radius: 999px; background: #ededf0; font-size: 10px; }
+.job-categories button.active { background: #0071e3; color: #fff; }
+.job-list button,
+.route-steps > div { border-color: #dedee3; border-radius: 13px; background: #f5f5f7; }
+.job-list button.current,
+.route-steps > div.current { border-color: #9ccaff; background: #eaf4ff; }
+.route-steps strong,
+.job-list span { font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", sans-serif; }
+.story-select-card { overflow: hidden; }
+.story-select-card > header { border-color: #d9e8f7; background: linear-gradient(125deg, #173a69, #0878d7); }
+.story-select-card > article { background: #fff; }
+.story-starting-stats > div { border-color: #dedee3; border-radius: 13px; background: #f5f5f7; }
+
+.casino-game-tabs { padding: 4px; border-radius: 12px; background: #e8e8ed; }
+.casino-game-tabs button { border: 0; border-radius: 9px; background: transparent; }
+.casino-game-tabs button.active { background: #fff; color: #1d1d1f; box-shadow: 0 2px 8px rgba(0, 0, 0, .1); }
+.casino-table { border: 0; border-radius: 18px; box-shadow: 0 10px 28px rgba(0, 0, 0, .16); }
+.casino-table > header { border-radius: 18px 18px 0 0; }
+.casino-seats > div,
+.shared-player-hands article { border-radius: 10px; }
+.casino-controls button,
+.bet-buttons button,
+.casino-seats button,
+.custom-bet > div,
+.table-leave { border-radius: 999px; }
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible { outline: 3px solid rgba(0, 113, 227, .38); outline-offset: 2px; }
+
+@media (max-width: 1040px) {
+  .game-shell { width: calc(100% - 24px); margin: 12px auto; }
+  .game-grid { grid-template-columns: 230px minmax(0, 1fr); }
+  .story-panel { grid-template-columns: 1fr; row-gap: 18px; }
+  .story-title,
+  .online-summary,
+  .online-list,
+  .feed-heading,
+  .feed-list,
+  .next-goal { grid-column: 1; grid-row: auto; }
+}
+
+@media (max-width: 760px) {
+  .game-shell { width: 100%; min-height: 100vh; margin: 0; border: 0; border-radius: 0; }
+  .topbar { padding: 14px 16px; }
+  .world-time { border-color: #dedee3; }
+  .marquee { padding: 0 14px; }
+  .game-grid { display: block; }
+  .character-panel { padding: 20px 16px; border-right: 0; border-bottom: 1px solid #dedee3; }
+  .location-header { min-height: 148px; margin: 14px; padding: 22px; }
+  .location-header h2 { font-size: 31px; }
+  .location-header .map-index { display: none; }
+  .location-strip { grid-template-columns: none; margin: 0 14px; }
+  .action-stage { padding: 22px 14px; }
+  .action-cards { grid-template-columns: 1fr; }
+  .action-card { min-height: 156px; }
+  .story-panel { display: grid; padding: 22px 14px; }
+  .feed-list { display: block; }
+  .world-footer { padding: 0 14px; }
+  .story-select-card { min-height: 100vh; border-radius: 0; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #f5f5f7;
+    --paper: #161617;
+    --paper-bright: #202023;
+    --line: #343438;
+    --muted: #a1a1a6;
+  }
+  html,
+  body,
+  .game-shell,
+  .game-grid,
+  .world-panel,
+  .story-panel,
+  .action-stage { color: #f5f5f7; background-color: #161617; }
+  .game-shell { border-color: #353539; }
+  .topbar { border-color: #303034; background: rgba(30, 30, 32, .92); color: #f5f5f7; }
+  .brand strong,
+  .world-time strong,
+  .account-area strong { color: #f5f5f7; }
+  .character-panel { border-color: #303034; background: #202023; }
+  .job-tag { background: #343438; color: #d1d1d6; }
+  .cash-card { border-color: #244766; background: linear-gradient(145deg, #20252a, #162c40); color: #f5f5f7; }
+  .cash-card strong,
+  .cash-breakdown b { color: #f5f5f7; }
+  .cash-breakdown { border-color: #314557; }
+  .housing-card { background: #173421; }
+  .housing-card.homeless,
+  .debt-deadline,
+  .illness-alert { background: #3c1d1b; }
+  .career-card,
+  .action-card,
+  .bank-panel,
+  .online-list,
+  .feed-list { border-color: #343438; background: #202023; }
+  .action-card.featured,
+  .next-goal { border-color: #244d72; background: #132b42; }
+  .location-strip button { border-color: #343438; background: #202023; }
+  .location-strip button:hover { border-color: #236eb3; background: #1c3144; }
+  .location-strip button.closed:not(.active) { background: #28282c; color: #98989d; }
+  .bank-panel > header > div,
+  .job-list button,
+  .route-steps > div { border-color: #343438; background: #29292d; }
+  .world-footer { border-color: #303034; background: #202023; }
+  .story-panel { border-color: #303034; }
+  .online-list li,
+  .feed-list li { border-color: #343438; }
+  .auth-card,
+  .job-board,
+  .avatar-lightbox > section,
+  .story-select-card,
+  .story-select-card > article { color: #f5f5f7; background: #202023; }
+  .auth-card input { background: #2c2c30; color: #f5f5f7; }
+  .auth-close,
+  .job-categories button { background: #343438; color: #f5f5f7; }
+  .story-starting-stats > div { border-color: #343438; background: #29292d; }
+  .marquee { border-color: #203d57; background: #162b3f; }
+  .marquee p { color: #c7e2fa; }
+}
