@@ -1,6 +1,8 @@
 type LocationId = "home" | "business" | "shopping" | "park" | "school";
 
-interface Env { DB?: D1Database; ASSETS: Fetcher }
+interface Env { DB?: D1Database; ASSETS?: Fetcher; FRONTEND_ORIGIN?: string }
+
+type AuthUser = { userId: string; email: string; displayName: string };
 
 type PlayerRow = {
   user_id: string;
@@ -26,15 +28,59 @@ function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 }
 
-function identity(request: Request) {
-  const userId = request.headers.get("oai-authenticated-user-id");
-  const email = request.headers.get("oai-authenticated-user-email");
-  if (!userId || !email) return null;
-  let fullName: string | null = null;
-  if (request.headers.get("oai-authenticated-user-full-name-encoding") === "percent-encoded-utf-8") {
-    try { fullName = decodeURIComponent(request.headers.get("oai-authenticated-user-full-name") || ""); } catch { fullName = null; }
-  }
-  return { userId, email, displayName: fullName || email.split("@")[0] || "玩家" };
+function corsHeaders(request: Request, env: Env) {
+  const allowed = env.FRONTEND_ORIGIN || "https://yuiban76.github.io";
+  const origin = request.headers.get("Origin");
+  return {
+    "Access-Control-Allow-Origin": origin === allowed ? origin : allowed,
+    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Max-Age": "86400",
+    "Vary": "Origin",
+  };
+}
+
+function withCors(response: Response, request: Request, env: Env) {
+  const next = new Response(response.body, response);
+  for (const [key, value] of Object.entries(corsHeaders(request, env))) next.headers.set(key, value);
+  return next;
+}
+
+const encoder = new TextEncoder();
+
+function bytesToBase64Url(bytes: Uint8Array) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+function base64UrlToBytes(value: string) {
+  const padded = value.replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+  return Uint8Array.from(atob(padded), (char) => char.charCodeAt(0));
+}
+
+async function sha256(value: string) {
+  return bytesToBase64Url(new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(value))));
+}
+
+async function passwordHash(password: string, salt: Uint8Array) {
+  const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const saltBuffer = Uint8Array.from(salt).buffer;
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: saltBuffer, iterations: 120_000 }, key, 256);
+  return bytesToBase64Url(new Uint8Array(bits));
+}
+
+async function identity(request: Request, db?: D1Database): Promise<AuthUser | null> {
+  if (!db) return null;
+  const authorization = request.headers.get("Authorization");
+  if (!authorization?.startsWith("Bearer ")) return null;
+  const token = authorization.slice(7).trim();
+  if (!token) return null;
+  const tokenHash = await sha256(token);
+  const row = await db.prepare(`SELECT a.id, a.email, a.display_name
+    FROM sessions s JOIN accounts a ON a.id = s.user_id
+    WHERE s.token_hash = ? AND s.expires_at > ?`).bind(tokenHash, Date.now()).first<{ id: string; email: string; display_name: string }>();
+  return row ? { userId: row.id, email: row.email, displayName: row.display_name } : null;
 }
 
 function guestPlayer() {
@@ -47,6 +93,14 @@ function serializePlayer(row: PlayerRow) {
 
 async function ensureSchema(db: D1Database) {
   await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS accounts (
+      id TEXT PRIMARY KEY, email TEXT NOT NULL, display_name TEXT NOT NULL,
+      password_hash TEXT NOT NULL, password_salt TEXT NOT NULL, created_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS sessions (
+      token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL,
+      expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL
+    )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS players (
       user_id TEXT PRIMARY KEY, display_name TEXT NOT NULL, email TEXT NOT NULL,
       cash INTEGER NOT NULL DEFAULT 10000, energy INTEGER NOT NULL DEFAULT 100,
@@ -65,10 +119,13 @@ async function ensureSchema(db: D1Database) {
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_players_last_seen ON players(last_seen_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_events_room_created ON game_events(room_id, created_at DESC)"),
+    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_email ON accounts(email)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)"),
   ]);
 }
 
-async function upsertPlayer(db: D1Database, user: NonNullable<ReturnType<typeof identity>>) {
+async function upsertPlayer(db: D1Database, user: AuthUser) {
   const now = Date.now();
   await db.prepare(`INSERT INTO players (user_id, display_name, email, created_at, updated_at, last_seen_at)
     VALUES (?, ?, ?, ?, ?, ?)
@@ -89,8 +146,48 @@ async function multiplayer(db: D1Database) {
   };
 }
 
+async function auth(request: Request, env: Env, mode: "register" | "login") {
+  if (!env.DB) return json({ message: "資料庫尚未連接。" }, 503);
+  await ensureSchema(env.DB);
+  let body: { email?: string; password?: string; displayName?: string };
+  try { body = await request.json(); } catch { return json({ message: "資料格式錯誤。" }, 400); }
+  const email = body.email?.trim().toLowerCase() || "";
+  const password = body.password || "";
+  const displayName = body.displayName?.trim() || email.split("@")[0] || "玩家";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ message: "請輸入有效的 Email。" }, 400);
+  if (password.length < 8 || password.length > 128) return json({ message: "密碼需為 8～128 個字元。" }, 400);
+  let account = await env.DB.prepare("SELECT id, email, display_name, password_hash, password_salt FROM accounts WHERE email = ?").bind(email).first<{ id: string; email: string; display_name: string; password_hash: string; password_salt: string }>();
+  if (mode === "register") {
+    if (account) return json({ message: "此 Email 已註冊，請直接登入。" }, 409);
+    if (displayName.length < 2 || displayName.length > 24) return json({ message: "暱稱需為 2～24 個字元。" }, 400);
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const now = Date.now();
+    account = { id: crypto.randomUUID(), email, display_name: displayName, password_hash: await passwordHash(password, salt), password_salt: bytesToBase64Url(salt) };
+    await env.DB.prepare("INSERT INTO accounts (id, email, display_name, password_hash, password_salt, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(account.id, account.email, account.display_name, account.password_hash, account.password_salt, now).run();
+  } else {
+    if (!account) return json({ message: "Email 或密碼不正確。" }, 401);
+    const candidate = await passwordHash(password, base64UrlToBytes(account.password_salt));
+    if (candidate !== account.password_hash) return json({ message: "Email 或密碼不正確。" }, 401);
+  }
+  const token = bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+  const now = Date.now();
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM sessions WHERE expires_at <= ?").bind(now),
+    env.DB.prepare("INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)").bind(await sha256(token), account.id, now + 30 * 24 * 60 * 60 * 1000, now),
+  ]);
+  return json({ token, profile: { id: account.id, displayName: account.display_name, email: account.email, signedIn: true } }, mode === "register" ? 201 : 200);
+}
+
+async function logout(request: Request, env: Env) {
+  if (!env.DB) return json({ ok: true });
+  const authorization = request.headers.get("Authorization");
+  if (authorization?.startsWith("Bearer ")) await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await sha256(authorization.slice(7).trim())).run();
+  return json({ ok: true });
+}
+
 async function bootstrap(request: Request, env: Env) {
-  const user = identity(request);
+  const user = await identity(request, env.DB);
   if (!user || !env.DB) return json({ authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [] });
   await ensureSchema(env.DB);
   const row = await upsertPlayer(env.DB, user);
@@ -100,7 +197,7 @@ async function bootstrap(request: Request, env: Env) {
 }
 
 async function takeAction(request: Request, env: Env) {
-  const user = identity(request);
+  const user = await identity(request, env.DB);
   if (!user) return json({ message: "請先登入帳號，才能保存進度與加入多人世界。" }, 401);
   if (!env.DB) return json({ message: "遊戲資料庫尚未連接。" }, 503);
   await ensureSchema(env.DB);
@@ -178,9 +275,16 @@ async function takeAction(request: Request, env: Env) {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname === "/api/game" && request.method === "GET") return bootstrap(request, env);
-    if (url.pathname === "/api/game/action" && request.method === "POST") return takeAction(request, env);
-    if (url.pathname.startsWith("/api/")) return json({ message: "找不到 API。" }, 404);
-    return env.ASSETS.fetch(request);
+    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(request, env) });
+    let response: Response;
+    if (url.pathname === "/api/auth/register" && request.method === "POST") response = await auth(request, env, "register");
+    else if (url.pathname === "/api/auth/login" && request.method === "POST") response = await auth(request, env, "login");
+    else if (url.pathname === "/api/auth/logout" && request.method === "POST") response = await logout(request, env);
+    else if (url.pathname === "/api/game" && request.method === "GET") response = await bootstrap(request, env);
+    else if (url.pathname === "/api/game/action" && request.method === "POST") response = await takeAction(request, env);
+    else if (url.pathname.startsWith("/api/")) response = json({ message: "找不到 API。" }, 404);
+    else if (env.ASSETS) return env.ASSETS.fetch(request);
+    else response = json({ service: "Life Online API", ok: true });
+    return withCors(response, request, env);
   },
 } satisfies ExportedHandler<Env>;

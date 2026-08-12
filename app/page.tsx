@@ -65,6 +65,17 @@ const INITIAL_PLAYER: Player = {
   location: "home",
 };
 
+const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN as string | undefined)?.replace(/\/$/, "") || "";
+const TOKEN_KEY = "life-online-session";
+
+function apiHeaders(jsonBody = false) {
+  const token = window.localStorage.getItem(TOKEN_KEY);
+  return {
+    ...(jsonBody ? { "Content-Type": "application/json" } : { Accept: "application/json" }),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
 const locations: Array<{ id: LocationId; emoji: string; name: string; caption: string }> = [
   { id: "home", emoji: "⌂", name: "溫暖小屋", caption: "休息、恢復體力，準備迎接新的一天" },
   { id: "business", emoji: "▦", name: "商業區", caption: "用時間換取收入，累積職涯經驗" },
@@ -146,13 +157,16 @@ export default function Home() {
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authError, setAuthError] = useState("");
   const [notice, setNotice] = useState("正在連接人生世界……");
   const gameClock = useMemo(() => clock(player.elapsedMinutes), [player.elapsedMinutes]);
   const currentLocation = locations.find((item) => item.id === player.location)!;
 
   const loadWorld = useCallback(async (quiet = false) => {
     try {
-      const response = await fetch("/api/game", { headers: { Accept: "application/json" } });
+      const response = await fetch(`${API_ORIGIN}/api/game`, { headers: apiHeaders() });
       if (!response.ok) throw new Error("世界暫時無法連線");
       const data = await response.json() as Bootstrap;
       if (data.authenticated || !quiet) {
@@ -193,9 +207,9 @@ export default function Home() {
       return;
     }
     try {
-      const response = await fetch("/api/game/action", {
+      const response = await fetch(`${API_ORIGIN}/api/game/action`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: apiHeaders(true),
         body: JSON.stringify({ action, ...payload }),
       });
       const data = await response.json() as { player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; message?: string };
@@ -211,6 +225,31 @@ export default function Home() {
     }
   }
 
+  async function submitAuth(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true); setAuthError("");
+    const form = new FormData(event.currentTarget);
+    try {
+      const response = await fetch(`${API_ORIGIN}/api/auth/${authMode}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: form.get("email"), password: form.get("password"), displayName: form.get("displayName") }),
+      });
+      const data = await response.json() as { token?: string; message?: string };
+      if (!response.ok || !data.token) throw new Error(data.message || "登入失敗。");
+      window.localStorage.setItem(TOKEN_KEY, data.token);
+      setAuthOpen(false);
+      await loadWorld();
+    } catch (error) { setAuthError(error instanceof Error ? error.message : "登入失敗。"); }
+    finally { setBusy(false); }
+  }
+
+  async function logout() {
+    try { await fetch(`${API_ORIGIN}/api/auth/logout`, { method: "POST", headers: apiHeaders() }); } catch { /* local logout still works */ }
+    window.localStorage.removeItem(TOKEN_KEY);
+    setProfile(null); setOnline([]); setFeed([]); setPlayer(INITIAL_PLAYER);
+    setNotice("已登出；目前為訪客試玩模式。");
+  }
+
   return (
     <main className="game-shell">
       <header className="topbar">
@@ -222,9 +261,9 @@ export default function Home() {
         <div className="account-area">
           <span className={`connection-dot ${profile ? "connected" : ""}`} />
           {profile ? (
-            <><div><strong>{profile.displayName}</strong><small>進度已儲存 · 大廳 01</small></div><a href="/signout-with-chatgpt?return_to=/">登出</a></>
+            <><div><strong>{profile.displayName}</strong><small>進度已儲存 · 大廳 01</small></div><button className="account-button" onClick={() => void logout()}>登出</button></>
           ) : (
-            <><div><strong>訪客試玩</strong><small>進度不會儲存</small></div><a className="login-link" href="/signin-with-chatgpt?return_to=/">登入帳號</a></>
+            <><div><strong>訪客試玩</strong><small>進度不會儲存</small></div><button className="account-button login-link" onClick={() => { setAuthMode("login"); setAuthOpen(true); }}>登入帳號</button></>
           )}
         </div>
       </header>
@@ -276,6 +315,20 @@ export default function Home() {
           <div className="next-goal"><span>下一個里程碑</span><strong>程式設計 Lv.2</strong><div><i style={{ width: `${levelProgress(player.programmingExp)}%` }} /></div><small>{player.programmingExp} / 100 EXP</small></div>
         </aside>
       </div>
+      {authOpen && <div className="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="auth-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setAuthOpen(false); }}>
+        <form className="auth-card" onSubmit={submitAuth}>
+          <button className="auth-close" type="button" aria-label="關閉" onClick={() => setAuthOpen(false)}>×</button>
+          <span className="panel-kicker">LIFE ONLINE ACCOUNT</span>
+          <h2 id="auth-title">{authMode === "login" ? "歡迎回來" : "建立人生帳號"}</h2>
+          <p>{authMode === "login" ? "登入後繼續上次的進度，並加入多人城市。" : "免費註冊，進度將安全保存在雲端。"}</p>
+          {authMode === "register" && <label>玩家暱稱<input name="displayName" minLength={2} maxLength={24} required autoComplete="nickname" /></label>}
+          <label>Email<input name="email" type="email" required autoComplete="email" /></label>
+          <label>密碼<input name="password" type="password" minLength={8} maxLength={128} required autoComplete={authMode === "login" ? "current-password" : "new-password"} /></label>
+          {authError && <p className="auth-error" role="alert">{authError}</p>}
+          <button className="auth-submit" disabled={busy}>{busy ? "連線中…" : authMode === "login" ? "登入並繼續" : "註冊並開始"}</button>
+          <button className="auth-switch" type="button" onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setAuthError(""); }}>{authMode === "login" ? "還沒有帳號？免費註冊" : "已經有帳號？回到登入"}</button>
+        </form>
+      </div>}
     </main>
   );
 }

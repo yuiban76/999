@@ -10,8 +10,8 @@ test("creates a complete full-stack game build", async () => {
 
   await access(htmlUrl);
   await access(new URL("favicon.svg", output));
-  await access(new URL("../life_online_game/index.js", output));
-  await access(new URL("../life_online_game/wrangler.json", output));
+  await access(new URL("../life_online_api/index.js", output));
+  await access(new URL("../life_online_api/wrangler.json", output));
   await access(new URL("../server/index.js", output));
 
   const html = await readFile(htmlUrl, "utf8");

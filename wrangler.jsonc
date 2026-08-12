@@ -1,11 +1,16 @@
 {
-  "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "life-online-game",
-  "compatibility_date": "2026-08-12",
-  "main": "./worker/index.ts",
-  "assets": {
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
-  }
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "life-online-api",
+	"compatibility_date": "2026-08-12",
+	"main": "./worker/index.ts",
+	"vars": {
+		"FRONTEND_ORIGIN": "https://yuiban76.github.io"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "life-online-db",
+			"database_id": "f5903692-a1e1-4b03-a759-8b3d9cd851f7"
+		}
+	]
 }

@@ -15,6 +15,14 @@ interface D1Database {
   batch<T = Record<string, unknown>>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]>;
 }
 
+interface ImportMetaEnv {
+  readonly VITE_API_ORIGIN?: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
+
 interface Fetcher {
   fetch(request: Request): Promise<Response>;
 }
