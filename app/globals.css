@@ -253,6 +253,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
   .prototype-badge i { margin: 0; }
   .account-area > div { display: none; }
   .account-area a, .account-button { white-space: nowrap; }
+  .avatar-upload { opacity: 1; }
   .marquee { grid-template-columns: auto 1fr; padding-right: 14px; }
   .weather { display: none; }
   .game-grid { display: block; }
