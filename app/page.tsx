@@ -780,7 +780,7 @@ function CasinoTable({ state, signedIn, busy, maxBet, onAction }: { state: Casin
     </div> : roundPlaying ? <div className="casino-round-actions">
       {playing ? <div className="casino-controls"><button onClick={() => onAction("hit")} disabled={busy}>補牌</button><button onClick={() => onAction("stand")} disabled={busy}>停牌</button><button className="leave" onClick={() => onAction("leave")} disabled={busy}>離桌</button></div> : active ? <><p className="casino-message">{state.hand?.status === "seated" ? "你本局未下注，正在原座位觀賽。" : "你已完成行動，正在等待其他玩家。"}</p><button className="table-leave" onClick={() => onAction("leave")} disabled={busy}>離開牌桌</button></> : <p className="casino-message">目前正在觀賽，下一局可選擇空位加入。</p>}
     </div> : state.hand?.status === "seated" ? <><BetForm bet={bet} setBet={setBet} maxBet={maxBet} busy={busy} submitBet={submitBet} onLeave={() => onAction("leave")} />{state.hand.result && <p className="casino-result">{state.hand.result}</p>}</> : <p className="casino-message">請選擇上方任一空位加入遊戲。</p>}
-    <footer>先選座位再自訂下注 · 第一筆下注後等待 5 秒 · 未下注可留座觀賽或自由離場 · 全桌同步顯示手牌</footer>
+    <footer>先選座位再自訂下注 · 第一筆下注後等待 5 秒 · 連續 6 個遊戲小時未下注會自動離座 · 全桌同步顯示手牌</footer>
   </section>;
 }
 
@@ -813,7 +813,7 @@ function PokerTable({ state, signedIn, busy, maxBet, onAction }: { state: PokerS
     {!signedIn ? <p className="casino-message">登入後才能加入五人德州撲克牌桌。</p> : playing ? <div className="casino-round-actions">
       {state.hand?.isTurn ? <div className="casino-controls"><button onClick={() => onAction(callAmount ? "call" : "check")} disabled={busy || callAmount > maxBet}>{callAmount ? `跟注 NT$${formatMoney(callAmount)}` : "過牌"}</button><button onClick={() => onAction("raise", { amount: Number(raiseBy) })} disabled={busy || callAmount + Number(raiseBy) > maxBet}>加注</button><input aria-label="加注金額" type="number" min="10" step="10" value={raiseBy} onChange={(event) => setRaiseBy(event.target.value)} /><button className="leave" onClick={() => onAction("fold")} disabled={busy}>棄牌</button></div> : <p className="casino-message">{state.hand?.status === "folded" ? "你本局已棄牌，可繼續觀賽。" : `等待 ${state.turnSeat} 號玩家行動。`}</p>}
     </div> : state.hand?.status === "seated" ? <div className="custom-bet"><p className="casino-message">按下準備才會加入下一局；未準備的玩家不會被收取盲注。</p><button onClick={() => onAction("ready")} disabled={busy}>準備參加下一局</button><button className="leave-seat" onClick={() => onAction("leave")} disabled={busy}>離開牌桌</button>{state.hand.result && <p className="casino-result">{state.hand.result}</p>}</div> : state.hand?.status === "ready" ? <div className="custom-bet"><label>已準備（目前 {readyCount} 人）<small>開局者設定大盲，小盲為一半</small></label><div><span>NT$</span><input type="number" min="10" max={Math.min(maxBet, 100000)} step="10" value={blind} onChange={(event) => setBlind(event.target.value)} /><button onClick={() => onAction("start", { bet: Number(blind) })} disabled={busy || readyCount < 2}>開始牌局</button></div><button className="leave-seat" onClick={() => onAction("leave")} disabled={busy}>取消並離桌</button></div> : <p className="casino-message">請選擇空位加入；至少兩名玩家準備後才能開局。</p>}
-    <footer>標準 52 張牌 · 準備制 · 小盲／大盲 · 翻牌前、翻牌、轉牌、河牌 · 輪流過牌、跟注、加注或棄牌 · 勝者取得獎池</footer>
+    <footer>標準 52 張牌 · 準備制 · 連續 6 個遊戲小時未下注會自動離座 · 輪流過牌、跟注、加注或棄牌 · 勝者取得獎池</footer>
   </section>;
 }
 

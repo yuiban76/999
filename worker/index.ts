@@ -281,6 +281,13 @@ function handScore(cards: string[]) {
 const parseCards = (value: string) => { try { return JSON.parse(value) as string[]; } catch { return []; } };
 
 const ACTIVE_CASINO_STATUSES = "('seated','waiting','playing','stood','settling')";
+// The shared clock advances one game hour per real minute, so six game hours are six real minutes.
+const IDLE_CASINO_SEAT_TIMEOUT_MS = 6 * 60 * 1000;
+
+async function expireIdleBlackjackSeats(db: D1Database) {
+  await db.prepare("UPDATE casino_hands SET status='expired', result='超過 6 個遊戲小時未下注，已自動離開座位。', seat_no=NULL, reveal_at=0 WHERE status='seated' AND updated_at<?")
+    .bind(Date.now() - IDLE_CASINO_SEAT_TIMEOUT_MS).run();
+}
 
 async function revealReadyCasinoRound(db: D1Database) {
   const now = Date.now();
@@ -300,6 +307,7 @@ async function revealReadyCasinoRound(db: D1Database) {
 }
 
 async function casinoState(db: D1Database, userId: string) {
+  await expireIdleBlackjackSeats(db);
   await revealReadyCasinoRound(db);
   const cutoff = Date.now() - 5 * 60 * 1000;
   await db.prepare("UPDATE casino_hands SET status='expired', seat_no=NULL, reveal_at=0 WHERE status IN ('waiting','playing','stood') AND updated_at<?").bind(cutoff).run();
@@ -377,6 +385,7 @@ async function casinoAction(request: Request, env: Env) {
   const player = await upsertPlayer(env.DB, user);
   if (!player) return json({ message: "找不到玩家資料。" }, 404);
   if (player.location !== "casino") return json({ message: "請先前往幸運賭場。" }, 400);
+  await expireIdleBlackjackSeats(env.DB);
   let body: { action?: string; bet?: number; seatNo?: number };
   try { body = await request.json(); } catch { return json({ message: "牌桌資料格式錯誤。" }, 400); }
   if (body.action !== "leave" && player.action_available_at > Date.now()) return json({ message: actionWaitMessage(player) }, 409);
@@ -527,6 +536,11 @@ async function pokerTable(db: D1Database) {
   return db.prepare("SELECT * FROM poker_table_state WHERE id='table-01'").first<PokerTableRow>();
 }
 
+async function expireIdlePokerSeats(db: D1Database) {
+  await db.prepare("UPDATE poker_hands SET status='expired', result='超過 6 個遊戲小時未下注，已自動離開座位。', seat_no=NULL, reveal_at=0 WHERE status IN ('seated','ready') AND updated_at<?")
+    .bind(Date.now() - IDLE_CASINO_SEAT_TIMEOUT_MS).run();
+}
+
 const nextPokerSeat = (players: PokerRow[], after: number) => players.filter((row) => row.status === "playing" && row.seat_no !== null).sort((a, b) => a.seat_no! - b.seat_no!).find((row) => row.seat_no! > after)?.seat_no
   ?? players.filter((row) => row.status === "playing" && row.seat_no !== null).sort((a, b) => a.seat_no! - b.seat_no!)[0]?.seat_no ?? 0;
 
@@ -574,6 +588,7 @@ async function advancePoker(db: D1Database, players: PokerRow[], table: PokerTab
 }
 
 async function pokerState(db: D1Database, userId: string) {
+  await expireIdlePokerSeats(db);
   const [seats, own, table] = await Promise.all([
     db.prepare(`SELECT * FROM poker_hands WHERE status IN ${POKER_ACTIVE_STATUSES} AND seat_no IS NOT NULL ORDER BY seat_no LIMIT 5`).all<PokerRow>(),
     db.prepare("SELECT * FROM poker_hands WHERE user_id=?").bind(userId).first<PokerRow>(), pokerTable(db),
@@ -590,6 +605,7 @@ async function pokerAction(request: Request, env: Env) {
   await ensureSchema(env.DB);
   const player = await upsertPlayer(env.DB, user);
   if (!player || player.location !== "casino") return json({ message: "請先前往幸運賭場。" }, 400);
+  await expireIdlePokerSeats(env.DB);
   let body: { action?: string; bet?: number; seatNo?: number; amount?: number };
   try { body = await request.json(); } catch { return json({ message: "牌桌資料格式錯誤。" }, 400); }
   if (body.action !== "leave" && player.action_available_at > Date.now()) return json({ message: actionWaitMessage(player) }, 409);
