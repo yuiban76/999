@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/stage-sites-build.mjs",
     "preview": "vite preview",
     "test": "npm run build && node --test tests/github-pages-build.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",

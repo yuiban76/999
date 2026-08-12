@@ -4,12 +4,15 @@ import test from "node:test";
 
 const root = new URL("../", import.meta.url);
 
-test("creates a complete static GitHub Pages build", async () => {
-  const output = new URL("dist/", root);
+test("creates a complete full-stack game build", async () => {
+  const output = new URL("dist/client/", root);
   const htmlUrl = new URL("index.html", output);
 
   await access(htmlUrl);
   await access(new URL("favicon.svg", output));
+  await access(new URL("../life_online_game/index.js", output));
+  await access(new URL("../life_online_game/wrangler.json", output));
+  await access(new URL("../server/index.js", output));
 
   const html = await readFile(htmlUrl, "utf8");
   const assets = await readdir(new URL("assets/", output));

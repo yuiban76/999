@@ -81,6 +81,14 @@ button { color: inherit; }
 
 .prototype-badge { justify-self: end; font-size: 11px; letter-spacing: .09em; color: #d9ddd5; }
 .prototype-badge i { display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: #8bc492; box-shadow: 0 0 0 4px rgba(139,196,146,.12); }
+.account-area { justify-self: end; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.account-area > div { display: grid; text-align: right; }
+.account-area strong { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.account-area small { margin-top: 3px; color: #aeb5ad; font-size: 8px; letter-spacing: .04em; }
+.account-area a { padding: 7px 9px; border: 1px solid #687069; color: #dfe3dc; text-decoration: none; font-size: 9px; }
+.account-area .login-link { border-color: #ff8050; background: var(--orange); color: white; font-weight: 800; }
+.connection-dot { width: 7px; height: 7px; border-radius: 50%; background: #848984; box-shadow: 0 0 0 4px rgba(132,137,132,.12); }
+.connection-dot.connected { background: #8bc492; box-shadow: 0 0 0 4px rgba(139,196,146,.12); }
 
 .marquee {
   min-height: 40px;
@@ -163,11 +171,24 @@ button { color: inherit; }
 .action-card button { width: 100%; display: flex; justify-content: space-between; margin-top: auto; padding: 9px 11px; border: 0; background: var(--ink); color: white; cursor: pointer; font-size: 10px; font-weight: 800; transition: .18s ease; }
 .action-card button:hover { background: var(--orange); transform: translateY(-1px); }
 .action-card button:active { transform: translateY(1px); }
+.action-card button:disabled, .location-strip button:disabled, .world-footer button:disabled { cursor: wait; opacity: .58; }
 
 .world-footer { min-height: 43px; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; border-top: 1px solid var(--line); color: var(--muted); font: 9px Consolas, monospace; }
 .world-footer button { border: 0; padding: 6px; background: transparent; color: var(--muted); text-decoration: underline; cursor: pointer; font-size: 10px; }
 
 .story-title { margin-bottom: 18px; }
+.online-summary { display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.online-summary strong { font-size: 11px; }
+.online-summary strong i { display: inline-block; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: #579264; box-shadow: 0 0 0 3px rgba(87,146,100,.14); }
+.online-summary span { color: var(--muted); font: 8px Consolas, monospace; }
+.online-list { list-style: none; margin: 0; padding: 4px 0 14px; }
+.online-list li { display: flex; align-items: center; gap: 9px; padding: 9px 0; border-bottom: 1px solid rgba(201,197,183,.65); }
+.online-list .empty-online { color: var(--muted); font-size: 10px; line-height: 1.6; }
+.mini-avatar { flex: 0 0 29px; width: 29px; height: 29px; display: grid; place-items: center; border: 1px solid #84897f; border-radius: 50%; background: #f8f5ec; font: 700 11px Georgia, serif; }
+.online-list li div { display: grid; min-width: 0; }
+.online-list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.online-list small { margin-top: 3px; color: var(--muted); font-size: 8px; }
+.feed-heading { margin-top: 4px; }
 .day-stamp { display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
 .day-stamp strong { color: var(--orange); font: 700 19px Georgia, serif; }
 .day-stamp span { color: var(--muted); font: 9px Consolas, monospace; }
@@ -204,6 +225,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
   .world-time { grid-column: 1 / -1; grid-row: 2; justify-content: center; padding-top: 12px; border-top: 1px solid #4d524d; }
   .prototype-badge { font-size: 0; }
   .prototype-badge i { margin: 0; }
+  .account-area > div { display: none; }
+  .account-area a { white-space: nowrap; }
   .marquee { grid-template-columns: auto 1fr; padding-right: 14px; }
   .weather { display: none; }
   .game-grid { display: block; }

@@ -2,18 +2,10 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "人生 Online｜把日子過成自己的故事",
-  description: "一款文字人生模擬遊戲。工作、學習、生活，在同一座城市寫下不同的人生。",
+  title: "人生 Online｜多人生活模擬遊戲",
+  description: "登入保存人生進度，和其他玩家一起探索城市、工作、學習與成長。",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html lang="zh-Hant">
-      <body>{children}</body>
-    </html>
-  );
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  return <html lang="zh-Hant"><body>{children}</body></html>;
 }

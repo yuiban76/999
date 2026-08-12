@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-type StatKey = "energy" | "health" | "mood" | "hunger";
 type LocationId = "home" | "business" | "shopping" | "park" | "school";
+type StatKey = "energy" | "health" | "mood" | "hunger";
 
 type Player = {
   cash: number;
@@ -15,20 +15,43 @@ type Player = {
   programmingExp: number;
   fitnessExp: number;
   workExp: number;
+  elapsedMinutes: number;
+  location: LocationId;
+};
+
+type Profile = {
+  id: string;
+  displayName: string;
+  email: string;
+  signedIn: boolean;
+};
+
+type OnlinePlayer = {
+  id: string;
+  displayName: string;
+  location: LocationId;
+  updatedAt: number;
 };
 
 type FeedItem = {
-  id: number;
+  id: string;
   time: string;
   title: string;
   detail: string;
   tone: "good" | "neutral" | "warn";
+  playerName?: string;
 };
 
-const INITIAL_MINUTES = 7 * 60 + 30;
-const GAME_START_DAY = 17;
+type Bootstrap = {
+  authenticated: boolean;
+  profile: Profile | null;
+  player: Player;
+  room: { id: string; name: string };
+  online: OnlinePlayer[];
+  feed: FeedItem[];
+};
 
-const initialPlayer: Player = {
+const INITIAL_PLAYER: Player = {
   cash: 10000,
   energy: 100,
   health: 100,
@@ -38,235 +61,154 @@ const initialPlayer: Player = {
   programmingExp: 0,
   fitnessExp: 0,
   workExp: 0,
+  elapsedMinutes: 450,
+  location: "home",
 };
 
-const locations: Array<{
-  id: LocationId;
-  emoji: string;
-  name: string;
-  caption: string;
-}> = [
-  { id: "home", emoji: "🏠", name: "住宅區", caption: "休息與整理生活" },
-  { id: "business", emoji: "🏢", name: "商業區", caption: "努力換取報酬" },
-  { id: "shopping", emoji: "🏪", name: "商店街", caption: "填飽肚子再出發" },
-  { id: "park", emoji: "🌳", name: "城市公園", caption: "流汗，也讓心透氣" },
-  { id: "school", emoji: "🏫", name: "社區學院", caption: "為下一份工作準備" },
+const locations: Array<{ id: LocationId; emoji: string; name: string; caption: string }> = [
+  { id: "home", emoji: "⌂", name: "溫暖小屋", caption: "休息、恢復體力，準備迎接新的一天" },
+  { id: "business", emoji: "▦", name: "商業區", caption: "用時間換取收入，累積職涯經驗" },
+  { id: "shopping", emoji: "◇", name: "購物街", caption: "補充飽足，偶爾也犒賞一下自己" },
+  { id: "park", emoji: "♧", name: "城市公園", caption: "鍛鍊身體，找回健康與好心情" },
+  { id: "school", emoji: "▤", name: "未來學院", caption: "投資自己，讓選擇越來越多" },
 ];
 
 const statMeta: Array<{ key: StatKey; icon: string; label: string }> = [
-  { key: "health", icon: "♥", label: "健康" },
-  { key: "energy", icon: "ϟ", label: "體力" },
-  { key: "mood", icon: "☻", label: "心情" },
-  { key: "hunger", icon: "●", label: "飽食" },
+  { key: "health", icon: "+", label: "健康" },
+  { key: "energy", icon: "↯", label: "體力" },
+  { key: "mood", icon: "○", label: "心情" },
+  { key: "hunger", icon: "△", label: "飽足" },
 ];
 
-const clamp = (value: number) => Math.max(0, Math.min(100, value));
-
-function formatMoney(value: number) {
-  return new Intl.NumberFormat("zh-TW").format(value);
-}
-
-function getLevel(exp: number) {
-  if (exp >= 900) return 5;
-  if (exp >= 500) return 4;
-  if (exp >= 250) return 3;
-  if (exp >= 100) return 2;
-  return 1;
-}
-
-function getLevelProgress(exp: number) {
+const locationName = (id: LocationId) => locations.find((item) => item.id === id)?.name ?? id;
+const formatMoney = (value: number) => new Intl.NumberFormat("zh-TW").format(value);
+const level = (exp: number) => exp >= 900 ? 5 : exp >= 500 ? 4 : exp >= 250 ? 3 : exp >= 100 ? 2 : 1;
+const levelProgress = (exp: number) => {
   const thresholds = [0, 100, 250, 500, 900, 1500];
-  const level = getLevel(exp);
-  const start = thresholds[level - 1];
-  const end = thresholds[level];
-  return Math.min(100, ((exp - start) / (end - start)) * 100);
+  const current = level(exp);
+  return Math.min(100, ((exp - thresholds[current - 1]) / (thresholds[current] - thresholds[current - 1])) * 100);
+};
+
+function clock(minutes: number) {
+  const totalDays = Math.floor(minutes / 1440);
+  const minuteOfDay = minutes % 1440;
+  const date = new Date(2052, 2, 17 + totalDays);
+  const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
+  return {
+    date: `${date.getFullYear()} / ${String(date.getMonth() + 1).padStart(2, "0")} / ${String(date.getDate()).padStart(2, "0")}`,
+    weekday: `星期${weekdays[date.getDay()]}`,
+    time: `${String(Math.floor(minuteOfDay / 60)).padStart(2, "0")}:${String(minuteOfDay % 60).padStart(2, "0")}`,
+  };
+}
+
+function guestAction(current: Player, action: string, payload: Record<string, unknown>) {
+  const next = { ...current };
+  let title = "完成行動";
+  let message = "行動完成。";
+  let minutes = 0;
+  const fail = (text: string) => ({ error: text });
+  if (action === "move") {
+    const target = payload.location as LocationId;
+    if (!locations.some((item) => item.id === target) || target === next.location) return fail("你已經在這裡了。");
+    next.location = target; next.energy = Math.max(0, next.energy - 1); next.hunger = Math.max(0, next.hunger - 1); minutes = 10; title = "前往新地點"; message = `花了 10 分鐘抵達${locationName(target)}。`;
+  } else if (action === "work") {
+    const hours = Number(payload.hours);
+    if (next.location !== "business" || ![1, 4, 8].includes(hours)) return fail("請先前往商業區。");
+    if (next.energy < hours * 5) return fail("體力不足，先回家休息吧。");
+    next.cash += hours * 180; next.energy = Math.max(0, next.energy - hours * 5); next.mood = Math.max(0, next.mood - Math.ceil(hours * .9)); next.hunger = Math.max(0, next.hunger - hours * 2); next.workExp += hours * 4; minutes = hours * 60; title = `工作 ${hours} 小時`; message = `完成工作，收入 +NT$${hours * 180}。`;
+  } else if (action === "study") {
+    if (next.location !== "school") return fail("請先前往未來學院。");
+    if (next.cash < 500 || next.energy < 10) return fail(next.cash < 500 ? "學費不足。" : "體力不足。");
+    next.cash -= 500; next.energy -= 10; next.mood = Math.max(0, next.mood - 3); next.hunger = Math.max(0, next.hunger - 4); next.programmingExp += 25; next.intelligenceExp += 5; minutes = 120; title = "完成程式設計課"; message = "程式設計 EXP +25、知識 EXP +5。";
+  } else if (action === "eat") {
+    if (next.location !== "shopping") return fail("請先前往購物街。");
+    const meal = payload.kind === "rice" ? { name: "飯糰", price: 45, hunger: 20, mood: 1 } : { name: "便當", price: 100, hunger: 45, mood: 3 };
+    if (next.cash < meal.price) return fail("現金不足。");
+    next.cash -= meal.price; next.hunger = Math.min(100, next.hunger + meal.hunger); next.mood = Math.min(100, next.mood + meal.mood); minutes = 20; title = `享用${meal.name}`; message = `${meal.name}讓飽足 +${meal.hunger}。`;
+  } else if (action === "sleep") {
+    if (next.location !== "home") return fail("請先回到溫暖小屋。");
+    next.energy = 100; next.health = Math.min(100, next.health + 5); next.mood = Math.min(100, next.mood + 10); next.hunger = Math.max(0, next.hunger - 12); minutes = 480; title = "好好睡了一覺"; message = "體力完全恢復，健康 +5、心情 +10。";
+  } else if (action === "exercise") {
+    if (next.location !== "park") return fail("請先前往城市公園。");
+    if (next.energy < 15) return fail("體力不足，今天先休息吧。");
+    next.energy -= 15; next.health = Math.min(100, next.health + 4); next.mood = Math.min(100, next.mood + 8); next.hunger = Math.max(0, next.hunger - 5); next.fitnessExp += 15; minutes = 60; title = "完成一小時運動"; message = "健康 +4、心情 +8、體能 EXP +15。";
+  } else if (action === "reset") {
+    return { player: { ...INITIAL_PLAYER }, title: "重新開始人生", message: "新的人生已開始，所有試玩進度回到起點。" };
+  } else return fail("未知的行動。");
+  next.elapsedMinutes += minutes;
+  return { player: next, title, message };
 }
 
 export default function Home() {
-  const [player, setPlayer] = useState(initialPlayer);
-  const [location, setLocation] = useState<LocationId>("home");
-  const [elapsedMinutes, setElapsedMinutes] = useState(INITIAL_MINUTES);
-  const [notice, setNotice] = useState("新的一天開始了。你想把今天過成什麼樣子？");
-  const [feed, setFeed] = useState<FeedItem[]>([
-    {
-      id: 1,
-      time: "07:30",
-      title: "抵達新手出租屋",
-      detail: "城市醒來了，你的人生也正式開始。",
-      tone: "neutral",
-    },
-  ]);
+  const [player, setPlayer] = useState<Player>(INITIAL_PLAYER);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [online, setOnline] = useState<OnlinePlayer[]>([]);
+  const [feed, setFeed] = useState<FeedItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("正在連接人生世界……");
+  const gameClock = useMemo(() => clock(player.elapsedMinutes), [player.elapsedMinutes]);
+  const currentLocation = locations.find((item) => item.id === player.location)!;
 
-  const gameClock = useMemo(() => {
-    const totalDays = Math.floor(elapsedMinutes / 1440);
-    const minuteOfDay = elapsedMinutes % 1440;
-    const hour = Math.floor(minuteOfDay / 60);
-    const minute = minuteOfDay % 60;
-    const date = new Date(2052, 2, GAME_START_DAY + totalDays);
-    const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
-    return {
-      date: `${date.getFullYear()} / ${String(date.getMonth() + 1).padStart(2, "0")} / ${String(date.getDate()).padStart(2, "0")}`,
-      weekday: `星期${weekdays[date.getDay()]}`,
-      time: `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`,
-    };
-  }, [elapsedMinutes]);
+  const loadWorld = useCallback(async (quiet = false) => {
+    try {
+      const response = await fetch("/api/game", { headers: { Accept: "application/json" } });
+      if (!response.ok) throw new Error("世界暫時無法連線");
+      const data = await response.json() as Bootstrap;
+      if (data.authenticated || !quiet) {
+        setPlayer(data.player);
+        setProfile(data.profile);
+      }
+      setOnline(data.online);
+      setFeed(data.feed);
+      if (!quiet) {
+        setNotice(data.authenticated ? `歡迎回來，${data.profile?.displayName}。進度已同步。` : "目前是訪客試玩；登入後即可永久保存並加入多人世界。");
+      }
+    } catch {
+      if (!quiet) setNotice("目前使用離線試玩模式；連線恢復後可重新同步。");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const currentLocation = locations.find((item) => item.id === location)!;
+  useEffect(() => {
+    void loadWorld();
+    const timer = window.setInterval(() => void loadWorld(true), 5000);
+    return () => window.clearInterval(timer);
+  }, [loadWorld]);
 
-  function commit(
-    minutes: number,
-    title: string,
-    detail: string,
-    tone: FeedItem["tone"],
-    update: (current: Player) => Player,
-  ) {
-    const nextMinutes = elapsedMinutes + minutes;
-    const minuteOfDay = nextMinutes % 1440;
-    const time = `${String(Math.floor(minuteOfDay / 60)).padStart(2, "0")}:${String(minuteOfDay % 60).padStart(2, "0")}`;
-    setPlayer((current) => update(current));
-    setElapsedMinutes(nextMinutes);
-    setNotice(detail);
-    setFeed((current) => [
-      { id: Date.now(), time, title, detail, tone },
-      ...current,
-    ].slice(0, 6));
-  }
-
-  function moveTo(target: LocationId) {
-    if (target === location) return;
-    const destination = locations.find((item) => item.id === target)!;
-    setLocation(target);
-    commit(
-      10,
-      `前往${destination.name}`,
-      `你花了 10 分鐘抵達${destination.name}。`,
-      "neutral",
-      (current) => ({
-        ...current,
-        energy: clamp(current.energy - 1),
-        hunger: clamp(current.hunger - 1),
-      }),
-    );
-  }
-
-  function work(hours: 1 | 4 | 8) {
-    const energyCost = hours * 5;
-    if (player.energy < energyCost) {
-      setNotice("體力不足，先回家休息再工作吧。");
+  async function act(action: string, payload: Record<string, unknown> = {}) {
+    if (busy) return;
+    setBusy(true);
+    if (!profile) {
+      const result = guestAction(player, action, payload);
+      if ("error" in result) setNotice(result.error || "行動失敗。");
+      else if (result.player) {
+        setPlayer(result.player);
+        setNotice(`${result.message}（訪客進度不會儲存）`);
+        const time = clock(result.player.elapsedMinutes).time;
+        setFeed((items) => [{ id: crypto.randomUUID(), time, title: result.title || "完成行動", detail: result.message || "", tone: "neutral" as const }, ...items].slice(0, 6));
+      }
+      setBusy(false);
       return;
     }
-    const salary = hours * 180;
-    commit(
-      hours * 60,
-      `超商排班 ${hours} 小時`,
-      `工作完成，薪資 +$${formatMoney(salary)}，工作經驗 +${hours * 4}。`,
-      "good",
-      (current) => ({
-        ...current,
-        cash: current.cash + salary,
-        energy: clamp(current.energy - energyCost),
-        mood: clamp(current.mood - Math.ceil(hours * 0.9)),
-        hunger: clamp(current.hunger - hours * 2),
-        workExp: current.workExp + hours * 4,
-      }),
-    );
-  }
-
-  function study() {
-    if (player.cash < 500 || player.energy < 10) {
-      setNotice(player.cash < 500 ? "課程費用不足。" : "體力不足，今天很難專心上課。");
-      return;
+    try {
+      const response = await fetch("/api/game/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...payload }),
+      });
+      const data = await response.json() as { player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; message?: string };
+      if (!response.ok || !data.player) throw new Error(data.message || "行動失敗");
+      setPlayer(data.player);
+      if (data.online) setOnline(data.online);
+      if (data.feed) setFeed(data.feed);
+      setNotice(data.message || "行動完成");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "行動失敗，請稍後再試。");
+    } finally {
+      setBusy(false);
     }
-    commit(
-      120,
-      "基礎程式設計",
-      "你完成了兩小時課程：程式 EXP +25、智力 EXP +5。",
-      "good",
-      (current) => ({
-        ...current,
-        cash: current.cash - 500,
-        energy: clamp(current.energy - 10),
-        mood: clamp(current.mood - 3),
-        hunger: clamp(current.hunger - 4),
-        programmingExp: current.programmingExp + 25,
-        intelligenceExp: current.intelligenceExp + 5,
-      }),
-    );
-  }
-
-  function eat(kind: "rice" | "bento") {
-    const meal = kind === "rice"
-      ? { name: "飯糰", price: 45, hunger: 20 }
-      : { name: "暖心便當", price: 100, hunger: 45 };
-    if (player.cash < meal.price) {
-      setNotice("現金不足，無法購買這份餐點。");
-      return;
-    }
-    commit(
-      20,
-      `享用${meal.name}`,
-      `${meal.name}讓飽食 +${meal.hunger}。有好好吃飯，也是一種前進。`,
-      "good",
-      (current) => ({
-        ...current,
-        cash: current.cash - meal.price,
-        hunger: clamp(current.hunger + meal.hunger),
-        mood: clamp(current.mood + (kind === "bento" ? 3 : 1)),
-      }),
-    );
-  }
-
-  function sleep() {
-    commit(
-      480,
-      "好好睡了一覺",
-      "八小時過去，體力完全恢復，健康與心情也變好了。",
-      "good",
-      (current) => ({
-        ...current,
-        energy: 100,
-        health: clamp(current.health + 5),
-        mood: clamp(current.mood + 10),
-        hunger: clamp(current.hunger - 12),
-      }),
-    );
-  }
-
-  function exercise() {
-    if (player.energy < 15) {
-      setNotice("體力不足，現在運動可能會受傷。");
-      return;
-    }
-    commit(
-      60,
-      "公園慢跑",
-      "你繞著公園跑了幾圈：健康 +4、心情 +8、體能 EXP +15。",
-      "good",
-      (current) => ({
-        ...current,
-        energy: clamp(current.energy - 15),
-        health: clamp(current.health + 4),
-        mood: clamp(current.mood + 8),
-        hunger: clamp(current.hunger - 5),
-        fitnessExp: current.fitnessExp + 15,
-      }),
-    );
-  }
-
-  function resetLife() {
-    setPlayer(initialPlayer);
-    setLocation("home");
-    setElapsedMinutes(INITIAL_MINUTES);
-    setNotice("人生重新開始。這次，要走哪一條路？");
-    setFeed([
-      {
-        id: Date.now(),
-        time: "07:30",
-        title: "重新開始",
-        detail: "新的城市、全新的選擇。",
-        tone: "neutral",
-      },
-    ]);
   }
 
   return (
@@ -274,156 +216,64 @@ export default function Home() {
       <header className="topbar">
         <a className="brand" href="#main-game" aria-label="人生 Online 首頁">
           <span className="brand-mark">人</span>
-          <span>
-            <strong>人生 ONLINE</strong>
-            <small>LIFE, ONE CHOICE AT A TIME.</small>
-          </span>
+          <span><strong>人生 ONLINE</strong><small>LIFE, ONE CHOICE AT A TIME.</small></span>
         </a>
-        <div className="world-time" aria-label="目前遊戲時間">
-          <span>{gameClock.date}</span>
-          <strong>{gameClock.time}</strong>
-          <span>{gameClock.weekday}</span>
+        <div className="world-time"><span>{gameClock.date}</span><strong>{gameClock.time}</strong><span>{gameClock.weekday}</span></div>
+        <div className="account-area">
+          <span className={`connection-dot ${profile ? "connected" : ""}`} />
+          {profile ? (
+            <><div><strong>{profile.displayName}</strong><small>進度已儲存 · 大廳 01</small></div><a href="/signout-with-chatgpt?return_to=/">登出</a></>
+          ) : (
+            <><div><strong>訪客試玩</strong><small>進度不會儲存</small></div><a className="login-link" href="/signin-with-chatgpt?return_to=/">登入帳號</a></>
+          )}
         </div>
-        <div className="prototype-badge"><i /> 單機核心測試中</div>
       </header>
 
-      <section className="marquee" aria-label="系統通知">
-        <span className="marquee-label">今日速報</span>
-        <p>{notice}</p>
-        <span className="weather">城市天氣　晴朗 27°</span>
+      <section className="marquee" aria-live="polite">
+        <span className="marquee-label">世界快訊</span><p>{notice}</p><span className="weather">台北 · 晴朗 27°</span>
       </section>
 
-      <div className="game-grid" id="main-game">
+      <div className="game-grid" id="main-game" aria-busy={loading || busy}>
         <aside className="character-panel panel">
-          <div className="panel-kicker">MY LIFE / 001</div>
-          <div className="identity">
-            <div className="avatar" aria-hidden="true">🧑</div>
-            <div>
-              <p>18 歲・樂觀</p>
-              <h1>小明</h1>
-              <span className="job-tag">目前無業</span>
-            </div>
-          </div>
-
-          <div className="cash-card">
-            <span>持有現金</span>
-            <strong><small>NT$</small>{formatMoney(player.cash)}</strong>
-            <p>新手出租屋・本月租金已付</p>
-          </div>
-
+          <div className="panel-kicker">MY LIFE / {profile ? "ONLINE" : "GUEST"}</div>
+          <div className="identity"><div className="avatar">{profile?.displayName.slice(0, 1) ?? "旅"}</div><div><p>18 歲 · 人生新手</p><h1>{profile?.displayName ?? "旅行者"}</h1><span className="job-tag">城市居民</span></div></div>
+          <div className="cash-card"><span>可用資產</span><strong><small>NT$</small>{formatMoney(player.cash)}</strong><p>{profile ? "伺服器已安全保存" : "訪客模式暫存"}</p></div>
           <div className="stat-list">
-            {statMeta.map((stat) => {
-              const value = player[stat.key];
-              return (
-                <div className="stat-row" key={stat.key}>
-                  <div className="stat-label"><span>{stat.icon}</span>{stat.label}</div>
-                  <div className="stat-track" aria-label={`${stat.label} ${value}`}>
-                    <i style={{ width: `${value}%` }} />
-                  </div>
-                  <strong>{value}</strong>
-                </div>
-              );
-            })}
+            {statMeta.map((item) => <div className="stat-row" key={item.key}><span className="stat-label"><span>{item.icon}</span>{item.label}</span><div className="stat-track"><i style={{ width: `${player[item.key]}%` }} /></div><strong>{player[item.key]}</strong></div>)}
           </div>
-
-          <div className="skills-block">
-            <div className="section-heading">
-              <span>能力成長</span><small>LEVEL</small>
-            </div>
-            <Skill name="智力" exp={player.intelligenceExp} />
-            <Skill name="程式設計" exp={player.programmingExp} />
-            <Skill name="體能" exp={player.fitnessExp} />
-          </div>
+          <div className="skills-block"><div className="section-heading"><span>能力履歷</span><small>SKILLS</small></div><Skill name="程式設計" exp={player.programmingExp} /><Skill name="體能" exp={player.fitnessExp} /><Skill name="工作經驗" exp={player.workExp} /></div>
         </aside>
 
         <section className="world-panel panel">
-          <div className="location-header">
-            <div>
-              <p>YOU ARE HERE</p>
-              <h2><span>{currentLocation.emoji}</span>{currentLocation.name}</h2>
-              <small>{currentLocation.caption}</small>
-            </div>
-            <span className="map-index">CITY — 01</span>
-          </div>
-
+          <div className="location-header"><div><p>YOU ARE HERE</p><h2><span>{currentLocation.emoji}</span>{currentLocation.name}</h2><small>{currentLocation.caption}</small></div><span className="map-index">CITY · LOBBY 01</span></div>
           <nav className="location-strip" aria-label="城市地點">
-            {locations.map((item) => (
-              <button
-                className={item.id === location ? "active" : ""}
-                key={item.id}
-                onClick={() => moveTo(item.id)}
-                aria-current={item.id === location ? "location" : undefined}
-              >
-                <span>{item.emoji}</span>
-                <small>{item.name}</small>
-              </button>
-            ))}
+            {locations.map((item) => <button className={item.id === player.location ? "active" : ""} key={item.id} onClick={() => void act("move", { location: item.id })} disabled={busy}><span>{item.emoji}</span><small>{item.name}</small></button>)}
           </nav>
-
           <div className="action-stage">
-            <div className="stage-number">{String(locations.findIndex((item) => item.id === location) + 1).padStart(2, "0")}</div>
-            <div className="action-intro">
-              <span>現在可以做什麼？</span>
-              <h3>{actionTitle(location)}</h3>
-              <p>{actionDescription(location)}</p>
-            </div>
+            <div className="stage-number">{String(locations.findIndex((item) => item.id === player.location) + 1).padStart(2, "0")}</div>
+            <div className="action-intro"><span>今天，想把時間花在哪裡？</span><h3>{actionTitle(player.location)}</h3><p>{actionDescription(player.location)}</p></div>
             <div className="action-cards">
-              {location === "home" && (
-                <ActionCard icon="☾" title="睡覺 8 小時" meta="體力回滿・健康 +5・心情 +10" button="關燈休息" onClick={sleep} />
-              )}
-              {location === "business" && (
-                <>
-                  <ActionCard icon="01" title="短班 1 小時" meta="薪資 $180・體力 -5" button="開始工作" onClick={() => work(1)} />
-                  <ActionCard icon="04" title="半日班 4 小時" meta="薪資 $720・體力 -20" button="開始工作" onClick={() => work(4)} featured />
-                  <ActionCard icon="08" title="全日班 8 小時" meta="薪資 $1,440・體力 -40" button="開始工作" onClick={() => work(8)} />
-                </>
-              )}
-              {location === "shopping" && (
-                <>
-                  <ActionCard icon="飯" title="便利飯糰" meta="$45・飽食 +20" button="買來吃" onClick={() => eat("rice")} />
-                  <ActionCard icon="暖" title="暖心便當" meta="$100・飽食 +45・心情 +3" button="坐下用餐" onClick={() => eat("bento")} featured />
-                </>
-              )}
-              {location === "park" && (
-                <ActionCard icon="跑" title="公園慢跑 1 小時" meta="健康 +4・心情 +8・體能 EXP +15" button="換鞋出發" onClick={exercise} featured />
-              )}
-              {location === "school" && (
-                <ActionCard icon="學" title="基礎程式設計" meta="$500・2 小時・程式 EXP +25" button="報名上課" onClick={study} featured />
-              )}
+              {player.location === "home" && <ActionCard icon="☾" title="睡眠 8 小時" meta="體力全滿 · 健康 +5 · 心情 +10" button="好好休息" onClick={() => void act("sleep")} disabled={busy} />}
+              {player.location === "business" && <><ActionCard icon="01" title="短班 1 小時" meta="收入 NT$180 · 體力 -5" button="開始工作" onClick={() => void act("work", { hours: 1 })} disabled={busy} /><ActionCard icon="04" title="標準班 4 小時" meta="收入 NT$720 · 體力 -20" button="開始工作" onClick={() => void act("work", { hours: 4 })} featured disabled={busy} /><ActionCard icon="08" title="長班 8 小時" meta="收入 NT$1,440 · 體力 -40" button="開始工作" onClick={() => void act("work", { hours: 8 })} disabled={busy} /></>}
+              {player.location === "shopping" && <><ActionCard icon="飯" title="巷口飯糰" meta="NT$45 · 飽足 +20" button="買來吃" onClick={() => void act("eat", { kind: "rice" })} disabled={busy} /><ActionCard icon="餐" title="豐盛便當" meta="NT$100 · 飽足 +45 · 心情 +3" button="享用便當" onClick={() => void act("eat", { kind: "bento" })} featured disabled={busy} /></>}
+              {player.location === "park" && <ActionCard icon="跑" title="運動 1 小時" meta="健康 +4 · 心情 +8 · 體能 EXP +15" button="開始鍛鍊" onClick={() => void act("exercise")} featured disabled={busy} />}
+              {player.location === "school" && <ActionCard icon="學" title="程式設計課" meta="NT$500 · 2 小時 · 程式 EXP +25" button="報名上課" onClick={() => void act("study")} featured disabled={busy} />}
             </div>
           </div>
-
-          <footer className="world-footer">
-            <span>現實 1 小時 = 遊戲 1 天</span>
-            <button onClick={resetLife}>重新開始人生</button>
-          </footer>
+          <footer className="world-footer"><span>遊戲 1 小時 = 現實一次行動</span><button onClick={() => void act("reset")} disabled={busy}>重新開始人生</button></footer>
         </section>
 
         <aside className="story-panel panel">
-          <div className="section-heading story-title">
-            <span>人生記事</span><small>LIVE FEED</small>
-          </div>
-          <div className="day-stamp">
-            <strong>DAY {Math.floor(elapsedMinutes / 1440) + 1}</strong>
-            <span>{gameClock.date}</span>
-          </div>
+          <div className="section-heading story-title"><span>多人世界</span><small>LIVE LOBBY</small></div>
+          <div className="online-summary"><strong><i />{online.length} 位在線</strong><span>每 5 秒同步</span></div>
+          <ul className="online-list">
+            {online.length ? online.slice(0, 8).map((item) => <li key={item.id}><span className="mini-avatar">{item.displayName.slice(0, 1)}</span><div><strong>{item.displayName}{item.id === profile?.id ? "（你）" : ""}</strong><small>正在 {locationName(item.location)}</small></div></li>) : <li className="empty-online">登入後，你會在這裡遇見其他玩家。</li>}
+          </ul>
+          <div className="section-heading feed-heading"><span>城市動態</span><small>ACTIVITY</small></div>
           <ol className="feed-list">
-            {feed.map((item) => (
-              <li key={item.id} className={item.tone}>
-                <time>{item.time}</time>
-                <div>
-                  <strong>{item.title}</strong>
-                  <p>{item.detail}</p>
-                </div>
-              </li>
-            ))}
+            {feed.slice(0, 6).map((item) => <li key={item.id} className={item.tone}><time>{item.time}</time><div><strong>{item.playerName ? `${item.playerName} · ` : ""}{item.title}</strong><p>{item.detail}</p></div></li>)}
           </ol>
-          <div className="next-goal">
-            <span>下一個人生目標</span>
-            <strong>程式設計 Lv.2</strong>
-            <div><i style={{ width: `${getLevelProgress(player.programmingExp)}%` }} /></div>
-            <small>{player.programmingExp} / 100 EXP</small>
-          </div>
+          <div className="next-goal"><span>下一個里程碑</span><strong>程式設計 Lv.2</strong><div><i style={{ width: `${levelProgress(player.programmingExp)}%` }} /></div><small>{player.programmingExp} / 100 EXP</small></div>
         </aside>
       </div>
     </main>
@@ -431,56 +281,17 @@ export default function Home() {
 }
 
 function Skill({ name, exp }: { name: string; exp: number }) {
-  const level = getLevel(exp);
-  return (
-    <div className="skill-row">
-      <div><span>{name}</span><strong>Lv.{level}</strong></div>
-      <div className="skill-track"><i style={{ width: `${getLevelProgress(exp)}%` }} /></div>
-    </div>
-  );
+  return <div className="skill-row"><div><span>{name}</span><strong>Lv.{level(exp)}</strong></div><div className="skill-track"><i style={{ width: `${levelProgress(exp)}%` }} /></div></div>;
 }
 
-function ActionCard({
-  icon,
-  title,
-  meta,
-  button,
-  featured = false,
-  onClick,
-}: {
-  icon: string;
-  title: string;
-  meta: string;
-  button: string;
-  featured?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <article className={`action-card ${featured ? "featured" : ""}`}>
-      <span className="action-icon">{icon}</span>
-      <h4>{title}</h4>
-      <p>{meta}</p>
-      <button onClick={onClick}>{button}<span>→</span></button>
-    </article>
-  );
+function ActionCard({ icon, title, meta, button, featured = false, disabled, onClick }: { icon: string; title: string; meta: string; button: string; featured?: boolean; disabled: boolean; onClick: () => void }) {
+  return <article className={`action-card ${featured ? "featured" : ""}`}><span className="action-icon">{icon}</span><h4>{title}</h4><p>{meta}</p><button onClick={onClick} disabled={disabled}>{disabled ? "同步中…" : button}<span>→</span></button></article>;
 }
 
 function actionTitle(location: LocationId) {
-  return {
-    home: "為明天補充能量",
-    business: "用今天的時間，換明天的選擇",
-    shopping: "先照顧好自己",
-    park: "讓身體帶著心情向前",
-    school: "投資還沒發生的未來",
-  }[location];
+  return { home: "休息不是停下，而是為下一步蓄力", business: "工作換來收入，也打開新的機會", shopping: "照顧日常，才能走得更遠", park: "健康是所有選擇的底氣", school: "今天學會的，會成為明天的選項" }[location];
 }
 
 function actionDescription(location: LocationId) {
-  return {
-    home: "睡眠會推進遊戲時間，恢復體力、健康與心情，但也會消耗飽食。",
-    business: "便利商店不要求技能。工時越長，收入越高，也會更疲累。",
-    shopping: "每一餐都需要花錢，但空著肚子很難把任何事情做好。",
-    park: "規律運動可以提升體能，解鎖外送員等需要體力的工作。",
-    school: "學會程式設計並提升智力，將來就能應徵薪資更高的工作。",
-  }[location];
+  return { home: "回到自己的空間。睡一覺能恢復體力與心情，但也別忘了補充飽足。", business: "選擇不同工時，取得收入與工作經驗。長工時回報高，也會快速消耗狀態。", shopping: "用合理的花費補充飽足。更豐盛的餐點，也能讓今天的心情好一點。", park: "用一小時運動換取長期健康與體能。當體力太低時，先回家休息。", school: "支付學費與時間，累積程式設計能力。能力提升後，人生將有更多路可以走。" }[location];
 }
