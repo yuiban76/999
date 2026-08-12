@@ -55,8 +55,9 @@ type FeedItem = {
 type CasinoState = {
   capacity: number;
   activeCount: number;
-  seats: Array<{ id: string; displayName: string }>;
-  hand: null | { playerCards: string[]; dealerCards: string[]; playerScore: number; dealerScore: number | null; bet: number; status: string; result: string };
+  serverNow?: number;
+  seats: Array<{ id: string; displayName: string; seatNo: number; status: string; bet: number; isMine: boolean }>;
+  hand: null | { playerCards: string[]; dealerCards: string[]; playerScore: number; dealerScore: number | null; bet: number; seatNo: number | null; revealAt: number; status: string; result: string };
 };
 
 type Bootstrap = {
@@ -314,6 +315,12 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, [loadWorld]);
 
+  useEffect(() => {
+    if (casino.hand?.status !== "waiting") return;
+    const timer = window.setInterval(() => void loadWorld(true), 750);
+    return () => window.clearInterval(timer);
+  }, [casino.hand?.status, loadWorld]);
+
   async function act(action: string, payload: Record<string, unknown> = {}) {
     if (busy) return;
     setBusy(true);
@@ -458,7 +465,7 @@ export default function Home() {
               {player.location === "realtor" && <><ActionCard icon="01" title="城市小套房 · 1 天" meta="每日 NT$350 · 租金 NT$350" button="租 1 天" onClick={() => void act("housing", { kind: "rent", days: 1 })} disabled={busy} /><ActionCard icon="07" title="城市小套房 · 7 天" meta="每日 NT$350 · 租金 NT$2,450" button="租 7 天" onClick={() => void act("housing", { kind: "rent", days: 7 })} featured disabled={busy} /><ActionCard icon="買" title="購買城市小宅" meta="NT$150,000 · 永久住所 · 買房後仍可查看租屋" button={player.ownsHome ? "已擁有，仍可看租屋" : "購買房屋"} onClick={() => void act("housing", { kind: "buy" })} disabled={busy} /></>}
               {player.location === "business" && <><ActionCard icon="職" title="找工作" meta="12 條產業升遷路線 · 無固定職業" button="打開產業列表" onClick={() => setJobOpen(true)} featured disabled={busy} /><ActionCard icon="01" title="短班 1 小時" meta={`收入 NT$${formatMoney(career.hourlyPay)} · 產業 EXP +4`} button="開始工作" onClick={() => void act("work", { hours: 1 })} disabled={busy} /><ActionCard icon="04" title="標準班 4 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 4)} · 產業 EXP +16`} button="開始工作" onClick={() => void act("work", { hours: 4 })} disabled={busy} /><ActionCard icon="08" title="長班 8 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 8)} · 產業 EXP +32`} button="開始工作" onClick={() => void act("work", { hours: 8 })} disabled={busy} /></>}
               {player.location === "shopping" && <><ActionCard icon="飯" title="巷口飯糰" meta="NT$45 · 飽足 +20" button="買來吃" onClick={() => void act("eat", { kind: "rice" })} disabled={busy} /><ActionCard icon="餐" title="豐盛便當" meta="NT$100 · 飽足 +45 · 心情 +3" button="享用便當" onClick={() => void act("eat", { kind: "bento" })} featured disabled={busy} /></>}
-              {player.location === "casino" && <CasinoTable state={casino} signedIn={Boolean(profile)} busy={busy} onAction={(action, payload) => void act(`casino_${action}`, payload)} />}
+                {player.location === "casino" && <CasinoTable state={casino} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`casino_${action}`, payload)} />}
               {player.location === "school" && <ActionCard icon="學" title="程式設計課" meta="NT$500 · 2 小時 · 程式 EXP +25" button="報名上課" onClick={() => void act("study")} featured disabled={busy} />}
               {player.location === "hospital" && <><ActionCard icon="診" title="一般門診" meta="NT$600 · 健康 +25 · 治癒疾病" button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={busy} /><ActionCard icon="療" title="完整治療" meta="NT$1,500 · 健康至少恢復至 80 · 治癒疾病" button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} featured disabled={busy} /></>}
             </div>
@@ -520,23 +527,48 @@ function ActionCard({ icon, title, meta, button, featured = false, disabled, onC
   return <article className={`action-card ${featured ? "featured" : ""}`}><span className="action-icon">{icon}</span><h4>{title}</h4><p>{meta}</p><button onClick={onClick} disabled={disabled}>{disabled ? "同步中…" : button}<span>→</span></button></article>;
 }
 
-function CasinoTable({ state, signedIn, busy, onAction }: { state: CasinoState; signedIn: boolean; busy: boolean; onAction: (action: string, payload?: Record<string, unknown>) => void }) {
+function CasinoTable({ state, signedIn, busy, maxBet, onAction }: { state: CasinoState; signedIn: boolean; busy: boolean; maxBet: number; onAction: (action: string, payload?: Record<string, unknown>) => void }) {
+  const [bet, setBet] = useState("100");
+  const [now, setNow] = useState(Date.now());
+  const active = state.hand && ["seated", "waiting", "playing"].includes(state.hand.status);
   const playing = state.hand?.status === "playing";
+  const waiting = state.hand?.status === "waiting";
+  const remaining = waiting ? Math.max(0, Math.ceil((state.hand!.revealAt - now) / 1000)) : 0;
+  useEffect(() => {
+    if (!waiting) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 200);
+    return () => window.clearInterval(timer);
+  }, [waiting, state.hand?.revealAt]);
+  const submitBet = (event: React.FormEvent) => {
+    event.preventDefault();
+    const amount = Number(bet);
+    if (Number.isSafeInteger(amount) && amount > 0) onAction("deal", { bet: amount });
+  };
   return <section className="casino-table">
     <header><div><span>BLACKJACK TABLE 01</span><h4>二十一點</h4></div><strong>{state.activeCount} / {state.capacity} 位遊玩中</strong></header>
-    <div className="casino-seats">{Array.from({ length: 5 }, (_, index) => <div className={state.seats[index] ? "occupied" : ""} key={index}><span>{index + 1}</span><strong>{state.seats[index]?.displayName ?? "空位"}</strong></div>)}</div>
-    {!signedIn ? <p className="casino-message">登入帳號後才能入座並使用遊戲資產下注。</p> : state.hand ? <div className="blackjack-board">
+    <div className="casino-seats">{Array.from({ length: 5 }, (_, index) => {
+      const seatNo = index + 1;
+      const seat = state.seats.find((item) => item.seatNo === seatNo);
+      return <div className={`${seat ? "occupied" : ""} ${seat?.isMine ? "mine" : ""}`} key={seatNo}>
+        <span>{seatNo}</span><strong>{seat?.isMine ? `${seat.displayName}（你）` : seat?.displayName ?? "空位"}</strong>
+        {!seat && signedIn && !active && <button onClick={() => onAction("join", { seatNo })} disabled={busy}>加入遊戲</button>}
+        {seat && <small>{seat.status === "waiting" ? `已下注 NT$${formatMoney(seat.bet)}` : seat.status === "playing" ? "遊戲中" : "等待下注"}</small>}
+      </div>;
+    })}</div>
+    {!signedIn ? <p className="casino-message">登入帳號後，請在 1～5 號空位點「加入遊戲」。</p> : state.hand?.status === "seated" ? <form className="custom-bet" onSubmit={submitBet}>
+      <label>輸入下注金額 <small>目前現金 NT${formatMoney(maxBet)}</small></label>
+      <div><span>NT$</span><input type="number" inputMode="numeric" min="1" max={Math.min(maxBet, 1_000_000)} step="1" value={bet} onChange={(event) => setBet(event.target.value)} required /><button disabled={busy || maxBet < 1}>確定下注</button></div>
+      <button className="leave-seat" type="button" onClick={() => onAction("leave")} disabled={busy}>離開座位</button>
+    </form> : waiting ? <div className="casino-waiting"><strong>{remaining}</strong><h5>秒後翻牌</h5><p>第一位玩家已下注，其他空位仍可加入並下注。</p><button onClick={() => onAction("leave")} disabled={busy}>離開牌桌（下注不退）</button></div> : state.hand && (playing || state.hand.result) ? <div className="blackjack-board">
       <div className="card-hand"><span>莊家 {state.hand.dealerScore === null ? "" : `· ${state.hand.dealerScore} 點`}</span><div>{state.hand.dealerCards.map((card, index) => <i className={/[♥♦]/.test(card) ? "red" : ""} key={`${card}-${index}`}>{card}</i>)}</div></div>
       <div className="card-hand"><span>你的手牌 · {state.hand.playerScore} 點 · 下注 NT${formatMoney(state.hand.bet)}</span><div>{state.hand.playerCards.map((card, index) => <i className={/[♥♦]/.test(card) ? "red" : ""} key={`${card}-${index}`}>{card}</i>)}</div></div>
       {state.hand.result && <p className={`casino-result ${state.hand.status}`}>{state.hand.result}</p>}
-      {playing ? <div className="casino-controls"><button onClick={() => onAction("hit")} disabled={busy}>補牌</button><button onClick={() => onAction("stand")} disabled={busy}>停牌</button><button className="leave" onClick={() => onAction("leave")} disabled={busy}>離桌</button></div> : <BetButtons busy={busy} full={state.activeCount >= state.capacity} onAction={onAction} />}
-    </div> : <BetButtons busy={busy} full={state.activeCount >= state.capacity} onAction={onAction} />}
-    <footer>Blackjack 賠付 1.5 倍 · 一般勝利 1 倍 · 平手退回下注 · 5 分鐘未行動自動離桌</footer>
+      {playing && <div className="casino-controls"><button onClick={() => onAction("hit")} disabled={busy}>補牌</button><button onClick={() => onAction("stand")} disabled={busy}>停牌</button><button className="leave" onClick={() => onAction("leave")} disabled={busy}>離桌</button></div>}
+      {!playing && <p className="casino-next-round">請從上方空位加入下一局。</p>}
+    </div> : <p className="casino-message">請選擇上方任一空位加入遊戲。</p>}
+    <footer>先選座位再自訂下注 · 第一筆下注後等待 5 秒才翻牌 · Blackjack 賠付 1.5 倍 · 平手退回下注</footer>
   </section>;
-}
-
-function BetButtons({ busy, full, onAction }: { busy: boolean; full: boolean; onAction: (action: string, payload?: Record<string, unknown>) => void }) {
-  return <div className="bet-buttons"><span>{full ? "牌桌已滿，等待空位" : "選擇下注金額並入座"}</span><div>{[100, 500, 1000].map((bet) => <button key={bet} onClick={() => onAction("deal", { bet })} disabled={busy || full}>NT${formatMoney(bet)}</button>)}</div></div>;
 }
 
 function actionTitle(location: LocationId) {

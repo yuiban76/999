@@ -67,5 +67,7 @@ export const casinoHands = sqliteTable("casino_hands", {
   bet: integer("bet").notNull().default(0),
   status: text("status").notNull().default("idle"),
   result: text("result").notNull().default(""),
+  seatNo: integer("seat_no"),
+  revealAt: integer("reveal_at").notNull().default(0),
   updatedAt: integer("updated_at").notNull(),
-}, (table) => [index("idx_casino_status_updated").on(table.status, table.updatedAt)]);
+}, (table) => [index("idx_casino_status_updated").on(table.status, table.updatedAt), uniqueIndex("idx_casino_seat").on(table.seatNo)]);
