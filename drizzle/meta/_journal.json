@@ -36,6 +36,13 @@
       "when": 1786524794349,
       "tag": "0004_material_talisman",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1786525450341,
+      "tag": "0005_nosy_pride",
+      "breakpoints": true
     }
   ]
 }

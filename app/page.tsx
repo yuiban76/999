@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { careerForJob, JOB_CATEGORIES, nextRankFor } from "../shared/jobs";
 
 type LocationId = "home" | "realtor" | "business" | "shopping" | "park" | "school" | "hospital";
 type StatKey = "energy" | "health" | "hunger";
@@ -15,6 +16,9 @@ type Player = {
   programmingExp: number;
   fitnessExp: number;
   workExp: number;
+  currentJob: string;
+  jobCategory: string;
+  jobExp: number;
   illness: string;
   ownsHome: boolean;
   rentalName: string;
@@ -67,6 +71,9 @@ const INITIAL_PLAYER: Player = {
   programmingExp: 0,
   fitnessExp: 0,
   workExp: 0,
+  currentJob: "待業者",
+  jobCategory: "unfixed",
+  jobExp: 0,
   illness: "",
   ownsHome: false,
   rentalName: "",
@@ -101,17 +108,6 @@ const statMeta: Array<{ key: StatKey; icon: string; label: string }> = [
   { key: "energy", icon: "↯", label: "體力" },
   { key: "hunger", icon: "△", label: "飽足" },
 ];
-
-const CAREERS = [
-  { title: "職場實習生", threshold: 0, hourlyPay: 180 },
-  { title: "初級專員", threshold: 100, hourlyPay: 230 },
-  { title: "資深專員", threshold: 250, hourlyPay: 300 },
-  { title: "部門主管", threshold: 500, hourlyPay: 400 },
-  { title: "事業經理", threshold: 900, hourlyPay: 550 },
-];
-
-const careerFor = (exp: number) => [...CAREERS].reverse().find((career) => exp >= career.threshold) ?? CAREERS[0];
-const nextCareerFor = (exp: number) => CAREERS.find((career) => career.threshold > exp) ?? null;
 
 const locationName = (id: LocationId) => locations.find((item) => item.id === id)?.name ?? id;
 const formatMoney = (value: number) => new Intl.NumberFormat("zh-TW").format(value);
@@ -183,15 +179,23 @@ function guestAction(current: Player, action: string, payload: Record<string, un
       if (next.cash < 150000) return fail("購屋需要 NT$150,000，目前資金不足。");
       next.cash -= 150000; next.ownsHome = true; minutes = 60; title = "買下城市小宅"; message = "取得永久住所；仍可在房仲查看租屋方案。";
     } else return fail("房屋方案不存在。");
+  } else if (action === "job") {
+    if (next.location !== "business") return fail("請先前往商業區的就業服務處。");
+    const selected = JOB_CATEGORIES.flatMap((category) => category.jobs.map((job) => ({ job, categoryId: category.id, categoryLabel: category.label }))).find((item) => item.job === payload.job);
+    if (!selected) return fail("這個職業不存在。");
+    if (next.currentJob === selected.job) return fail(`你目前已經是${selected.job}。`);
+    next.currentJob = selected.job; next.jobCategory = selected.categoryId; next.jobExp = 0; minutes = 60;
+    title = `找到工作：${selected.job}`; message = `成功進入「${selected.categoryLabel}」成為見習${selected.job}。`;
   } else if (action === "work") {
     const hours = Number(payload.hours);
     if (next.location !== "business" || ![1, 4, 8].includes(hours)) return fail("請先前往商業區。");
     if (next.illness) return fail(`目前罹患${next.illness}，請先前往醫院治療。`);
+    if (next.currentJob === "待業者") return fail("目前是待業者，請先使用找工作選擇職業。");
     if (next.energy < hours * 5) return fail("體力不足，先回家休息吧。");
-    const previousCareer = careerFor(next.workExp);
+    const previousCareer = careerForJob(next.currentJob, next.jobExp);
     const income = hours * previousCareer.hourlyPay;
-    next.cash += income; next.energy = Math.max(0, next.energy - hours * 5); next.health = Math.max(0, next.health - Math.ceil(hours / 2)); next.mood = Math.max(0, next.mood - Math.ceil(hours * .9)); next.hunger = Math.max(0, next.hunger - hours * 2); next.workExp += hours * 4; minutes = hours * 60;
-    const newCareer = careerFor(next.workExp);
+    next.cash += income; next.energy = Math.max(0, next.energy - hours * 5); next.health = Math.max(0, next.health - Math.ceil(hours / 2)); next.mood = Math.max(0, next.mood - Math.ceil(hours * .9)); next.hunger = Math.max(0, next.hunger - hours * 2); next.workExp += hours * 4; next.jobExp += hours * 4; minutes = hours * 60;
+    const newCareer = careerForJob(next.currentJob, next.jobExp);
     title = newCareer.title !== previousCareer.title ? `升遷為${newCareer.title}` : `工作 ${hours} 小時`;
     message = `收入 +NT$${income}、工作經驗 +${hours * 4}。${newCareer.title !== previousCareer.title ? `恭喜升遷為${newCareer.title}！` : ""}`;
   } else if (action === "study") {
@@ -254,14 +258,17 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+  const [jobOpen, setJobOpen] = useState(false);
+  const [jobCategory, setJobCategory] = useState<string>(JOB_CATEGORIES[0].id);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authError, setAuthError] = useState("");
   const [notice, setNotice] = useState("正在連接人生世界……");
   const gameClock = useMemo(() => clock(player.elapsedMinutes), [player.elapsedMinutes]);
   const currentLocation = locations.find((item) => item.id === player.location)!;
-  const career = careerFor(player.workExp);
-  const nextCareer = nextCareerFor(player.workExp);
-  const careerProgress = nextCareer ? Math.max(0, Math.min(100, ((player.workExp - career.threshold) / (nextCareer.threshold - career.threshold)) * 100)) : 100;
+  const career = careerForJob(player.currentJob, player.jobExp);
+  const nextCareer = nextRankFor(player.jobExp);
+  const nextCareerTitle = nextCareer ? careerForJob(player.currentJob, nextCareer.threshold).title : "職涯最高階級";
+  const careerProgress = nextCareer ? Math.max(0, Math.min(100, ((player.jobExp - career.threshold) / (nextCareer.threshold - career.threshold)) * 100)) : 100;
   const avatarSrc = profile?.avatarUrl ? `${API_ORIGIN}${profile.avatarUrl}` : "";
   const rentalMinutesLeft = Math.max(0, player.rentedUntil - player.elapsedMinutes);
   const rentalDaysLeft = rentalMinutesLeft ? Math.ceil(rentalMinutesLeft / 1440) : 0;
@@ -415,7 +422,7 @@ export default function Home() {
           <div className="career-card">
             <div><span>目前職業</span><strong>{career.title}</strong></div><small>時薪 NT${formatMoney(career.hourlyPay)}</small>
             <div className="career-track"><i style={{ width: `${careerProgress}%` }} /></div>
-            <p>{nextCareer ? `再累積 ${nextCareer.threshold - player.workExp} 工作 EXP 升遷為${nextCareer.title}` : "已達職涯最高階級"}</p>
+            <p>{nextCareer && player.currentJob !== "待業者" ? `再累積 ${nextCareer.threshold - player.jobExp} 職業 EXP 升遷為${nextCareerTitle}` : player.currentJob === "待業者" ? "前往商業區找工作" : "已達職涯最高階級"}</p>
           </div>
           {player.illness && <div className="illness-alert"><strong>目前生病：{player.illness}</strong><span>工作、上課與運動暫停，請前往市立醫院。</span></div>}
           <div className="stat-list">
@@ -435,7 +442,7 @@ export default function Home() {
             <div className="action-cards">
               {player.location === "home" && <ActionCard icon="☾" title="睡眠 8 小時" meta="體力全滿 · 健康 +5 · 心情 +10" button="好好休息" onClick={() => void act("sleep")} disabled={busy} />}
               {player.location === "realtor" && <><ActionCard icon="01" title="城市小套房 · 1 天" meta="每日 NT$350 · 租金 NT$350" button="租 1 天" onClick={() => void act("housing", { kind: "rent", days: 1 })} disabled={busy} /><ActionCard icon="07" title="城市小套房 · 7 天" meta="每日 NT$350 · 租金 NT$2,450" button="租 7 天" onClick={() => void act("housing", { kind: "rent", days: 7 })} featured disabled={busy} /><ActionCard icon="買" title="購買城市小宅" meta="NT$150,000 · 永久住所 · 買房後仍可查看租屋" button={player.ownsHome ? "已擁有，仍可看租屋" : "購買房屋"} onClick={() => void act("housing", { kind: "buy" })} disabled={busy} /></>}
-              {player.location === "business" && <><ActionCard icon="01" title="短班 1 小時" meta={`收入 NT$${formatMoney(career.hourlyPay)} · 工作 EXP +4`} button="開始工作" onClick={() => void act("work", { hours: 1 })} disabled={busy} /><ActionCard icon="04" title="標準班 4 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 4)} · 工作 EXP +16`} button="開始工作" onClick={() => void act("work", { hours: 4 })} featured disabled={busy} /><ActionCard icon="08" title="長班 8 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 8)} · 工作 EXP +32`} button="開始工作" onClick={() => void act("work", { hours: 8 })} disabled={busy} /></>}
+              {player.location === "business" && <><ActionCard icon="職" title="找工作" meta={`${JOB_CATEGORIES.length} 大類 · ${JOB_CATEGORIES.reduce((sum, category) => sum + category.jobs.length, 0)} 種職業`} button="打開職缺列表" onClick={() => setJobOpen(true)} featured disabled={busy} /><ActionCard icon="01" title="短班 1 小時" meta={`收入 NT$${formatMoney(career.hourlyPay)} · 職業 EXP +4`} button="開始工作" onClick={() => void act("work", { hours: 1 })} disabled={busy} /><ActionCard icon="04" title="標準班 4 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 4)} · 職業 EXP +16`} button="開始工作" onClick={() => void act("work", { hours: 4 })} disabled={busy} /><ActionCard icon="08" title="長班 8 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 8)} · 職業 EXP +32`} button="開始工作" onClick={() => void act("work", { hours: 8 })} disabled={busy} /></>}
               {player.location === "shopping" && <><ActionCard icon="飯" title="巷口飯糰" meta="NT$45 · 飽足 +20" button="買來吃" onClick={() => void act("eat", { kind: "rice" })} disabled={busy} /><ActionCard icon="餐" title="豐盛便當" meta="NT$100 · 飽足 +45 · 心情 +3" button="享用便當" onClick={() => void act("eat", { kind: "bento" })} featured disabled={busy} /></>}
               {player.location === "park" && <ActionCard icon="跑" title="運動 1 小時" meta="健康 +4 · 心情 +8 · 體能 EXP +15" button="開始鍛鍊" onClick={() => void act("exercise")} featured disabled={busy} />}
               {player.location === "school" && <ActionCard icon="學" title="程式設計課" meta="NT$500 · 2 小時 · 程式 EXP +25" button="報名上課" onClick={() => void act("study")} featured disabled={busy} />}
@@ -455,9 +462,23 @@ export default function Home() {
           <ol className="feed-list">
             {feed.slice(0, 6).map((item) => <li key={item.id} className={item.tone}><time>{item.time}</time><div><strong>{item.playerName ? `${item.playerName} · ` : ""}{item.title}</strong><p>{item.detail}</p></div></li>)}
           </ol>
-          <div className="next-goal"><span>職涯里程碑</span><strong>{nextCareer ? `升遷：${nextCareer.title}` : "職涯最高階級"}</strong><div><i style={{ width: `${careerProgress}%` }} /></div><small>{nextCareer ? `${player.workExp} / ${nextCareer.threshold} 工作 EXP` : `${player.workExp} 工作 EXP`}</small></div>
+          <div className="next-goal"><span>職涯里程碑</span><strong>{player.currentJob === "待業者" ? "先找到一份工作" : nextCareer ? `升遷：${nextCareerTitle}` : "職涯最高階級"}</strong><div><i style={{ width: `${player.currentJob === "待業者" ? 0 : careerProgress}%` }} /></div><small>{player.currentJob === "待業者" ? "商業區 · 找工作" : nextCareer ? `${player.jobExp} / ${nextCareer.threshold} 職業 EXP` : `${player.jobExp} 職業 EXP`}</small></div>
         </aside>
       </div>
+      {jobOpen && <div className="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="job-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setJobOpen(false); }}>
+        <section className="job-board">
+          <button className="auth-close" type="button" aria-label="關閉" onClick={() => setJobOpen(false)}>×</button>
+          <span className="panel-kicker">CITY CAREER BOARD</span>
+          <h2 id="job-title">找工作</h2>
+          <p>選擇職業後會從見習職位開始；換工作只會重設新職業的升遷經驗，總工作經驗會保留。</p>
+          <div className="job-categories" role="tablist" aria-label="職業分類">
+            {JOB_CATEGORIES.map((category) => <button role="tab" aria-selected={jobCategory === category.id} className={jobCategory === category.id ? "active" : ""} key={category.id} onClick={() => setJobCategory(category.id)}>{category.label}</button>)}
+          </div>
+          <div className="job-list">
+            {JOB_CATEGORIES.find((category) => category.id === jobCategory)?.jobs.map((job) => <button className={player.currentJob === job ? "current" : ""} key={job} onClick={() => { setJobOpen(false); void act("job", { job }); }} disabled={busy}><span>{job}</span><small>{player.currentJob === job ? "目前職業" : `見習${job} · 時薪 NT$180`}</small></button>)}
+          </div>
+        </section>
+      </div>}
       {authOpen && <div className="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="auth-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setAuthOpen(false); }}>
         <form className="auth-card" onSubmit={submitAuth}>
           <button className="auth-close" type="button" aria-label="關閉" onClick={() => setAuthOpen(false)}>×</button>

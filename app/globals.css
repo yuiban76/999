@@ -99,6 +99,18 @@ button { color: inherit; }
 .auth-submit { width: 100%; margin-top: 10px; padding: 12px; border: 0; background: var(--orange); color: white; font-size: 11px; font-weight: 800; cursor: pointer; }
 .auth-switch { width: 100%; margin-top: 9px; padding: 8px; border: 0; background: transparent; color: var(--moss); text-decoration: underline; font-size: 10px; cursor: pointer; }
 .auth-error { margin: 8px 0 !important; color: #b23e24 !important; font-weight: 800; }
+.job-board { position: relative; width: min(920px, 100%); max-height: min(780px, calc(100vh - 36px)); overflow: auto; padding: 30px; border: 1px solid var(--ink); background: var(--paper-bright); box-shadow: 10px 10px 0 var(--moss-dark); }
+.job-board h2 { margin: 12px 0 7px; font: 700 28px/1.15 Georgia, "Noto Serif TC", serif; }
+.job-board > p { margin: 0 0 18px; color: var(--muted); font-size: 11px; line-height: 1.7; }
+.job-categories { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 10px; }
+.job-categories button { flex: 0 0 auto; padding: 8px 10px; border: 1px solid #9b9d95; background: transparent; font-size: 9px; cursor: pointer; }
+.job-categories button.active { border-color: var(--moss); background: var(--moss); color: white; }
+.job-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; padding-top: 12px; border-top: 1px solid var(--line); }
+.job-list button { display: grid; gap: 5px; min-height: 74px; padding: 12px; border: 1px solid var(--ink); background: #f3f0e7; text-align: left; cursor: pointer; }
+.job-list button:hover { background: #e2e9dd; }
+.job-list button.current { border-color: var(--orange); background: var(--orange-soft); }
+.job-list span { font: 700 13px Georgia, "Noto Serif TC", serif; }
+.job-list small { color: var(--muted); font-size: 8px; }
 
 .marquee {
   min-height: 40px;
@@ -277,6 +289,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
   .story-panel { padding: 22px 18px; }
   .feed-list { display: block; }
   .brand small { display: none; }
+  .job-board { max-height: calc(100vh - 20px); padding: 22px 16px; }
+  .job-list { grid-template-columns: 1fr 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

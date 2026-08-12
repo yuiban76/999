@@ -1,3 +1,5 @@
+import { careerForJob, jobInfo } from "../shared/jobs";
+
 type LocationId = "home" | "realtor" | "business" | "shopping" | "park" | "school" | "hospital";
 
 interface Env { DB?: D1Database; ASSETS?: Fetcher; FRONTEND_ORIGIN?: string }
@@ -17,6 +19,9 @@ type PlayerRow = {
   programming_exp: number;
   fitness_exp: number;
   work_exp: number;
+  current_job: string;
+  job_category: string;
+  job_exp: number;
   illness: string;
   owns_home: number;
   rental_name: string;
@@ -27,18 +32,6 @@ type PlayerRow = {
 
 const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "business", "shopping", "park", "school", "hospital"]);
 const clamp = (value: number) => Math.max(0, Math.min(100, value));
-const CAREERS = [
-  { title: "職場實習生", threshold: 0, hourlyPay: 180 },
-  { title: "初級專員", threshold: 100, hourlyPay: 230 },
-  { title: "資深專員", threshold: 250, hourlyPay: 300 },
-  { title: "部門主管", threshold: 500, hourlyPay: 400 },
-  { title: "事業經理", threshold: 900, hourlyPay: 550 },
-];
-
-function careerFor(exp: number) {
-  return [...CAREERS].reverse().find((career) => exp >= career.threshold) ?? CAREERS[0];
-}
-
 function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 }
@@ -99,11 +92,12 @@ async function identity(request: Request, db?: D1Database): Promise<AuthUser | n
 }
 
 function guestPlayer() {
-  return { cash: 10000, energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, programmingExp: 0, fitnessExp: 0, workExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, elapsedMinutes: 450, location: "realtor" as LocationId };
+  return { cash: 10000, energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, programmingExp: 0, fitnessExp: 0, workExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, elapsedMinutes: 450, location: "realtor" as LocationId };
 }
 
 function serializePlayer(row: PlayerRow) {
-  return { cash: row.cash, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, programmingExp: row.programming_exp, fitnessExp: row.fitness_exp, workExp: row.work_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, elapsedMinutes: row.elapsed_minutes, location: row.location };
+  const currentJob = jobInfo(row.current_job) ? row.current_job : "待業者";
+  return { cash: row.cash, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, programmingExp: row.programming_exp, fitnessExp: row.fitness_exp, workExp: row.work_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, elapsedMinutes: row.elapsed_minutes, location: row.location };
 }
 
 function profileFor(user: AuthUser) {
@@ -135,6 +129,8 @@ async function ensureSchema(db: D1Database) {
       hunger INTEGER NOT NULL DEFAULT 80, intelligence_exp INTEGER NOT NULL DEFAULT 0,
       programming_exp INTEGER NOT NULL DEFAULT 0, fitness_exp INTEGER NOT NULL DEFAULT 0,
       work_exp INTEGER NOT NULL DEFAULT 0, illness TEXT NOT NULL DEFAULT '',
+      current_job TEXT NOT NULL DEFAULT 'unemployed', job_category TEXT NOT NULL DEFAULT 'unfixed',
+      job_exp INTEGER NOT NULL DEFAULT 0,
       owns_home INTEGER NOT NULL DEFAULT 0, rental_name TEXT NOT NULL DEFAULT '',
       rented_until INTEGER NOT NULL DEFAULT 0,
       elapsed_minutes INTEGER NOT NULL DEFAULT 450,
@@ -157,8 +153,8 @@ async function ensureSchema(db: D1Database) {
 
 async function upsertPlayer(db: D1Database, user: AuthUser) {
   const now = Date.now();
-  await db.prepare(`INSERT INTO players (user_id, display_name, email, location, created_at, updated_at, last_seen_at)
-    VALUES (?, ?, ?, 'realtor', ?, ?, ?)
+  await db.prepare(`INSERT INTO players (user_id, display_name, email, current_job, location, created_at, updated_at, last_seen_at)
+    VALUES (?, ?, ?, 'unemployed', 'realtor', ?, ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET display_name = excluded.display_name, email = excluded.email, last_seen_at = excluded.last_seen_at`)
     .bind(user.userId, user.displayName.slice(0, 40), user.email, now, now, now).run();
   return db.prepare("SELECT * FROM players WHERE user_id = ?").bind(user.userId).first<PlayerRow>();
@@ -267,9 +263,10 @@ async function takeAction(request: Request, env: Env) {
   const current = await upsertPlayer(env.DB, user);
   if (!current) return json({ message: "找不到玩家資料。" }, 404);
 
-  let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number };
+  let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number; job?: string };
   try { body = await request.json(); } catch { return json({ message: "行動資料格式錯誤。" }, 400); }
   const next = { ...current };
+  if (!jobInfo(next.current_job)) { next.current_job = "unemployed"; next.job_category = "unfixed"; next.job_exp = 0; }
   let title = "完成行動";
   let message = "行動完成。";
   let tone: "good" | "neutral" | "warn" = "good";
@@ -305,18 +302,27 @@ async function takeAction(request: Request, env: Env) {
       }
       return json({ message: "房屋方案不存在。" }, 400);
     }
+    case "job": {
+      if (next.location !== "business") return json({ message: "請先前往商業區的就業服務處。" }, 400);
+      const selected = jobInfo(body.job || "");
+      if (!selected) return json({ message: "這個職業不存在。" }, 400);
+      if (next.current_job === selected.job) return json({ message: `你目前已經是${selected.job}。` }, 400);
+      next.current_job = selected.job; next.job_category = selected.categoryId; next.job_exp = 0; minutes = 60;
+      title = `找到工作：${selected.job}`; message = `成功進入「${selected.categoryLabel}」成為見習${selected.job}；此職業的升遷經驗從 0 開始。`; break;
+    }
     case "work": {
       if (next.location !== "business") return json({ message: "請先前往商業區。" }, 400);
       if (next.illness) return json({ message: `目前罹患${next.illness}，請先前往醫院治療。` }, 400);
+      if (next.current_job === "unemployed") return json({ message: "目前是待業者，請先使用找工作選擇職業。" }, 400);
       const hours = Number(body.hours);
       if (![1, 4, 8].includes(hours)) return json({ message: "工時選擇不正確。" }, 400);
       if (next.energy < hours * 5) return json({ message: "體力不足，先回家休息吧。" }, 400);
-      const previousCareer = careerFor(next.work_exp);
+      const previousCareer = careerForJob(next.current_job, next.job_exp);
       const income = hours * previousCareer.hourlyPay;
-      next.cash += income; next.energy = clamp(next.energy - hours * 5); next.health = clamp(next.health - Math.ceil(hours / 2)); next.mood = clamp(next.mood - Math.ceil(hours * .9)); next.hunger = clamp(next.hunger - hours * 2); next.work_exp += hours * 4; minutes = hours * 60;
-      const newCareer = careerFor(next.work_exp);
+      next.cash += income; next.energy = clamp(next.energy - hours * 5); next.health = clamp(next.health - Math.ceil(hours / 2)); next.mood = clamp(next.mood - Math.ceil(hours * .9)); next.hunger = clamp(next.hunger - hours * 2); next.work_exp += hours * 4; next.job_exp += hours * 4; minutes = hours * 60;
+      const newCareer = careerForJob(next.current_job, next.job_exp);
       title = newCareer.title !== previousCareer.title ? `升遷為${newCareer.title}` : `工作 ${hours} 小時`;
-      message = `以${previousCareer.title}完成工作，收入 +NT$${income}，工作經驗 +${hours * 4}。${newCareer.title !== previousCareer.title ? ` 恭喜升遷為${newCareer.title}！` : ""}`; break;
+      message = `以${previousCareer.title}完成工作，收入 +NT$${income}，職業經驗 +${hours * 4}。${newCareer.title !== previousCareer.title ? ` 恭喜升遷為${newCareer.title}！` : ""}`; break;
     }
     case "study":
       if (next.location !== "school") return json({ message: "請先前往未來學院。" }, 400);
@@ -358,7 +364,7 @@ async function takeAction(request: Request, env: Env) {
       message = `${care.name}完成，支付 NT$${care.price}，健康恢復至 ${next.health}${previousIllness ? `，${previousIllness}已痊癒` : ""}。`; break;
     }
     case "reset":
-      Object.assign(next, { cash: 10000, energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, elapsed_minutes: 450, location: "realtor" });
+      Object.assign(next, { cash: 10000, energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, elapsed_minutes: 450, location: "realtor" });
       title = "重新開始人生"; message = "新的人生已開始，所有進度回到起點。"; tone = "neutral"; break;
     default: return json({ message: "未知的行動。" }, 400);
   }
@@ -387,8 +393,8 @@ async function takeAction(request: Request, env: Env) {
   const now = Date.now();
   const eventId = crypto.randomUUID();
   await env.DB.batch([
-    env.DB.prepare(`UPDATE players SET cash=?, energy=?, health=?, mood=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, elapsed_minutes=?, location=?, updated_at=?, last_seen_at=? WHERE user_id=?`)
-      .bind(next.cash, next.energy, next.health, next.mood, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.elapsed_minutes, next.location, now, now, user.userId),
+    env.DB.prepare(`UPDATE players SET cash=?, energy=?, health=?, mood=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, current_job=?, job_category=?, job_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, elapsed_minutes=?, location=?, updated_at=?, last_seen_at=? WHERE user_id=?`)
+      .bind(next.cash, next.energy, next.health, next.mood, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.current_job, next.job_category, next.job_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.elapsed_minutes, next.location, now, now, user.userId),
     env.DB.prepare("INSERT INTO game_events (id, user_id, player_name, room_id, title, detail, tone, game_time, created_at) VALUES (?, ?, ?, 'lobby-01', ?, ?, ?, ?, ?)")
       .bind(eventId, user.userId, user.displayName.slice(0, 40), title, message, tone, gameTime, now),
   ]);
