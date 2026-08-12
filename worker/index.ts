@@ -231,14 +231,14 @@ async function upsertPlayer(db: D1Database, user: AuthUser) {
 async function multiplayer(db: D1Database) {
   const since = Date.now() - 30_000;
   const [players, events] = await Promise.all([
-    db.prepare(`SELECT p.user_id, p.display_name, p.location, p.cash, p.last_seen_at,
+    db.prepare(`SELECT p.user_id, p.display_name, p.location, p.cash, p.loan_balance, p.last_seen_at,
       a.avatar_data IS NOT NULL AS has_avatar, a.avatar_updated_at
       FROM players p JOIN accounts a ON a.id = p.user_id
-      WHERE p.last_seen_at >= ? ORDER BY p.last_seen_at DESC LIMIT 24`).bind(since).all<{ user_id: string; display_name: string; location: LocationId; cash: number; last_seen_at: number; has_avatar: number; avatar_updated_at: number | null }>(),
+      WHERE p.last_seen_at >= ? ORDER BY p.last_seen_at DESC LIMIT 24`).bind(since).all<{ user_id: string; display_name: string; location: LocationId; cash: number; loan_balance: number; last_seen_at: number; has_avatar: number; avatar_updated_at: number | null }>(),
     db.prepare("SELECT id, player_name, title, detail, tone, game_time FROM game_events WHERE room_id = 'lobby-01' AND title NOT IN ('前往新地點', '移動完成') ORDER BY created_at DESC LIMIT 12").all<{ id: string; player_name: string; title: string; detail: string; tone: "good" | "neutral" | "warn"; game_time: string }>(),
   ]);
   return {
-    online: players.results.map((row) => ({ id: row.user_id, displayName: row.display_name, location: row.location, cash: row.cash, updatedAt: row.last_seen_at, avatarUrl: row.has_avatar ? `/api/avatar/${row.user_id}?v=${row.avatar_updated_at ?? 0}` : null })),
+    online: players.results.map((row) => ({ id: row.user_id, displayName: row.display_name, location: row.location, cash: row.cash, loanBalance: row.loan_balance, updatedAt: row.last_seen_at, avatarUrl: row.has_avatar ? `/api/avatar/${row.user_id}?v=${row.avatar_updated_at ?? 0}` : null })),
     feed: events.results.map((row) => ({ id: row.id, playerName: row.player_name, title: row.title, detail: row.detail, tone: row.tone, time: row.game_time })),
   };
 }

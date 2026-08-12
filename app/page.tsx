@@ -44,6 +44,7 @@ type OnlinePlayer = {
   displayName: string;
   location: LocationId;
   cash: number;
+  loanBalance: number;
   updatedAt: number;
   avatarUrl: string | null;
 };
@@ -373,6 +374,7 @@ export default function Home() {
   const [authOpen, setAuthOpen] = useState(false);
   const [jobOpen, setJobOpen] = useState(false);
   const [scratchResult, setScratchResult] = useState<{ price: number; prize: number } | null>(null);
+  const [enlargedPlayer, setEnlargedPlayer] = useState<OnlinePlayer | null>(null);
   const [jobCategory, setJobCategory] = useState<string>(JOB_CATEGORIES[0].id);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authError, setAuthError] = useState("");
@@ -441,6 +443,13 @@ export default function Home() {
     const timer = window.setInterval(() => void loadWorld(true), 750);
     return () => window.clearInterval(timer);
   }, [casino.phase, poker.phase, loadWorld]);
+
+  useEffect(() => {
+    if (!enlargedPlayer) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setEnlargedPlayer(null); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [enlargedPlayer]);
 
   async function act(action: string, payload: Record<string, unknown> = {}) {
     if (busy) return;
@@ -604,7 +613,7 @@ export default function Home() {
           <div className="section-heading story-title"><span>多人世界</span><small>LIVE LOBBY</small></div>
           <div className="online-summary"><strong><i />{online.length} 位在線</strong><span>每 5 秒同步</span></div>
           <ul className="online-list">
-            {online.length ? online.slice(0, 8).map((item) => <li key={item.id}><span className={`mini-avatar ${item.avatarUrl ? "has-photo" : ""}`}>{item.avatarUrl ? <img src={`${API_ORIGIN}${item.avatarUrl}`} alt={`${item.displayName}的大頭貼`} /> : item.displayName.slice(0, 1)}</span><div><strong>{item.displayName}{item.id === profile?.id ? "（你）" : ""}</strong><small>正在 {locationName(item.location)} · NT${formatMoney(item.cash)}</small></div></li>) : <li className="empty-online">登入後，你會在這裡遇見其他玩家。</li>}
+            {online.length ? online.slice(0, 8).map((item) => <li key={item.id}><button type="button" className={`mini-avatar ${item.avatarUrl ? "has-photo" : ""}`} aria-label={`放大查看${item.displayName}的大頭貼`} onClick={() => setEnlargedPlayer(item)}>{item.avatarUrl ? <img src={`${API_ORIGIN}${item.avatarUrl}`} alt="" /> : item.displayName.slice(0, 1)}</button><div><strong>{item.displayName}{item.id === profile?.id ? "（你）" : ""}</strong><small>正在 {locationName(item.location)}</small><span className="online-finance">現金 NT${formatMoney(item.cash)} · 貸款 NT${formatMoney(item.loanBalance)}</span></div></li>) : <li className="empty-online">登入後，你會在這裡遇見其他玩家。</li>}
           </ul>
           <div className="section-heading feed-heading"><span>城市動態</span><small>ACTIVITY</small></div>
           <ol className="feed-list">
@@ -613,6 +622,9 @@ export default function Home() {
           <div className="next-goal"><span>職涯里程碑</span><strong>{player.jobCategory === "unfixed" ? "先選擇一條產業路線" : nextCareer ? `升遷：${nextCareerTitle}` : "此產業最高職位"}</strong><div><i style={{ width: `${player.jobCategory === "unfixed" ? 0 : careerProgress}%` }} /></div><small>{player.jobCategory === "unfixed" ? "商業區 · 找工作" : nextCareer ? `${player.jobExp} / ${nextCareer.threshold} EXP · ${formatRequirements(nextCareer.requirements)}` : `${player.jobExp} 產業 EXP`}</small></div>
         </aside>
       </div>
+      {enlargedPlayer && <div className="avatar-lightbox" role="dialog" aria-modal="true" aria-labelledby="avatar-lightbox-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setEnlargedPlayer(null); }}>
+        <section><button className="auth-close" type="button" aria-label="關閉大頭貼" onClick={() => setEnlargedPlayer(null)}>×</button><div className={`enlarged-avatar ${enlargedPlayer.avatarUrl ? "has-photo" : ""}`}>{enlargedPlayer.avatarUrl ? <img src={`${API_ORIGIN}${enlargedPlayer.avatarUrl}`} alt={`${enlargedPlayer.displayName}的大頭貼`} /> : enlargedPlayer.displayName.slice(0, 1)}</div><h2 id="avatar-lightbox-title">{enlargedPlayer.displayName}</h2><p>現金 NT${formatMoney(enlargedPlayer.cash)} · 貸款 NT${formatMoney(enlargedPlayer.loanBalance)}</p></section>
+      </div>}
       {jobOpen && <div className="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="job-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setJobOpen(false); }}>
         <section className="job-board">
           <button className="auth-close" type="button" aria-label="關閉" onClick={() => setJobOpen(false)}>×</button>
