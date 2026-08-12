@@ -873,7 +873,7 @@ async function takeAction(request: Request, env: Env) {
       if (body.kind === "stay") {
         if (next.owns_home || next.rented_until > sharedMinutes) return json({ message: "你目前已有住所，不需要入住旅店。" }, 400);
         if (next.cash < 1_200) return json({ message: "住宿需要 NT$1,200，目前現金不足。" }, 400);
-        next.cash -= 1_200; next.energy = 100; next.health = clamp(next.health + 3); next.hunger = clamp(next.hunger - 12); minutes = 480;
+        next.cash -= 1_200; next.energy = 100; next.health = clamp(next.health + 3); next.hunger = clamp(next.hunger - 12); minutes = 300;
         title = "入住不夜旅店"; message = "支付 NT$1,200，體力全滿、健康 +3。"; break;
       }
       if (body.kind === "work") {
@@ -913,7 +913,7 @@ async function takeAction(request: Request, env: Env) {
       if (next.energy < hours * 5) return json({ message: "體力不足，先回家休息吧。" }, 400);
       const previousCareer = careerForCategory(next.job_category, next.job_exp, next.current_job, abilitiesFor(next));
       const income = hours * previousCareer.hourlyPay;
-      next.cash += income; next.energy = clamp(next.energy - hours * 5); next.health = clamp(next.health - Math.ceil(hours / 2)); next.mood = clamp(next.mood - Math.ceil(hours * .9)); next.hunger = clamp(next.hunger - hours * 2); next.job_exp += hours * 4; minutes = hours * 60;
+      next.cash += income; next.energy = clamp(next.energy - hours * 5); next.health = clamp(next.health - Math.ceil(hours / 2)); next.mood = clamp(next.mood - Math.ceil(hours * .9)); next.hunger = clamp(next.hunger - hours * 2); next.job_exp += hours * 4; minutes = hours === 1 ? 45 : hours === 4 ? 180 : 360;
       const newCareer = careerForCategory(next.job_category, next.job_exp, next.current_job, abilitiesFor(next));
       next.current_job = newCareer.title;
       title = newCareer.title !== previousCareer.title ? `升遷為${newCareer.title}` : `工作 ${hours} 小時`;
@@ -962,7 +962,7 @@ async function takeAction(request: Request, env: Env) {
     case "sleep":
       if (next.location !== "home") return json({ message: "請先回到溫暖小屋。" }, 400);
       if (!next.owns_home && next.rented_until <= sharedMinutes) return json({ message: "租約已到期，請先到房仲續租。" }, 400);
-      next.energy = 100; next.health = clamp(next.health + 5); next.mood = clamp(next.mood + 10); next.hunger = clamp(next.hunger - 12); minutes = 480;
+      next.energy = 100; next.health = clamp(next.health + 5); next.mood = clamp(next.mood + 10); next.hunger = clamp(next.hunger - 12); minutes = 300;
       title = "好好睡了一覺"; message = "體力完全恢復，健康 +5、心情 +10。"; break;
     case "hospital": {
       if (next.location !== "hospital") return json({ message: "請先前往市立醫院。" }, 400);
