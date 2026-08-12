@@ -48,9 +48,9 @@ const abilitiesFor = (player: PlayerRow): Abilities => ({
 const formatRequirements = (requirements: Partial<Abilities>) => Object.entries(requirements)
   .map(([key, value]) => `${ABILITY_LABELS[key as keyof Abilities]} ${value}`)
   .join("、");
-const WORLD_EPOCH_MS = Date.UTC(2026, 7, 12, 10, 0, 0);
-const WORLD_START_MINUTES = 7 * 60 + 30;
-const worldMinutes = (now = Date.now()) => WORLD_START_MINUTES + Math.max(0, Math.floor((now - WORLD_EPOCH_MS) / 2_000));
+const WORLD_EPOCH_MS = 1_786_533_617_376;
+const WORLD_START_MINUTES = 2_858;
+const worldMinutes = (now = Date.now()) => WORLD_START_MINUTES + Math.max(0, Math.floor((now - WORLD_EPOCH_MS) / 1_000));
 const minuteOfDay = (minutes = worldMinutes()) => ((minutes % 1440) + 1440) % 1440;
 const openingHours: Partial<Record<LocationId, { open: number; close: number; label: string }>> = {
   realtor: { open: 9 * 60, close: 18 * 60, label: "09:00～18:00" },

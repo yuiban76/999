@@ -151,9 +151,9 @@ const formatRequirements = (requirements: Partial<Abilities>) => Object.entries(
   .map(([key, value]) => `${ABILITY_LABELS[key as keyof Abilities]} ${value}`)
   .join("、");
 
-const WORLD_EPOCH_MS = Date.UTC(2026, 7, 12, 10, 0, 0);
-const WORLD_START_MINUTES = 7 * 60 + 30;
-const worldMinutes = (now = Date.now()) => WORLD_START_MINUTES + Math.max(0, Math.floor((now - WORLD_EPOCH_MS) / 2_000));
+const WORLD_EPOCH_MS = 1_786_533_617_376;
+const WORLD_START_MINUTES = 2_858;
+const worldMinutes = (now = Date.now()) => WORLD_START_MINUTES + Math.max(0, Math.floor((now - WORLD_EPOCH_MS) / 1_000));
 const openingHours: Partial<Record<LocationId, { open: number; close: number }>> = {
   realtor: { open: 9 * 60, close: 18 * 60 }, business: { open: 8 * 60, close: 18 * 60 }, shopping: { open: 10 * 60, close: 22 * 60 }, school: { open: 8 * 60, close: 21 * 60 },
   bank: { open: 9 * 60, close: 17 * 60 },
@@ -588,7 +588,7 @@ export default function Home() {
               {player.location === "hospital" && <><ActionCard icon="急" title="24 小時急診" meta="NT$2,500 · 健康至少恢復至 70 · 全天開放" button="前往急診" onClick={() => void act("hospital", { kind: "emergency" })} featured disabled={busy} /><ActionCard icon="診" title="一般門診" meta="08:00～20:00 · NT$600 · 健康 +25" button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={busy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /><ActionCard icon="療" title="完整治療" meta="08:00～20:00 · NT$1,500 · 健康至少恢復至 80" button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} disabled={busy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /></>}
             </div>
           </div>
-          <footer className="world-footer"><span>現實 1 分鐘 = 遊戲 30 分鐘 · 全服同步</span><button onClick={() => void act("reset")} disabled={busy}>重新開始人生</button></footer>
+          <footer className="world-footer"><span>現實 1 分鐘 = 遊戲 1 小時 · 全服同步</span><button onClick={() => void act("reset")} disabled={busy}>重新開始人生</button></footer>
         </section>
 
         <aside className="story-panel panel">
