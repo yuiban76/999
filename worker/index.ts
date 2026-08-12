@@ -1,4 +1,5 @@
 import { ABILITY_LABELS, ACADEMIES, careerForCategory, careerRequirements, categoryInfo, jobInfo, meetsCareerRequirements, type Abilities } from "../shared/jobs";
+import { isHospitalRegularOpen, isLocationOpen, minuteOfDay, OPENING_HOURS, worldMinutes } from "../shared/world";
 
 type LocationId = "home" | "realtor" | "bank" | "business" | "shopping" | "hotel" | "casino" | "school" | "hospital";
 
@@ -49,23 +50,6 @@ const abilitiesFor = (player: PlayerRow): Abilities => ({
 const formatRequirements = (requirements: Partial<Abilities>) => Object.entries(requirements)
   .map(([key, value]) => `${ABILITY_LABELS[key as keyof Abilities]} ${value}`)
   .join("、");
-const WORLD_EPOCH_MS = 1_786_533_617_376;
-const WORLD_START_MINUTES = 2_858;
-const worldMinutes = (now = Date.now()) => WORLD_START_MINUTES + Math.max(0, Math.floor((now - WORLD_EPOCH_MS) / 1_000));
-const minuteOfDay = (minutes = worldMinutes()) => ((minutes % 1440) + 1440) % 1440;
-const openingHours: Partial<Record<LocationId, { open: number; close: number; label: string }>> = {
-  realtor: { open: 9 * 60, close: 18 * 60, label: "09:00～18:00" },
-  bank: { open: 9 * 60, close: 17 * 60, label: "09:00～17:00" },
-  business: { open: 8 * 60, close: 18 * 60, label: "08:00～18:00" },
-  shopping: { open: 10 * 60, close: 22 * 60, label: "10:00～22:00" },
-  school: { open: 8 * 60, close: 21 * 60, label: "08:00～21:00" },
-};
-const isLocationOpen = (location: LocationId, minutes = worldMinutes()) => {
-  const hours = openingHours[location];
-  if (!hours) return true;
-  const current = minuteOfDay(minutes);
-  return current >= hours.open && current < hours.close;
-};
 function scratchPrize() {
   const roll = crypto.getRandomValues(new Uint32Array(1))[0] / 4_294_967_296;
   if (roll < 0.62) return 0;
@@ -712,14 +696,14 @@ async function takeAction(request: Request, env: Env) {
       if (next.location === body.location) return json({ message: "你已經在這裡了。" }, 400);
       if (body.location === "home" && !next.owns_home && next.rented_until <= sharedMinutes) return json({ message: "你目前沒有住所，請先到房仲租屋或買房。" }, 400);
       const target = body.location as LocationId;
-      if (!isLocationOpen(target, sharedMinutes)) return json({ message: `${openingHours[target]?.label} 營業，現在已關門。` }, 400);
+      if (!isLocationOpen(target, sharedMinutes)) return json({ message: `${OPENING_HOURS[target]?.label} 營業，現在已關門。` }, 400);
       next.location = body.location as LocationId; next.energy = clamp(next.energy - 1); next.hunger = clamp(next.hunger - 1);
       const placeName = ({ home: "我的住所", realtor: "安心房仲", bank: "城市銀行", business: "商業區", shopping: "購物街", hotel: "不夜旅店", casino: "幸運賭場", school: "未來學院", hospital: "市立醫院" } as Record<LocationId, string>)[next.location as LocationId];
       title = "移動完成"; message = `已抵達${placeName}。`; tone = "neutral"; break;
     }
     case "housing": {
       if (next.location !== "realtor") return json({ message: "請先前往安心房仲。" }, 400);
-      if (!isLocationOpen("realtor", sharedMinutes)) return json({ message: `安心房仲營業時間為 ${openingHours.realtor?.label}。` }, 400);
+      if (!isLocationOpen("realtor", sharedMinutes)) return json({ message: `安心房仲營業時間為 ${OPENING_HOURS.realtor?.label}。` }, 400);
       if (body.kind === "rent") {
         const days = Number(body.days);
         if (![1, 7, 30].includes(days)) return json({ message: "租屋天數不正確。" }, 400);
@@ -741,7 +725,7 @@ async function takeAction(request: Request, env: Env) {
     }
     case "bank": {
       if (next.location !== "bank") return json({ message: "請先前往城市銀行。" }, 400);
-      if (!isLocationOpen("bank", sharedMinutes)) return json({ message: `城市銀行營業時間為 ${openingHours.bank?.label}。` }, 400);
+      if (!isLocationOpen("bank", sharedMinutes)) return json({ message: `城市銀行營業時間為 ${OPENING_HOURS.bank?.label}。` }, 400);
       const amount = Number(body.amount);
       if (!Number.isSafeInteger(amount) || amount < 1 || amount > 9_000_000_000_000_000) return json({ message: "請輸入有效的整數金額。" }, 400);
       if (body.kind === "deposit") {
@@ -778,7 +762,7 @@ async function takeAction(request: Request, env: Env) {
     }
     case "job": {
       if (next.location !== "business") return json({ message: "請先前往商業區的就業服務處。" }, 400);
-      if (!isLocationOpen("business", sharedMinutes)) return json({ message: `商業區營業時間為 ${openingHours.business?.label}。` }, 400);
+      if (!isLocationOpen("business", sharedMinutes)) return json({ message: `商業區營業時間為 ${OPENING_HOURS.business?.label}。` }, 400);
       const selected = jobInfo(body.job || "");
       if (!selected) return json({ message: "這個職業不存在。" }, 400);
       if (next.current_job === selected.job) return json({ message: `你目前已經是${selected.job}。` }, 400);
@@ -793,7 +777,7 @@ async function takeAction(request: Request, env: Env) {
     }
     case "work": {
       if (next.location !== "business") return json({ message: "請先前往商業區。" }, 400);
-      if (!isLocationOpen("business", sharedMinutes)) return json({ message: `商業區營業時間為 ${openingHours.business?.label}。` }, 400);
+      if (!isLocationOpen("business", sharedMinutes)) return json({ message: `商業區營業時間為 ${OPENING_HOURS.business?.label}。` }, 400);
       if (next.illness) return json({ message: `目前罹患${next.illness}，請先前往醫院治療。` }, 400);
       if (next.job_category === "unfixed") return json({ message: `目前是${next.current_job === "流浪者" ? "流浪者" : "待業者"}，請先選擇一條產業路線。` }, 400);
       const hours = Number(body.hours);
@@ -809,7 +793,7 @@ async function takeAction(request: Request, env: Env) {
     }
     case "study": {
       if (next.location !== "school") return json({ message: "請先前往未來學院。" }, 400);
-      if (!isLocationOpen("school", sharedMinutes)) return json({ message: `未來學院開放時間為 ${openingHours.school?.label}。` }, 400);
+      if (!isLocationOpen("school", sharedMinutes)) return json({ message: `未來學院開放時間為 ${OPENING_HOURS.school?.label}。` }, 400);
       if (next.illness) return json({ message: `目前罹患${next.illness}，請先前往醫院治療。` }, 400);
       const academy = ACADEMIES.find((item) => item.id === body.academy);
       if (!academy) return json({ message: "這所學院不存在。" }, 400);
@@ -829,7 +813,7 @@ async function takeAction(request: Request, env: Env) {
     }
     case "eat": {
       if (next.location !== "shopping") return json({ message: "請先前往購物街。" }, 400);
-      if (!isLocationOpen("shopping", sharedMinutes)) return json({ message: `購物街營業時間為 ${openingHours.shopping?.label}。` }, 400);
+      if (!isLocationOpen("shopping", sharedMinutes)) return json({ message: `購物街營業時間為 ${OPENING_HOURS.shopping?.label}。` }, 400);
       const meal = body.kind === "rice" ? { name: "飯糰", price: 45, hunger: 20, mood: 1 } : body.kind === "bento" ? { name: "便當", price: 100, hunger: 45, mood: 3 } : null;
       if (!meal) return json({ message: "餐點不存在。" }, 400);
       if (next.cash < meal.price) return json({ message: "現金不足。" }, 400);
@@ -838,7 +822,7 @@ async function takeAction(request: Request, env: Env) {
     }
     case "scratch": {
       if (next.location !== "shopping") return json({ message: "請先前往購物街購買刮刮樂。" }, 400);
-      if (!isLocationOpen("shopping", sharedMinutes)) return json({ message: `購物街營業時間為 ${openingHours.shopping?.label}。` }, 400);
+      if (!isLocationOpen("shopping", sharedMinutes)) return json({ message: `購物街營業時間為 ${OPENING_HOURS.shopping?.label}。` }, 400);
       if (next.cash < 100) return json({ message: "購買刮刮樂需要 NT$100，目前現金不足。" }, 400);
       const prize = scratchPrize();
       scratch = { price: 100, prize };
@@ -854,7 +838,7 @@ async function takeAction(request: Request, env: Env) {
       title = "好好睡了一覺"; message = "體力完全恢復，健康 +5、心情 +10。"; break;
     case "hospital": {
       if (next.location !== "hospital") return json({ message: "請先前往市立醫院。" }, 400);
-      if (body.kind !== "emergency" && !(minuteOfDay(sharedMinutes) >= 8 * 60 && minuteOfDay(sharedMinutes) < 20 * 60)) return json({ message: "一般門診與完整治療時間為 08:00～20:00；急診 24 小時開放。" }, 400);
+      if (body.kind !== "emergency" && !isHospitalRegularOpen(sharedMinutes)) return json({ message: "一般門診與完整治療時間為 08:00～20:00；急診 24 小時開放。" }, 400);
       const care = body.kind === "clinic"
         ? { name: "一般門診", price: 600, minutes: 60, health: Math.min(100, next.health + 25), energy: Math.min(100, next.energy + 10) }
         : body.kind === "treatment"

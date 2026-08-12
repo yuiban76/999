@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ABILITY_LABELS, ACADEMIES, careerForCategory, careerRequirements, categoryInfo, JOB_CATEGORIES, jobInfo, meetsCareerRequirements, nextCareerForCategory, type Abilities } from "../shared/jobs";
+import { isHospitalRegularOpen, isLocationOpen, worldMinutes } from "../shared/world";
 
 type LocationId = "home" | "realtor" | "bank" | "business" | "shopping" | "hotel" | "casino" | "school" | "hospital";
 type StatKey = "energy" | "health" | "hunger";
@@ -164,20 +165,6 @@ const abilitiesFor = (player: Player): Abilities => ({
 const formatRequirements = (requirements: Partial<Abilities>) => Object.entries(requirements)
   .map(([key, value]) => `${ABILITY_LABELS[key as keyof Abilities]} ${value}`)
   .join("、");
-
-const WORLD_EPOCH_MS = 1_786_533_617_376;
-const WORLD_START_MINUTES = 2_858;
-const worldMinutes = (now = Date.now()) => WORLD_START_MINUTES + Math.max(0, Math.floor((now - WORLD_EPOCH_MS) / 1_000));
-const openingHours: Partial<Record<LocationId, { open: number; close: number }>> = {
-  realtor: { open: 9 * 60, close: 18 * 60 }, business: { open: 8 * 60, close: 18 * 60 }, shopping: { open: 10 * 60, close: 22 * 60 }, school: { open: 8 * 60, close: 21 * 60 },
-  bank: { open: 9 * 60, close: 17 * 60 },
-};
-const isLocationOpen = (location: LocationId, minutes = worldMinutes()) => {
-  const hours = openingHours[location];
-  if (!hours) return true;
-  const current = ((minutes % 1440) + 1440) % 1440;
-  return current >= hours.open && current < hours.close;
-};
 
 function clock(minutes: number) {
   const totalDays = Math.floor(minutes / 1440);
@@ -390,6 +377,7 @@ export default function Home() {
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authError, setAuthError] = useState("");
   const [notice, setNotice] = useState("正在連接人生世界……");
+  const clockOffsetRef = useRef(0);
   const [sharedMinutes, setSharedMinutes] = useState(worldMinutes());
   const gameClock = useMemo(() => clock(sharedMinutes), [sharedMinutes]);
   const currentLocation = locations.find((item) => item.id === player.location)!;
@@ -408,14 +396,15 @@ export default function Home() {
   const businessOpen = isLocationOpen("business", sharedMinutes);
   const shoppingOpen = isLocationOpen("shopping", sharedMinutes);
   const schoolOpen = isLocationOpen("school", sharedMinutes);
-  const currentMinute = ((sharedMinutes % 1440) + 1440) % 1440;
-  const hospitalRegularOpen = currentMinute >= 8 * 60 && currentMinute < 20 * 60;
+  const hospitalRegularOpen = isHospitalRegularOpen(sharedMinutes);
 
   const loadWorld = useCallback(async (quiet = false) => {
     try {
       const response = await fetch(`${API_ORIGIN}/api/game`, { headers: apiHeaders() });
       if (!response.ok) throw new Error("世界暫時無法連線");
       const data = await response.json() as Bootstrap;
+      clockOffsetRef.current = data.player.elapsedMinutes - worldMinutes();
+      setSharedMinutes(data.player.elapsedMinutes);
       if (data.authenticated || !quiet) {
         setPlayer(data.player);
         setProfile(data.profile);
@@ -441,7 +430,7 @@ export default function Home() {
   }, [loadWorld]);
 
   useEffect(() => {
-    const updateClock = () => setSharedMinutes(worldMinutes());
+    const updateClock = () => setSharedMinutes(worldMinutes() + clockOffsetRef.current);
     updateClock();
     const timer = window.setInterval(updateClock, 1_000);
     return () => window.clearInterval(timer);
@@ -476,6 +465,8 @@ export default function Home() {
       });
       const data = await response.json() as { player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; scratch?: { price: number; prize: number } | null; message?: string };
       if (!response.ok || !data.player) throw new Error(data.message || "行動失敗");
+      clockOffsetRef.current = data.player.elapsedMinutes - worldMinutes();
+      setSharedMinutes(data.player.elapsedMinutes);
       setPlayer(data.player);
       if (data.online) setOnline(data.online);
       if (data.feed) setFeed(data.feed);
@@ -572,7 +563,7 @@ export default function Home() {
             </div>
             <div><p>18 歲 · 人生新手</p><h1>{profile?.displayName ?? "旅行者"}</h1><span className="job-tag">{career.title}</span></div>
           </div>
-          <div className="cash-card"><span>可用資產</span><strong><small>NT$</small>{formatMoney(player.cash)}</strong><p>{profile ? "伺服器已安全保存" : "訪客模式暫存"}</p></div>
+          <div className="cash-card"><span>資產概況</span><strong><small>手上 NT$</small>{formatMoney(player.cash)}</strong><div className="cash-breakdown"><p><span>銀行存款</span><b>NT${formatMoney(player.bankBalance)}</b></p><p className={player.loanBalance ? "debt" : ""}><span>貸款餘額</span><b>NT${formatMoney(player.loanBalance)}</b></p></div><small>{profile ? "伺服器已安全保存" : "訪客模式暫存"}</small></div>
           <div className={`housing-card ${!player.ownsHome && !rentalDaysLeft ? "homeless" : ""}`}><span>居住狀態</span><strong>{housingLabel}</strong><small>{player.ownsHome ? "永久住所" : rentalDaysLeft ? `租約至遊戲第 ${Math.ceil(player.rentedUntil / 1440)} 天` : "請前往安心房仲"}</small></div>
           <div className="career-card">
             <div><span>目前職業</span><strong>{career.title}</strong></div><small>時薪 NT${formatMoney(career.hourlyPay)}</small>

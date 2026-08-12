@@ -169,7 +169,11 @@ button { color: inherit; }
 .cash-card > span { font-size: 10px; letter-spacing: .12em; color: #bfcbbf; }
 .cash-card strong { display: block; margin: 6px 0; font: 700 30px/1 Consolas, monospace; letter-spacing: -.07em; }
 .cash-card strong small { margin-right: 7px; font-size: 11px; letter-spacing: 0; }
-.cash-card p { margin: 0; font-size: 9px; color: #bfcbbf; }
+.cash-breakdown { display: grid; gap: 6px; margin: 13px 0 11px; padding-top: 11px; border-top: 1px solid rgba(255,255,255,.22); }
+.cash-breakdown p { display: flex; justify-content: space-between; gap: 10px; margin: 0; color: #dbe4da; font-size: 9px; }
+.cash-breakdown b { color: white; font: 700 10px Consolas, monospace; }
+.cash-breakdown p.debt b { color: #ffb09b; }
+.cash-card > small { color: #bfcbbf; font-size: 9px; }
 
 .housing-card { display: grid; gap: 5px; margin-top: 16px; padding: 12px 13px; border: 1px solid var(--moss); background: #e2e9dd; }
 .housing-card.homeless { border-color: #b64029; background: #fde1d6; }
