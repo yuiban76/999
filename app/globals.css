@@ -227,6 +227,34 @@ button { color: inherit; }
 .action-card button:active { transform: translateY(1px); }
 .action-card button:disabled, .location-strip button:disabled, .world-footer button:disabled { cursor: wait; opacity: .58; }
 
+.casino-table { grid-column: 1 / -1; overflow: hidden; border: 1px solid #102b20; background: #174833; color: #fffaf0; box-shadow: 5px 5px 0 #102b20; }
+.casino-table > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px; border-bottom: 1px solid rgba(255,255,255,.2); background: #123a29; }
+.casino-table > header span { color: #d8b86b; font: 8px Consolas, monospace; letter-spacing: .15em; }
+.casino-table > header h4 { margin: 4px 0 0; font: 700 20px Georgia, "Noto Serif TC", serif; }
+.casino-table > header > strong { color: #f3d987; font-size: 10px; white-space: nowrap; }
+.casino-seats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.18); }
+.casino-seats > div { min-width: 0; display: flex; align-items: center; gap: 6px; padding: 7px; border: 1px dashed rgba(255,255,255,.28); border-radius: 20px; color: rgba(255,255,255,.52); }
+.casino-seats > div.occupied { border-style: solid; border-color: #d8b86b; color: #fffaf0; background: rgba(0,0,0,.12); }
+.casino-seats span { flex: 0 0 20px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: rgba(255,255,255,.12); font: 8px Consolas, monospace; }
+.casino-seats strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+.blackjack-board { padding: 18px; }
+.card-hand + .card-hand { margin-top: 18px; }
+.card-hand > span { display: block; margin-bottom: 8px; color: #d9e6dc; font-size: 9px; font-weight: 700; }
+.card-hand > div { display: flex; flex-wrap: wrap; gap: 7px; min-height: 60px; }
+.card-hand i { width: 41px; height: 56px; display: grid; place-items: center; border-radius: 4px; background: #fffdf7; color: #1f251f; box-shadow: 0 3px 0 rgba(0,0,0,.28); font: 700 15px Georgia, serif; font-style: normal; }
+.card-hand i.red { color: #b7312d; }
+.casino-message, .casino-result { margin: 0; padding: 22px 18px; text-align: center; font-size: 11px; }
+.casino-result { margin: 16px 0 0; padding: 10px; border: 1px solid rgba(255,255,255,.25); background: rgba(0,0,0,.14); color: #ffe39b; font-weight: 800; }
+.casino-controls, .bet-buttons > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.casino-controls button, .bet-buttons button { min-width: 92px; padding: 10px 14px; border: 1px solid #f5d77f; background: #f5d77f; color: #173427; cursor: pointer; font-size: 10px; font-weight: 800; }
+.casino-controls button:hover, .bet-buttons button:hover { background: #fff1bd; }
+.casino-controls button.leave { border-color: rgba(255,255,255,.45); background: transparent; color: white; }
+.casino-controls button:disabled, .bet-buttons button:disabled { cursor: not-allowed; opacity: .48; }
+.bet-buttons { padding: 20px 18px; }
+.blackjack-board .bet-buttons { padding: 0; }
+.bet-buttons > span { display: block; color: #d9e6dc; font-size: 10px; }
+.casino-table > footer { padding: 9px 18px; border-top: 1px solid rgba(255,255,255,.18); color: rgba(255,255,255,.62); background: rgba(0,0,0,.12); font-size: 8px; line-height: 1.5; }
+
 .world-footer { min-height: 43px; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; border-top: 1px solid var(--line); color: var(--muted); font: 9px Consolas, monospace; }
 .world-footer button { border: 0; padding: 6px; background: transparent; color: var(--muted); text-decoration: underline; cursor: pointer; font-size: 10px; }
 
@@ -295,6 +323,9 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
   .action-stage { padding: 28px 18px; }
   .action-cards { grid-template-columns: 1fr; }
   .action-card { min-height: 156px; }
+  .casino-seats { grid-template-columns: repeat(5, minmax(80px, 1fr)); overflow-x: auto; }
+  .casino-table > header { align-items: flex-start; }
+  .card-hand i { width: 37px; height: 51px; }
   .world-footer { padding: 0 18px; }
   .story-panel { padding: 22px 18px; }
   .feed-list { display: block; }

@@ -58,3 +58,14 @@ export const gameEvents = sqliteTable("game_events", {
   gameTime: text("game_time").notNull(),
   createdAt: integer("created_at").notNull(),
 }, (table) => [index("idx_events_room_created").on(table.roomId, table.createdAt)]);
+
+export const casinoHands = sqliteTable("casino_hands", {
+  userId: text("user_id").primaryKey(),
+  playerName: text("player_name").notNull(),
+  playerCards: text("player_cards").notNull().default("[]"),
+  dealerCards: text("dealer_cards").notNull().default("[]"),
+  bet: integer("bet").notNull().default(0),
+  status: text("status").notNull().default("idle"),
+  result: text("result").notNull().default(""),
+  updatedAt: integer("updated_at").notNull(),
+}, (table) => [index("idx_casino_status_updated").on(table.status, table.updatedAt)]);

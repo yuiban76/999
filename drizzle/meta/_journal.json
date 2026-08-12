@@ -43,6 +43,13 @@
       "when": 1786525450341,
       "tag": "0005_nosy_pride",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1786527270170,
+      "tag": "0006_faithful_wallow",
+      "breakpoints": true
     }
   ]
 }

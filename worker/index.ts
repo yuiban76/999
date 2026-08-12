@@ -1,6 +1,6 @@
 import { careerForCategory, categoryInfo, jobInfo } from "../shared/jobs";
 
-type LocationId = "home" | "realtor" | "business" | "shopping" | "park" | "school" | "hospital";
+type LocationId = "home" | "realtor" | "business" | "shopping" | "casino" | "school" | "hospital";
 
 interface Env { DB?: D1Database; ASSETS?: Fetcher; FRONTEND_ORIGIN?: string }
 
@@ -30,7 +30,9 @@ type PlayerRow = {
   location: LocationId;
 };
 
-const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "business", "shopping", "park", "school", "hospital"]);
+type CasinoRow = { user_id: string; player_name: string; player_cards: string; dealer_cards: string; bet: number; status: string; result: string; updated_at: number };
+
+const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "business", "shopping", "casino", "school", "hospital"]);
 const clamp = (value: number) => Math.max(0, Math.min(100, value));
 function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
@@ -97,7 +99,8 @@ function guestPlayer() {
 
 function serializePlayer(row: PlayerRow) {
   const currentJob = jobInfo(row.current_job) ? row.current_job : "待業者";
-  return { cash: row.cash, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, programmingExp: row.programming_exp, fitnessExp: row.fitness_exp, workExp: row.work_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, elapsedMinutes: row.elapsed_minutes, location: row.location };
+  const location = VALID_LOCATIONS.has(row.location) ? row.location : "casino";
+  return { cash: row.cash, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, programmingExp: row.programming_exp, fitnessExp: row.fitness_exp, workExp: row.work_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, elapsedMinutes: row.elapsed_minutes, location };
 }
 
 function profileFor(user: AuthUser) {
@@ -143,11 +146,18 @@ async function ensureSchema(db: D1Database) {
       detail TEXT NOT NULL, tone TEXT NOT NULL DEFAULT 'neutral',
       game_time TEXT NOT NULL, created_at INTEGER NOT NULL
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS casino_hands (
+      user_id TEXT PRIMARY KEY, player_name TEXT NOT NULL,
+      player_cards TEXT NOT NULL DEFAULT '[]', dealer_cards TEXT NOT NULL DEFAULT '[]',
+      bet INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'idle',
+      result TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL
+    )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_players_last_seen ON players(last_seen_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_events_room_created ON game_events(room_id, created_at DESC)"),
     db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_email ON accounts(email)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_casino_status_updated ON casino_hands(status, updated_at)"),
   ]);
 }
 
@@ -173,6 +183,116 @@ async function multiplayer(db: D1Database) {
     online: players.results.map((row) => ({ id: row.user_id, displayName: row.display_name, location: row.location, updatedAt: row.last_seen_at, avatarUrl: row.has_avatar ? `/api/avatar/${row.user_id}?v=${row.avatar_updated_at ?? 0}` : null })),
     feed: events.results.map((row) => ({ id: row.id, playerName: row.player_name, title: row.title, detail: row.detail, tone: row.tone, time: row.game_time })),
   };
+}
+
+const CARD_RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+const CARD_SUITS = ["♠", "♥", "♦", "♣"];
+const drawCard = () => `${CARD_RANKS[Math.floor(Math.random() * CARD_RANKS.length)]}${CARD_SUITS[Math.floor(Math.random() * CARD_SUITS.length)]}`;
+function handScore(cards: string[]) {
+  let score = 0; let aces = 0;
+  for (const card of cards) {
+    const rank = card.slice(0, -1);
+    if (rank === "A") { score += 11; aces += 1; }
+    else if (["J", "Q", "K"].includes(rank)) score += 10;
+    else score += Number(rank);
+  }
+  while (score > 21 && aces > 0) { score -= 10; aces -= 1; }
+  return score;
+}
+const parseCards = (value: string) => { try { return JSON.parse(value) as string[]; } catch { return []; } };
+
+async function casinoState(db: D1Database, userId: string) {
+  const cutoff = Date.now() - 5 * 60 * 1000;
+  const [seats, own] = await Promise.all([
+    db.prepare("SELECT user_id, player_name FROM casino_hands WHERE status = 'playing' AND updated_at >= ? ORDER BY updated_at LIMIT 5").bind(cutoff).all<{ user_id: string; player_name: string }>(),
+    db.prepare("SELECT * FROM casino_hands WHERE user_id = ?").bind(userId).first<CasinoRow>(),
+  ]);
+  const activeOwn = own?.status === "playing" && own.updated_at >= cutoff;
+  const playerCards = own ? parseCards(own.player_cards) : [];
+  const dealerCards = own ? parseCards(own.dealer_cards) : [];
+  return {
+    capacity: 5,
+    activeCount: seats.results.length,
+    seats: seats.results.map((seat) => ({ id: seat.user_id, displayName: seat.player_name })),
+    hand: own ? {
+      playerCards,
+      dealerCards: activeOwn && dealerCards.length > 1 ? [dealerCards[0], "🂠"] : dealerCards,
+      playerScore: handScore(playerCards),
+      dealerScore: activeOwn ? null : handScore(dealerCards),
+      bet: own.bet,
+      status: activeOwn ? "playing" : own.status === "playing" ? "expired" : own.status,
+      result: activeOwn ? "" : own.status === "playing" ? "離桌過久，本局下注已沒收。" : own.result,
+    } : null,
+  };
+}
+
+async function settleCasinoHand(db: D1Database, userId: string, row: CasinoRow, playerCards: string[]) {
+  const dealerCards = parseCards(row.dealer_cards);
+  while (handScore(dealerCards) < 17) dealerCards.push(drawCard());
+  const playerScore = handScore(playerCards); const dealerScore = handScore(dealerCards);
+  const blackjack = playerCards.length === 2 && playerScore === 21;
+  const dealerBlackjack = dealerCards.length === 2 && dealerScore === 21;
+  let status = "lost"; let result = `莊家 ${dealerScore} 點，你輸了 NT$${row.bet}。`; let payout = 0;
+  if (playerScore > 21) result = `你爆牌了，輸掉 NT$${row.bet}。`;
+  else if (blackjack && !dealerBlackjack) { status = "blackjack"; payout = Math.floor(row.bet * 2.5); result = `Blackjack！獲得 NT$${payout}。`; }
+  else if (dealerScore > 21 || playerScore > dealerScore) { status = "won"; payout = row.bet * 2; result = `你以 ${playerScore} 點獲勝，獲得 NT$${payout}。`; }
+  else if (playerScore === dealerScore) { status = "push"; payout = row.bet; result = `${playerScore} 點平手，退回 NT$${row.bet}。`; }
+  const now = Date.now();
+  await db.batch([
+    db.prepare("UPDATE casino_hands SET player_cards=?, dealer_cards=?, status=?, result=?, updated_at=? WHERE user_id=?").bind(JSON.stringify(playerCards), JSON.stringify(dealerCards), status, result, now, userId),
+    db.prepare("UPDATE players SET cash=cash+?, updated_at=?, last_seen_at=? WHERE user_id=?").bind(payout, now, now, userId),
+  ]);
+  return result;
+}
+
+async function casinoAction(request: Request, env: Env) {
+  const user = await identity(request, env.DB);
+  if (!user || !env.DB) return json({ message: "請先登入才能加入多人牌桌。" }, 401);
+  await ensureSchema(env.DB);
+  const player = await upsertPlayer(env.DB, user);
+  if (!player) return json({ message: "找不到玩家資料。" }, 404);
+  if (player.location !== "casino") return json({ message: "請先前往幸運賭場。" }, 400);
+  let body: { action?: string; bet?: number };
+  try { body = await request.json(); } catch { return json({ message: "牌桌資料格式錯誤。" }, 400); }
+  const now = Date.now(); const cutoff = now - 5 * 60 * 1000;
+  let message = "牌桌已更新。";
+  if (body.action === "deal") {
+    const bet = Number(body.bet);
+    if (![100, 500, 1000].includes(bet)) return json({ message: "下注金額只能是 NT$100、500 或 1,000。" }, 400);
+    if (player.cash < bet) return json({ message: "現金不足，無法下注。" }, 400);
+    const playerCards = [drawCard(), drawCard()]; const dealerCards = [drawCard(), drawCard()];
+    const acquisition = await env.DB.prepare(`INSERT INTO casino_hands (user_id, player_name, player_cards, dealer_cards, bet, status, result, updated_at)
+      SELECT ?, ?, ?, ?, ?, 'playing', '', ?
+      WHERE (SELECT COUNT(*) FROM casino_hands WHERE status='playing' AND updated_at>=?) < 5
+      ON CONFLICT(user_id) DO UPDATE SET player_name=excluded.player_name, player_cards=excluded.player_cards,
+        dealer_cards=excluded.dealer_cards, bet=excluded.bet, status='playing', result='', updated_at=excluded.updated_at
+      WHERE casino_hands.status!='playing' OR casino_hands.updated_at<?
+      RETURNING user_id`)
+      .bind(user.userId, user.displayName.slice(0, 40), JSON.stringify(playerCards), JSON.stringify(dealerCards), bet, now, cutoff, cutoff).run();
+    if (acquisition.results.length !== 1) return json({ message: "牌桌已滿，目前最多 5 位玩家同時遊玩。" }, 409);
+    const charged = await env.DB.prepare("UPDATE players SET cash=cash-?, updated_at=?, last_seen_at=? WHERE user_id=? AND cash>=? RETURNING user_id").bind(bet, now, now, user.userId, bet).run();
+    if (charged.results.length !== 1) {
+      await env.DB.prepare("UPDATE casino_hands SET status='left', result='現金不足，牌局已取消。', updated_at=? WHERE user_id=?").bind(now, user.userId).run();
+      return json({ message: "現金不足，無法下注。" }, 400);
+    }
+    const acquired = await env.DB.prepare("SELECT * FROM casino_hands WHERE user_id=?").bind(user.userId).first<CasinoRow>();
+    if (!acquired) return json({ message: "牌局建立失敗，請再試一次。" }, 500);
+    message = `下注 NT$${bet}，開始發牌。`;
+    if (handScore(playerCards) === 21 || handScore(dealerCards) === 21) message = await settleCasinoHand(env.DB, user.userId, acquired, playerCards);
+  } else {
+    const row = await env.DB.prepare("SELECT * FROM casino_hands WHERE user_id=? AND status='playing' AND updated_at>=?").bind(user.userId, cutoff).first<CasinoRow>();
+    if (!row) return json({ message: "目前沒有進行中的牌局。" }, 400);
+    const cards = parseCards(row.player_cards);
+    if (body.action === "hit") {
+      cards.push(drawCard());
+      if (handScore(cards) >= 21) message = await settleCasinoHand(env.DB, user.userId, row, cards);
+      else { await env.DB.prepare("UPDATE casino_hands SET player_cards=?, updated_at=? WHERE user_id=?").bind(JSON.stringify(cards), now, user.userId).run(); message = `補牌後目前 ${handScore(cards)} 點。`; }
+    } else if (body.action === "stand") message = await settleCasinoHand(env.DB, user.userId, row, cards);
+    else if (body.action === "leave") { message = "已離開牌桌，本局下注不退還。"; await env.DB.prepare("UPDATE casino_hands SET status='left', result=?, updated_at=? WHERE user_id=?").bind(message, now, user.userId).run(); }
+    else return json({ message: "未知的牌桌行動。" }, 400);
+  }
+  const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
+  return json({ player: serializePlayer(saved!), casino: await casinoState(env.DB, user.userId), message });
 }
 
 async function auth(request: Request, env: Env, mode: "register" | "login") {
@@ -247,12 +367,12 @@ async function getAvatar(userId: string, env: Env) {
 
 async function bootstrap(request: Request, env: Env) {
   const user = await identity(request, env.DB);
-  if (!user || !env.DB) return json({ authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [] });
+  if (!user || !env.DB) return json({ authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [], casino: { capacity: 5, activeCount: 0, seats: [], hand: null } });
   await ensureSchema(env.DB);
   const row = await upsertPlayer(env.DB, user);
   if (!row) return json({ message: "無法載入玩家資料" }, 500);
   const world = await multiplayer(env.DB);
-  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row), room: { id: "lobby-01", name: "城市大廳 01" }, ...world });
+  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row), room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino: await casinoState(env.DB, user.userId) });
 }
 
 async function takeAction(request: Request, env: Env) {
@@ -279,7 +399,7 @@ async function takeAction(request: Request, env: Env) {
       if (next.location === body.location) return json({ message: "你已經在這裡了。" }, 400);
       if (body.location === "home" && !next.owns_home && next.rented_until <= next.elapsed_minutes) return json({ message: "你目前沒有住所，請先到房仲租屋或買房。" }, 400);
       next.location = body.location as LocationId; next.energy = clamp(next.energy - 1); next.hunger = clamp(next.hunger - 1); minutes = 10;
-      const placeName = ({ home: "我的住所", realtor: "安心房仲", business: "商業區", shopping: "購物街", park: "城市公園", school: "未來學院", hospital: "市立醫院" } as Record<LocationId, string>)[next.location as LocationId];
+      const placeName = ({ home: "我的住所", realtor: "安心房仲", business: "商業區", shopping: "購物街", casino: "幸運賭場", school: "未來學院", hospital: "市立醫院" } as Record<LocationId, string>)[next.location as LocationId];
       title = "前往新地點"; message = `花了 10 分鐘抵達${placeName}。`; tone = "neutral"; break;
     }
     case "housing": {
@@ -349,12 +469,6 @@ async function takeAction(request: Request, env: Env) {
       if (!next.owns_home && next.rented_until <= next.elapsed_minutes) return json({ message: "租約已到期，請先到房仲續租。" }, 400);
       next.energy = 100; next.health = clamp(next.health + 5); next.mood = clamp(next.mood + 10); next.hunger = clamp(next.hunger - 12); minutes = 480;
       title = "好好睡了一覺"; message = "體力完全恢復，健康 +5、心情 +10。"; break;
-    case "exercise":
-      if (next.location !== "park") return json({ message: "請先前往城市公園。" }, 400);
-      if (next.illness) return json({ message: `目前罹患${next.illness}，不適合運動，請先就醫。` }, 400);
-      if (next.energy < 15) return json({ message: "體力不足，今天先休息吧。" }, 400);
-      next.energy = clamp(next.energy - 15); next.health = clamp(next.health + 4); next.mood = clamp(next.mood + 8); next.hunger = clamp(next.hunger - 5); next.fitness_exp += 15; minutes = 60;
-      title = "完成一小時運動"; message = "健康 +4、心情 +8、體能 EXP +15。"; break;
     case "hospital": {
       if (next.location !== "hospital") return json({ message: "請先前往市立醫院。" }, 400);
       const care = body.kind === "clinic"
@@ -421,6 +535,7 @@ export default {
     else if (url.pathname.startsWith("/api/avatar/") && request.method === "GET") response = await getAvatar(url.pathname.slice("/api/avatar/".length), env);
     else if (url.pathname === "/api/game" && request.method === "GET") response = await bootstrap(request, env);
     else if (url.pathname === "/api/game/action" && request.method === "POST") response = await takeAction(request, env);
+    else if (url.pathname === "/api/casino/action" && request.method === "POST") response = await casinoAction(request, env);
     else if (url.pathname.startsWith("/api/")) response = json({ message: "找不到 API。" }, 404);
     else if (env.ASSETS) return env.ASSETS.fetch(request);
     else response = json({ service: "Life Online API", ok: true });

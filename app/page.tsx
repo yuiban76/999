@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { careerForCategory, categoryInfo, JOB_CATEGORIES, jobInfo, nextCareerForCategory } from "../shared/jobs";
 
-type LocationId = "home" | "realtor" | "business" | "shopping" | "park" | "school" | "hospital";
+type LocationId = "home" | "realtor" | "business" | "shopping" | "casino" | "school" | "hospital";
 type StatKey = "energy" | "health" | "hunger";
 
 type Player = {
@@ -52,6 +52,13 @@ type FeedItem = {
   playerName?: string;
 };
 
+type CasinoState = {
+  capacity: number;
+  activeCount: number;
+  seats: Array<{ id: string; displayName: string }>;
+  hand: null | { playerCards: string[]; dealerCards: string[]; playerScore: number; dealerScore: number | null; bet: number; status: string; result: string };
+};
+
 type Bootstrap = {
   authenticated: boolean;
   profile: Profile | null;
@@ -59,6 +66,7 @@ type Bootstrap = {
   room: { id: string; name: string };
   online: OnlinePlayer[];
   feed: FeedItem[];
+  casino: CasinoState;
 };
 
 const INITIAL_PLAYER: Player = {
@@ -98,7 +106,7 @@ const locations: Array<{ id: LocationId; emoji: string; name: string; caption: s
   { id: "realtor", emoji: "鑰", name: "安心房仲", caption: "按天租屋或購買永久住所，屋主也能繼續查看租屋" },
   { id: "business", emoji: "▦", name: "商業區", caption: "用時間換取收入，累積職涯經驗" },
   { id: "shopping", emoji: "◇", name: "購物街", caption: "補充飽足，偶爾也犒賞一下自己" },
-  { id: "park", emoji: "♧", name: "城市公園", caption: "鍛鍊身體，找回健康與好心情" },
+  { id: "casino", emoji: "♠", name: "幸運賭場", caption: "最多五位玩家同桌，各自挑戰二十一點莊家" },
   { id: "school", emoji: "▤", name: "未來學院", caption: "投資自己，讓選擇越來越多" },
   { id: "hospital", emoji: "✚", name: "市立醫院", caption: "檢查身體、治療疾病，讓健康回到正軌" },
 ];
@@ -217,11 +225,8 @@ function guestAction(current: Player, action: string, payload: Record<string, un
     if (next.location !== "home") return fail("請先回到溫暖小屋。");
     if (!next.ownsHome && next.rentedUntil <= next.elapsedMinutes) return fail("租約已到期，請先到房仲續租。");
     next.energy = 100; next.health = Math.min(100, next.health + 5); next.mood = Math.min(100, next.mood + 10); next.hunger = Math.max(0, next.hunger - 12); minutes = 480; title = "好好睡了一覺"; message = "體力完全恢復，健康 +5、心情 +10。";
-  } else if (action === "exercise") {
-    if (next.location !== "park") return fail("請先前往城市公園。");
-    if (next.illness) return fail(`目前罹患${next.illness}，不適合運動，請先就醫。`);
-    if (next.energy < 15) return fail("體力不足，今天先休息吧。");
-    next.energy -= 15; next.health = Math.min(100, next.health + 4); next.mood = Math.min(100, next.mood + 8); next.hunger = Math.max(0, next.hunger - 5); next.fitnessExp += 15; minutes = 60; title = "完成一小時運動"; message = "健康 +4、心情 +8、體能 EXP +15。";
+  } else if (action.startsWith("casino_")) {
+    return fail("登入帳號後才能加入最多五人的二十一點牌桌。");
   } else if (action === "hospital") {
     if (next.location !== "hospital") return fail("請先前往市立醫院。");
     const care = payload.kind === "clinic"
@@ -260,6 +265,7 @@ export default function Home() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [online, setOnline] = useState<OnlinePlayer[]>([]);
   const [feed, setFeed] = useState<FeedItem[]>([]);
+  const [casino, setCasino] = useState<CasinoState>({ capacity: 5, activeCount: 0, seats: [], hand: null });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
@@ -291,6 +297,7 @@ export default function Home() {
       }
       setOnline(data.online);
       setFeed(data.feed);
+      setCasino(data.casino);
       if (!quiet) {
         setNotice(data.authenticated ? `歡迎回來，${data.profile?.displayName}。進度已同步。` : "目前是訪客試玩；登入後即可永久保存並加入多人世界。");
       }
@@ -323,16 +330,17 @@ export default function Home() {
       return;
     }
     try {
-      const response = await fetch(`${API_ORIGIN}/api/game/action`, {
+      const response = await fetch(`${API_ORIGIN}${action.startsWith("casino_") ? "/api/casino/action" : "/api/game/action"}`, {
         method: "POST",
         headers: apiHeaders(true),
-        body: JSON.stringify({ action, ...payload }),
+        body: JSON.stringify({ action: action.startsWith("casino_") ? action.slice(7) : action, ...payload }),
       });
-      const data = await response.json() as { player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; message?: string };
+      const data = await response.json() as { player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; message?: string };
       if (!response.ok || !data.player) throw new Error(data.message || "行動失敗");
       setPlayer(data.player);
       if (data.online) setOnline(data.online);
       if (data.feed) setFeed(data.feed);
+      if (data.casino) setCasino(data.casino);
       setNotice(data.message || "行動完成");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "行動失敗，請稍後再試。");
@@ -362,7 +370,7 @@ export default function Home() {
   async function logout() {
     try { await fetch(`${API_ORIGIN}/api/auth/logout`, { method: "POST", headers: apiHeaders() }); } catch { /* local logout still works */ }
     window.localStorage.removeItem(TOKEN_KEY);
-    setProfile(null); setOnline([]); setFeed([]); setPlayer(INITIAL_PLAYER);
+    setProfile(null); setOnline([]); setFeed([]); setCasino({ capacity: 5, activeCount: 0, seats: [], hand: null }); setPlayer(INITIAL_PLAYER);
     setNotice("已登出；目前為訪客試玩模式。");
   }
 
@@ -450,7 +458,7 @@ export default function Home() {
               {player.location === "realtor" && <><ActionCard icon="01" title="城市小套房 · 1 天" meta="每日 NT$350 · 租金 NT$350" button="租 1 天" onClick={() => void act("housing", { kind: "rent", days: 1 })} disabled={busy} /><ActionCard icon="07" title="城市小套房 · 7 天" meta="每日 NT$350 · 租金 NT$2,450" button="租 7 天" onClick={() => void act("housing", { kind: "rent", days: 7 })} featured disabled={busy} /><ActionCard icon="買" title="購買城市小宅" meta="NT$150,000 · 永久住所 · 買房後仍可查看租屋" button={player.ownsHome ? "已擁有，仍可看租屋" : "購買房屋"} onClick={() => void act("housing", { kind: "buy" })} disabled={busy} /></>}
               {player.location === "business" && <><ActionCard icon="職" title="找工作" meta="12 條產業升遷路線 · 無固定職業" button="打開產業列表" onClick={() => setJobOpen(true)} featured disabled={busy} /><ActionCard icon="01" title="短班 1 小時" meta={`收入 NT$${formatMoney(career.hourlyPay)} · 產業 EXP +4`} button="開始工作" onClick={() => void act("work", { hours: 1 })} disabled={busy} /><ActionCard icon="04" title="標準班 4 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 4)} · 產業 EXP +16`} button="開始工作" onClick={() => void act("work", { hours: 4 })} disabled={busy} /><ActionCard icon="08" title="長班 8 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 8)} · 產業 EXP +32`} button="開始工作" onClick={() => void act("work", { hours: 8 })} disabled={busy} /></>}
               {player.location === "shopping" && <><ActionCard icon="飯" title="巷口飯糰" meta="NT$45 · 飽足 +20" button="買來吃" onClick={() => void act("eat", { kind: "rice" })} disabled={busy} /><ActionCard icon="餐" title="豐盛便當" meta="NT$100 · 飽足 +45 · 心情 +3" button="享用便當" onClick={() => void act("eat", { kind: "bento" })} featured disabled={busy} /></>}
-              {player.location === "park" && <ActionCard icon="跑" title="運動 1 小時" meta="健康 +4 · 心情 +8 · 體能 EXP +15" button="開始鍛鍊" onClick={() => void act("exercise")} featured disabled={busy} />}
+              {player.location === "casino" && <CasinoTable state={casino} signedIn={Boolean(profile)} busy={busy} onAction={(action, payload) => void act(`casino_${action}`, payload)} />}
               {player.location === "school" && <ActionCard icon="學" title="程式設計課" meta="NT$500 · 2 小時 · 程式 EXP +25" button="報名上課" onClick={() => void act("study")} featured disabled={busy} />}
               {player.location === "hospital" && <><ActionCard icon="診" title="一般門診" meta="NT$600 · 健康 +25 · 治癒疾病" button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={busy} /><ActionCard icon="療" title="完整治療" meta="NT$1,500 · 健康至少恢復至 80 · 治癒疾病" button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} featured disabled={busy} /></>}
             </div>
@@ -512,10 +520,29 @@ function ActionCard({ icon, title, meta, button, featured = false, disabled, onC
   return <article className={`action-card ${featured ? "featured" : ""}`}><span className="action-icon">{icon}</span><h4>{title}</h4><p>{meta}</p><button onClick={onClick} disabled={disabled}>{disabled ? "同步中…" : button}<span>→</span></button></article>;
 }
 
+function CasinoTable({ state, signedIn, busy, onAction }: { state: CasinoState; signedIn: boolean; busy: boolean; onAction: (action: string, payload?: Record<string, unknown>) => void }) {
+  const playing = state.hand?.status === "playing";
+  return <section className="casino-table">
+    <header><div><span>BLACKJACK TABLE 01</span><h4>二十一點</h4></div><strong>{state.activeCount} / {state.capacity} 位遊玩中</strong></header>
+    <div className="casino-seats">{Array.from({ length: 5 }, (_, index) => <div className={state.seats[index] ? "occupied" : ""} key={index}><span>{index + 1}</span><strong>{state.seats[index]?.displayName ?? "空位"}</strong></div>)}</div>
+    {!signedIn ? <p className="casino-message">登入帳號後才能入座並使用遊戲資產下注。</p> : state.hand ? <div className="blackjack-board">
+      <div className="card-hand"><span>莊家 {state.hand.dealerScore === null ? "" : `· ${state.hand.dealerScore} 點`}</span><div>{state.hand.dealerCards.map((card, index) => <i className={/[♥♦]/.test(card) ? "red" : ""} key={`${card}-${index}`}>{card}</i>)}</div></div>
+      <div className="card-hand"><span>你的手牌 · {state.hand.playerScore} 點 · 下注 NT${formatMoney(state.hand.bet)}</span><div>{state.hand.playerCards.map((card, index) => <i className={/[♥♦]/.test(card) ? "red" : ""} key={`${card}-${index}`}>{card}</i>)}</div></div>
+      {state.hand.result && <p className={`casino-result ${state.hand.status}`}>{state.hand.result}</p>}
+      {playing ? <div className="casino-controls"><button onClick={() => onAction("hit")} disabled={busy}>補牌</button><button onClick={() => onAction("stand")} disabled={busy}>停牌</button><button className="leave" onClick={() => onAction("leave")} disabled={busy}>離桌</button></div> : <BetButtons busy={busy} full={state.activeCount >= state.capacity} onAction={onAction} />}
+    </div> : <BetButtons busy={busy} full={state.activeCount >= state.capacity} onAction={onAction} />}
+    <footer>Blackjack 賠付 1.5 倍 · 一般勝利 1 倍 · 平手退回下注 · 5 分鐘未行動自動離桌</footer>
+  </section>;
+}
+
+function BetButtons({ busy, full, onAction }: { busy: boolean; full: boolean; onAction: (action: string, payload?: Record<string, unknown>) => void }) {
+  return <div className="bet-buttons"><span>{full ? "牌桌已滿，等待空位" : "選擇下注金額並入座"}</span><div>{[100, 500, 1000].map((bet) => <button key={bet} onClick={() => onAction("deal", { bet })} disabled={busy || full}>NT${formatMoney(bet)}</button>)}</div></div>;
+}
+
 function actionTitle(location: LocationId) {
-  return { home: "有一個落腳處，才有安心休息的地方", realtor: "先找到住所，再打造自己的生活", business: "累積經驗，向下一次升遷前進", shopping: "照顧日常，才能走得更遠", park: "健康是所有選擇的底氣", school: "今天學會的，會成為明天的選項", hospital: "及早治療，才能繼續人生旅程" }[location];
+  return { home: "有一個落腳處，才有安心休息的地方", realtor: "先找到住所，再打造自己的生活", business: "累積經驗，向下一次升遷前進", shopping: "照顧日常，才能走得更遠", casino: "五人同桌，各自挑戰二十一點", school: "今天學會的，會成為明天的選項", hospital: "及早治療，才能繼續人生旅程" }[location];
 }
 
 function actionDescription(location: LocationId) {
-  return { home: "有效租約或自有住宅才能進入。睡一覺能恢復體力與心情，但租約會隨遊戲天數到期。", realtor: "每個人一開始都沒有房子。租屋每日 NT$350，可逐日或一次租七天；也能買下永久住所。買房後租屋方案仍會保留。", business: "工作會累積職涯經驗並自動升遷；職位越高，每小時收入越多。長工時也會消耗健康。", shopping: "用合理的花費補充飽足。更豐盛的餐點，也能讓今天的心情好一點。", park: "用一小時運動換取長期健康與體能。當體力太低時，先回家休息。", school: "支付學費與時間，累積程式設計能力。能力提升後，人生將有更多路可以走。", hospital: "健康低於 70 時，行動後可能生病。門診與完整治療都能治癒疾病，完整治療的恢復效果更好。" }[location];
+  return { home: "有效租約或自有住宅才能進入。睡一覺能恢復體力與心情，但租約會隨遊戲天數到期。", realtor: "每個人一開始都沒有房子。租屋每日 NT$350，可逐日或一次租七天；也能買下永久住所。買房後租屋方案仍會保留。", business: "工作會累積職涯經驗並自動升遷；職位越高，每小時收入越多。長工時也會消耗健康。", shopping: "用合理的花費補充飽足。更豐盛的餐點，也能讓今天的心情好一點。", casino: "同一張桌最多五位登入玩家同時遊玩。選擇下注後補牌或停牌，目標是在不超過 21 點下擊敗莊家。", school: "支付學費與時間，累積程式設計能力。能力提升後，人生將有更多路可以走。", hospital: "健康低於 70 時，行動後可能生病。門診與完整治療都能治癒疾病，完整治療的恢復效果更好。" }[location];
 }
