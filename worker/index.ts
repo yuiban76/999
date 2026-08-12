@@ -1,8 +1,8 @@
-type LocationId = "home" | "business" | "shopping" | "park" | "school";
+type LocationId = "home" | "business" | "shopping" | "park" | "school" | "hospital";
 
 interface Env { DB?: D1Database; ASSETS?: Fetcher; FRONTEND_ORIGIN?: string }
 
-type AuthUser = { userId: string; email: string; displayName: string };
+type AuthUser = { userId: string; email: string; displayName: string; hasAvatar: boolean; avatarUpdatedAt: number | null };
 
 type PlayerRow = {
   user_id: string;
@@ -17,12 +17,24 @@ type PlayerRow = {
   programming_exp: number;
   fitness_exp: number;
   work_exp: number;
+  illness: string;
   elapsed_minutes: number;
   location: LocationId;
 };
 
-const VALID_LOCATIONS = new Set<LocationId>(["home", "business", "shopping", "park", "school"]);
+const VALID_LOCATIONS = new Set<LocationId>(["home", "business", "shopping", "park", "school", "hospital"]);
 const clamp = (value: number) => Math.max(0, Math.min(100, value));
+const CAREERS = [
+  { title: "職場實習生", threshold: 0, hourlyPay: 180 },
+  { title: "初級專員", threshold: 100, hourlyPay: 230 },
+  { title: "資深專員", threshold: 250, hourlyPay: 300 },
+  { title: "部門主管", threshold: 500, hourlyPay: 400 },
+  { title: "事業經理", threshold: 900, hourlyPay: 550 },
+];
+
+function careerFor(exp: number) {
+  return [...CAREERS].reverse().find((career) => exp >= career.threshold) ?? CAREERS[0];
+}
 
 function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
@@ -77,25 +89,37 @@ async function identity(request: Request, db?: D1Database): Promise<AuthUser | n
   const token = authorization.slice(7).trim();
   if (!token) return null;
   const tokenHash = await sha256(token);
-  const row = await db.prepare(`SELECT a.id, a.email, a.display_name
+  const row = await db.prepare(`SELECT a.id, a.email, a.display_name, a.avatar_data IS NOT NULL AS has_avatar, a.avatar_updated_at
     FROM sessions s JOIN accounts a ON a.id = s.user_id
-    WHERE s.token_hash = ? AND s.expires_at > ?`).bind(tokenHash, Date.now()).first<{ id: string; email: string; display_name: string }>();
-  return row ? { userId: row.id, email: row.email, displayName: row.display_name } : null;
+    WHERE s.token_hash = ? AND s.expires_at > ?`).bind(tokenHash, Date.now()).first<{ id: string; email: string; display_name: string; has_avatar: number; avatar_updated_at: number | null }>();
+  return row ? { userId: row.id, email: row.email, displayName: row.display_name, hasAvatar: Boolean(row.has_avatar), avatarUpdatedAt: row.avatar_updated_at } : null;
 }
 
 function guestPlayer() {
-  return { cash: 10000, energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, programmingExp: 0, fitnessExp: 0, workExp: 0, elapsedMinutes: 450, location: "home" as LocationId };
+  return { cash: 10000, energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, programmingExp: 0, fitnessExp: 0, workExp: 0, illness: "", elapsedMinutes: 450, location: "home" as LocationId };
 }
 
 function serializePlayer(row: PlayerRow) {
-  return { cash: row.cash, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, programmingExp: row.programming_exp, fitnessExp: row.fitness_exp, workExp: row.work_exp, elapsedMinutes: row.elapsed_minutes, location: row.location };
+  return { cash: row.cash, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, programmingExp: row.programming_exp, fitnessExp: row.fitness_exp, workExp: row.work_exp, illness: row.illness, elapsedMinutes: row.elapsed_minutes, location: row.location };
+}
+
+function profileFor(user: AuthUser) {
+  return {
+    id: user.userId,
+    displayName: user.displayName,
+    email: user.email,
+    signedIn: true,
+    avatarUrl: user.hasAvatar ? `/api/avatar/${user.userId}?v=${user.avatarUpdatedAt ?? 0}` : null,
+  };
 }
 
 async function ensureSchema(db: D1Database) {
   await db.batch([
     db.prepare(`CREATE TABLE IF NOT EXISTS accounts (
       id TEXT PRIMARY KEY, email TEXT NOT NULL, display_name TEXT NOT NULL,
-      password_hash TEXT NOT NULL, password_salt TEXT NOT NULL, created_at INTEGER NOT NULL
+      password_hash TEXT NOT NULL, password_salt TEXT NOT NULL,
+      avatar_key TEXT, avatar_data BLOB, avatar_content_type TEXT,
+      avatar_updated_at INTEGER, created_at INTEGER NOT NULL
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS sessions (
       token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL,
@@ -107,7 +131,8 @@ async function ensureSchema(db: D1Database) {
       health INTEGER NOT NULL DEFAULT 100, mood INTEGER NOT NULL DEFAULT 80,
       hunger INTEGER NOT NULL DEFAULT 80, intelligence_exp INTEGER NOT NULL DEFAULT 0,
       programming_exp INTEGER NOT NULL DEFAULT 0, fitness_exp INTEGER NOT NULL DEFAULT 0,
-      work_exp INTEGER NOT NULL DEFAULT 0, elapsed_minutes INTEGER NOT NULL DEFAULT 450,
+      work_exp INTEGER NOT NULL DEFAULT 0, illness TEXT NOT NULL DEFAULT '',
+      elapsed_minutes INTEGER NOT NULL DEFAULT 450,
       location TEXT NOT NULL DEFAULT 'home', created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL
     )`),
@@ -186,6 +211,36 @@ async function logout(request: Request, env: Env) {
   return json({ ok: true });
 }
 
+async function uploadAvatar(request: Request, env: Env) {
+  const user = await identity(request, env.DB);
+  if (!user) return json({ message: "請先登入後再上傳照片。" }, 401);
+  if (!env.DB) return json({ message: "照片儲存空間尚未連接。" }, 503);
+  const contentType = request.headers.get("Content-Type")?.split(";")[0] ?? "";
+  if (!["image/jpeg", "image/png", "image/webp"].includes(contentType)) return json({ message: "只接受 JPG、PNG 或 WebP 圖片。" }, 415);
+  const contentLength = Number(request.headers.get("Content-Length") || 0);
+  if (contentLength > 500_000) return json({ message: "照片處理後必須小於 500 KB。" }, 413);
+  const image = await request.arrayBuffer();
+  if (!image.byteLength || image.byteLength > 500_000) return json({ message: "照片處理後必須小於 500 KB。" }, 413);
+  const now = Date.now();
+  await env.DB.prepare("UPDATE accounts SET avatar_data = ?, avatar_content_type = ?, avatar_updated_at = ? WHERE id = ?")
+    .bind(image, contentType, now, user.userId).run();
+  return json({ avatarUrl: `/api/avatar/${user.userId}?v=${now}`, message: "大頭貼已更新。" });
+}
+
+async function getAvatar(userId: string, env: Env) {
+  if (!env.DB) return new Response("Not found", { status: 404 });
+  const account = await env.DB.prepare("SELECT avatar_data, avatar_content_type, avatar_updated_at FROM accounts WHERE id = ?")
+    .bind(userId).first<{ avatar_data: number[] | null; avatar_content_type: string | null; avatar_updated_at: number | null }>();
+  if (!account?.avatar_data) return new Response("Not found", { status: 404 });
+  return new Response(new Uint8Array(account.avatar_data), {
+    headers: {
+      "Content-Type": account.avatar_content_type || "image/jpeg",
+      "Cache-Control": "public, max-age=31536000, immutable",
+      "ETag": `"avatar-${userId}-${account.avatar_updated_at ?? 0}"`,
+    },
+  });
+}
+
 async function bootstrap(request: Request, env: Env) {
   const user = await identity(request, env.DB);
   if (!user || !env.DB) return json({ authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [] });
@@ -193,7 +248,7 @@ async function bootstrap(request: Request, env: Env) {
   const row = await upsertPlayer(env.DB, user);
   if (!row) return json({ message: "無法載入玩家資料" }, 500);
   const world = await multiplayer(env.DB);
-  return json({ authenticated: true, profile: { id: user.userId, displayName: user.displayName, email: user.email, signedIn: true }, player: serializePlayer(row), room: { id: "lobby-01", name: "城市大廳 01" }, ...world });
+  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row), room: { id: "lobby-01", name: "城市大廳 01" }, ...world });
 }
 
 async function takeAction(request: Request, env: Env) {
@@ -217,19 +272,25 @@ async function takeAction(request: Request, env: Env) {
       if (!VALID_LOCATIONS.has(body.location as LocationId)) return json({ message: "目的地不存在。" }, 400);
       if (next.location === body.location) return json({ message: "你已經在這裡了。" }, 400);
       next.location = body.location as LocationId; next.energy = clamp(next.energy - 1); next.hunger = clamp(next.hunger - 1); minutes = 10;
-      const placeName = ({ home: "溫暖小屋", business: "商業區", shopping: "購物街", park: "城市公園", school: "未來學院" } as Record<LocationId, string>)[next.location as LocationId];
+      const placeName = ({ home: "溫暖小屋", business: "商業區", shopping: "購物街", park: "城市公園", school: "未來學院", hospital: "市立醫院" } as Record<LocationId, string>)[next.location as LocationId];
       title = "前往新地點"; message = `花了 10 分鐘抵達${placeName}。`; tone = "neutral"; break;
     }
     case "work": {
       if (next.location !== "business") return json({ message: "請先前往商業區。" }, 400);
+      if (next.illness) return json({ message: `目前罹患${next.illness}，請先前往醫院治療。` }, 400);
       const hours = Number(body.hours);
       if (![1, 4, 8].includes(hours)) return json({ message: "工時選擇不正確。" }, 400);
       if (next.energy < hours * 5) return json({ message: "體力不足，先回家休息吧。" }, 400);
-      next.cash += hours * 180; next.energy = clamp(next.energy - hours * 5); next.mood = clamp(next.mood - Math.ceil(hours * .9)); next.hunger = clamp(next.hunger - hours * 2); next.work_exp += hours * 4; minutes = hours * 60;
-      title = `工作 ${hours} 小時`; message = `完成工作，收入 +NT$${hours * 180}，工作經驗 +${hours * 4}。`; break;
+      const previousCareer = careerFor(next.work_exp);
+      const income = hours * previousCareer.hourlyPay;
+      next.cash += income; next.energy = clamp(next.energy - hours * 5); next.health = clamp(next.health - Math.ceil(hours / 2)); next.mood = clamp(next.mood - Math.ceil(hours * .9)); next.hunger = clamp(next.hunger - hours * 2); next.work_exp += hours * 4; minutes = hours * 60;
+      const newCareer = careerFor(next.work_exp);
+      title = newCareer.title !== previousCareer.title ? `升遷為${newCareer.title}` : `工作 ${hours} 小時`;
+      message = `以${previousCareer.title}完成工作，收入 +NT$${income}，工作經驗 +${hours * 4}。${newCareer.title !== previousCareer.title ? ` 恭喜升遷為${newCareer.title}！` : ""}`; break;
     }
     case "study":
       if (next.location !== "school") return json({ message: "請先前往未來學院。" }, 400);
+      if (next.illness) return json({ message: `目前罹患${next.illness}，請先前往醫院治療。` }, 400);
       if (next.cash < 500 || next.energy < 10) return json({ message: next.cash < 500 ? "學費不足。" : "體力不足，先休息一下吧。" }, 400);
       next.cash -= 500; next.energy = clamp(next.energy - 10); next.mood = clamp(next.mood - 3); next.hunger = clamp(next.hunger - 4); next.programming_exp += 25; next.intelligence_exp += 5; minutes = 120;
       title = "完成程式設計課"; message = "程式設計 EXP +25、知識 EXP +5。"; break;
@@ -247,13 +308,42 @@ async function takeAction(request: Request, env: Env) {
       title = "好好睡了一覺"; message = "體力完全恢復，健康 +5、心情 +10。"; break;
     case "exercise":
       if (next.location !== "park") return json({ message: "請先前往城市公園。" }, 400);
+      if (next.illness) return json({ message: `目前罹患${next.illness}，不適合運動，請先就醫。` }, 400);
       if (next.energy < 15) return json({ message: "體力不足，今天先休息吧。" }, 400);
       next.energy = clamp(next.energy - 15); next.health = clamp(next.health + 4); next.mood = clamp(next.mood + 8); next.hunger = clamp(next.hunger - 5); next.fitness_exp += 15; minutes = 60;
       title = "完成一小時運動"; message = "健康 +4、心情 +8、體能 EXP +15。"; break;
+    case "hospital": {
+      if (next.location !== "hospital") return json({ message: "請先前往市立醫院。" }, 400);
+      const care = body.kind === "clinic"
+        ? { name: "一般門診", price: 600, minutes: 60, health: Math.min(100, next.health + 25), energy: Math.min(100, next.energy + 10) }
+        : body.kind === "treatment"
+          ? { name: "完整治療", price: 1500, minutes: 120, health: Math.max(80, next.health), energy: Math.min(100, next.energy + 30) }
+          : null;
+      if (!care) return json({ message: "醫療項目不存在。" }, 400);
+      if (next.cash < care.price) return json({ message: "醫療費不足。" }, 400);
+      const previousIllness = next.illness;
+      next.cash -= care.price; next.health = care.health; next.energy = care.energy; next.illness = ""; minutes = care.minutes;
+      title = previousIllness ? `治癒${previousIllness}` : care.name;
+      message = `${care.name}完成，支付 NT$${care.price}，健康恢復至 ${next.health}${previousIllness ? `，${previousIllness}已痊癒` : ""}。`; break;
+    }
     case "reset":
-      Object.assign(next, { cash: 10000, energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, elapsed_minutes: 450, location: "home" });
+      Object.assign(next, { cash: 10000, energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, illness: "", elapsed_minutes: 450, location: "home" });
       title = "重新開始人生"; message = "新的人生已開始，所有進度回到起點。"; tone = "neutral"; break;
     default: return json({ message: "未知的行動。" }, 400);
+  }
+
+  if (body.action !== "hospital" && body.action !== "reset") {
+    if (next.hunger <= 15) next.health = clamp(next.health - 6);
+    if (next.energy <= 5) next.health = clamp(next.health - 4);
+    if (!next.illness && next.health < 70) {
+      const chance = next.health < 30 ? 0.35 : next.health < 50 ? 0.18 : 0.08;
+      if (Math.random() < chance) {
+        next.illness = next.health < 30 ? "重感冒" : "感冒";
+        tone = "warn";
+        title = `生病：${next.illness}`;
+        message += ` 健康偏低，你罹患了${next.illness}，請前往市立醫院。`;
+      }
+    }
   }
 
   next.elapsed_minutes += minutes;
@@ -262,8 +352,8 @@ async function takeAction(request: Request, env: Env) {
   const now = Date.now();
   const eventId = crypto.randomUUID();
   await env.DB.batch([
-    env.DB.prepare(`UPDATE players SET cash=?, energy=?, health=?, mood=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, elapsed_minutes=?, location=?, updated_at=?, last_seen_at=? WHERE user_id=?`)
-      .bind(next.cash, next.energy, next.health, next.mood, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.elapsed_minutes, next.location, now, now, user.userId),
+    env.DB.prepare(`UPDATE players SET cash=?, energy=?, health=?, mood=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, illness=?, elapsed_minutes=?, location=?, updated_at=?, last_seen_at=? WHERE user_id=?`)
+      .bind(next.cash, next.energy, next.health, next.mood, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.illness, next.elapsed_minutes, next.location, now, now, user.userId),
     env.DB.prepare("INSERT INTO game_events (id, user_id, player_name, room_id, title, detail, tone, game_time, created_at) VALUES (?, ?, ?, 'lobby-01', ?, ?, ?, ?, ?)")
       .bind(eventId, user.userId, user.displayName.slice(0, 40), title, message, tone, gameTime, now),
   ]);
@@ -280,6 +370,8 @@ export default {
     if (url.pathname === "/api/auth/register" && request.method === "POST") response = await auth(request, env, "register");
     else if (url.pathname === "/api/auth/login" && request.method === "POST") response = await auth(request, env, "login");
     else if (url.pathname === "/api/auth/logout" && request.method === "POST") response = await logout(request, env);
+    else if (url.pathname === "/api/profile/avatar" && request.method === "POST") response = await uploadAvatar(request, env);
+    else if (url.pathname.startsWith("/api/avatar/") && request.method === "GET") response = await getAvatar(url.pathname.slice("/api/avatar/".length), env);
     else if (url.pathname === "/api/game" && request.method === "GET") response = await bootstrap(request, env);
     else if (url.pathname === "/api/game/action" && request.method === "POST") response = await takeAction(request, env);
     else if (url.pathname.startsWith("/api/")) response = json({ message: "找不到 API。" }, 404);

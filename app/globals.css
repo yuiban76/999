@@ -124,7 +124,11 @@ button { color: inherit; }
 
 .panel-kicker, .map-index { font: 10px/1 Consolas, monospace; letter-spacing: .16em; color: var(--muted); }
 .identity { display: flex; align-items: center; gap: 15px; margin: 20px 0 22px; }
-.avatar { width: 74px; height: 74px; display: grid; place-items: center; border: 1px solid var(--ink); border-radius: 50%; background: #d7d4c8; font-size: 36px; box-shadow: inset 0 0 0 5px var(--paper-bright); }
+.avatar { position: relative; flex: 0 0 74px; width: 74px; height: 74px; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--ink); border-radius: 50%; background: #d7d4c8; font-size: 36px; box-shadow: inset 0 0 0 5px var(--paper-bright); }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-upload { position: absolute; inset: auto 0 0; padding: 5px 2px 7px; background: rgba(31,37,31,.82); color: white; text-align: center; font-size: 8px; font-weight: 800; cursor: pointer; opacity: 0; transition: opacity .18s ease; }
+.avatar:hover .avatar-upload, .avatar:focus-within .avatar-upload { opacity: 1; }
+.avatar-upload input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .identity p { margin: 0 0 2px; color: var(--muted); font-size: 10px; letter-spacing: .08em; }
 .identity h1 { margin: 0 0 7px; font: 700 27px/1 Georgia, "Noto Serif TC", serif; }
 .job-tag { padding: 3px 8px; border: 1px solid #9d998c; border-radius: 20px; font-size: 10px; color: #5e625b; }
@@ -134,6 +138,18 @@ button { color: inherit; }
 .cash-card strong { display: block; margin: 6px 0; font: 700 30px/1 Consolas, monospace; letter-spacing: -.07em; }
 .cash-card strong small { margin-right: 7px; font-size: 11px; letter-spacing: 0; }
 .cash-card p { margin: 0; font-size: 9px; color: #bfcbbf; }
+
+.career-card { margin-top: 16px; padding: 13px; border: 1px solid #8c9187; background: var(--paper-bright); }
+.career-card > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.career-card span { color: var(--muted); font-size: 9px; }
+.career-card strong { font: 700 13px Georgia, "Noto Serif TC", serif; }
+.career-card > small { display: block; margin: 5px 0 10px; color: var(--orange); font: 9px Consolas, monospace; }
+.career-track { height: 4px; background: #d8d4c8; }
+.career-track i { display: block; height: 100%; background: var(--orange); transition: width .35s ease; }
+.career-card p { margin: 7px 0 0; color: var(--muted); font-size: 8px; line-height: 1.45; }
+.illness-alert { display: grid; gap: 4px; margin-top: 14px; padding: 11px; border: 1px solid #b64029; background: #fde1d6; color: #8b2d1c; }
+.illness-alert strong { font-size: 10px; }
+.illness-alert span { font-size: 8px; line-height: 1.5; }
 
 .stat-list { margin: 26px 0; }
 .stat-row { display: grid; grid-template-columns: 58px 1fr 26px; gap: 9px; align-items: center; margin: 13px 0; }
@@ -157,7 +173,7 @@ button { color: inherit; }
 .location-header h2 span { margin-right: 10px; font-size: 32px; }
 .location-header small { display: block; margin-top: 7px; color: var(--muted); font-size: 11px; }
 
-.location-strip { display: grid; grid-template-columns: repeat(5, 1fr); border-bottom: 1px solid var(--ink); }
+.location-strip { display: grid; grid-template-columns: repeat(6, 1fr); border-bottom: 1px solid var(--ink); }
 .location-strip button { min-height: 72px; padding: 8px 4px; border: 0; border-right: 1px solid var(--line); background: transparent; cursor: pointer; transition: .18s ease; }
 .location-strip button:last-child { border-right: 0; }
 .location-strip button:hover { background: var(--paper-bright); }
@@ -245,7 +261,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
   .skills-block { display: none; }
   .location-header { min-height: 115px; padding: 22px 18px; }
   .location-header h2 { font-size: 30px; }
-  .location-strip { overflow-x: auto; grid-template-columns: repeat(5, minmax(82px, 1fr)); }
+  .location-strip { overflow-x: auto; grid-template-columns: repeat(6, minmax(82px, 1fr)); }
   .action-stage { padding: 28px 18px; }
   .action-cards { grid-template-columns: 1fr; }
   .action-card { min-height: 156px; }

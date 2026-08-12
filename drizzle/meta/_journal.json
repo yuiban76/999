@@ -15,6 +15,20 @@
       "when": 1786520685806,
       "tag": "0001_unique_warbird",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786523400574,
+      "tag": "0002_workable_wasp",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1786523841028,
+      "tag": "0003_useful_masked_marvel",
+      "breakpoints": true
     }
   ]
 }

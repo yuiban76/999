@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { blob, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const accounts = sqliteTable("accounts", {
   id: text("id").primaryKey(),
@@ -6,6 +6,10 @@ export const accounts = sqliteTable("accounts", {
   displayName: text("display_name").notNull(),
   passwordHash: text("password_hash").notNull(),
   passwordSalt: text("password_salt").notNull(),
+  avatarKey: text("avatar_key"),
+  avatarData: blob("avatar_data", { mode: "buffer" }),
+  avatarContentType: text("avatar_content_type"),
+  avatarUpdatedAt: integer("avatar_updated_at"),
   createdAt: integer("created_at").notNull(),
 }, (table) => [uniqueIndex("idx_accounts_email").on(table.email)]);
 
@@ -29,6 +33,7 @@ export const players = sqliteTable("players", {
   programmingExp: integer("programming_exp").notNull().default(0),
   fitnessExp: integer("fitness_exp").notNull().default(0),
   workExp: integer("work_exp").notNull().default(0),
+  illness: text("illness").notNull().default(""),
   elapsedMinutes: integer("elapsed_minutes").notNull().default(450),
   location: text("location").notNull().default("home"),
   createdAt: integer("created_at").notNull(),

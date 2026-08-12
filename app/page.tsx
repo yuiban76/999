@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-type LocationId = "home" | "business" | "shopping" | "park" | "school";
-type StatKey = "energy" | "health" | "mood" | "hunger";
+type LocationId = "home" | "business" | "shopping" | "park" | "school" | "hospital";
+type StatKey = "energy" | "health" | "hunger";
 
 type Player = {
   cash: number;
@@ -15,6 +15,7 @@ type Player = {
   programmingExp: number;
   fitnessExp: number;
   workExp: number;
+  illness: string;
   elapsedMinutes: number;
   location: LocationId;
 };
@@ -24,6 +25,7 @@ type Profile = {
   displayName: string;
   email: string;
   signedIn: boolean;
+  avatarUrl: string | null;
 };
 
 type OnlinePlayer = {
@@ -61,6 +63,7 @@ const INITIAL_PLAYER: Player = {
   programmingExp: 0,
   fitnessExp: 0,
   workExp: 0,
+  illness: "",
   elapsedMinutes: 450,
   location: "home",
 };
@@ -82,14 +85,25 @@ const locations: Array<{ id: LocationId; emoji: string; name: string; caption: s
   { id: "shopping", emoji: "◇", name: "購物街", caption: "補充飽足，偶爾也犒賞一下自己" },
   { id: "park", emoji: "♧", name: "城市公園", caption: "鍛鍊身體，找回健康與好心情" },
   { id: "school", emoji: "▤", name: "未來學院", caption: "投資自己，讓選擇越來越多" },
+  { id: "hospital", emoji: "✚", name: "市立醫院", caption: "檢查身體、治療疾病，讓健康回到正軌" },
 ];
 
 const statMeta: Array<{ key: StatKey; icon: string; label: string }> = [
   { key: "health", icon: "+", label: "健康" },
   { key: "energy", icon: "↯", label: "體力" },
-  { key: "mood", icon: "○", label: "心情" },
   { key: "hunger", icon: "△", label: "飽足" },
 ];
+
+const CAREERS = [
+  { title: "職場實習生", threshold: 0, hourlyPay: 180 },
+  { title: "初級專員", threshold: 100, hourlyPay: 230 },
+  { title: "資深專員", threshold: 250, hourlyPay: 300 },
+  { title: "部門主管", threshold: 500, hourlyPay: 400 },
+  { title: "事業經理", threshold: 900, hourlyPay: 550 },
+];
+
+const careerFor = (exp: number) => [...CAREERS].reverse().find((career) => exp >= career.threshold) ?? CAREERS[0];
+const nextCareerFor = (exp: number) => CAREERS.find((career) => career.threshold > exp) ?? null;
 
 const locationName = (id: LocationId) => locations.find((item) => item.id === id)?.name ?? id;
 const formatMoney = (value: number) => new Intl.NumberFormat("zh-TW").format(value);
@@ -112,6 +126,30 @@ function clock(minutes: number) {
   };
 }
 
+async function prepareAvatar(file: File) {
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) throw new Error("請選擇 JPG、PNG 或 WebP 照片。");
+  const source = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error("無法讀取這張照片。"));
+      element.src = source;
+    });
+    const size = Math.min(image.naturalWidth, image.naturalHeight);
+    const canvas = document.createElement("canvas");
+    canvas.width = 256; canvas.height = 256;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("瀏覽器無法處理這張照片。");
+    context.drawImage(image, (image.naturalWidth - size) / 2, (image.naturalHeight - size) / 2, size, size, 0, 0, 256, 256);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", .76));
+    if (!blob) throw new Error("照片處理失敗。");
+    return blob;
+  } finally {
+    URL.revokeObjectURL(source);
+  }
+}
+
 function guestAction(current: Player, action: string, payload: Record<string, unknown>) {
   const next = { ...current };
   let title = "完成行動";
@@ -125,10 +163,17 @@ function guestAction(current: Player, action: string, payload: Record<string, un
   } else if (action === "work") {
     const hours = Number(payload.hours);
     if (next.location !== "business" || ![1, 4, 8].includes(hours)) return fail("請先前往商業區。");
+    if (next.illness) return fail(`目前罹患${next.illness}，請先前往醫院治療。`);
     if (next.energy < hours * 5) return fail("體力不足，先回家休息吧。");
-    next.cash += hours * 180; next.energy = Math.max(0, next.energy - hours * 5); next.mood = Math.max(0, next.mood - Math.ceil(hours * .9)); next.hunger = Math.max(0, next.hunger - hours * 2); next.workExp += hours * 4; minutes = hours * 60; title = `工作 ${hours} 小時`; message = `完成工作，收入 +NT$${hours * 180}。`;
+    const previousCareer = careerFor(next.workExp);
+    const income = hours * previousCareer.hourlyPay;
+    next.cash += income; next.energy = Math.max(0, next.energy - hours * 5); next.health = Math.max(0, next.health - Math.ceil(hours / 2)); next.mood = Math.max(0, next.mood - Math.ceil(hours * .9)); next.hunger = Math.max(0, next.hunger - hours * 2); next.workExp += hours * 4; minutes = hours * 60;
+    const newCareer = careerFor(next.workExp);
+    title = newCareer.title !== previousCareer.title ? `升遷為${newCareer.title}` : `工作 ${hours} 小時`;
+    message = `收入 +NT$${income}、工作經驗 +${hours * 4}。${newCareer.title !== previousCareer.title ? `恭喜升遷為${newCareer.title}！` : ""}`;
   } else if (action === "study") {
     if (next.location !== "school") return fail("請先前往未來學院。");
+    if (next.illness) return fail(`目前罹患${next.illness}，請先前往醫院治療。`);
     if (next.cash < 500 || next.energy < 10) return fail(next.cash < 500 ? "學費不足。" : "體力不足。");
     next.cash -= 500; next.energy -= 10; next.mood = Math.max(0, next.mood - 3); next.hunger = Math.max(0, next.hunger - 4); next.programmingExp += 25; next.intelligenceExp += 5; minutes = 120; title = "完成程式設計課"; message = "程式設計 EXP +25、知識 EXP +5。";
   } else if (action === "eat") {
@@ -141,11 +186,34 @@ function guestAction(current: Player, action: string, payload: Record<string, un
     next.energy = 100; next.health = Math.min(100, next.health + 5); next.mood = Math.min(100, next.mood + 10); next.hunger = Math.max(0, next.hunger - 12); minutes = 480; title = "好好睡了一覺"; message = "體力完全恢復，健康 +5、心情 +10。";
   } else if (action === "exercise") {
     if (next.location !== "park") return fail("請先前往城市公園。");
+    if (next.illness) return fail(`目前罹患${next.illness}，不適合運動，請先就醫。`);
     if (next.energy < 15) return fail("體力不足，今天先休息吧。");
     next.energy -= 15; next.health = Math.min(100, next.health + 4); next.mood = Math.min(100, next.mood + 8); next.hunger = Math.max(0, next.hunger - 5); next.fitnessExp += 15; minutes = 60; title = "完成一小時運動"; message = "健康 +4、心情 +8、體能 EXP +15。";
+  } else if (action === "hospital") {
+    if (next.location !== "hospital") return fail("請先前往市立醫院。");
+    const care = payload.kind === "clinic"
+      ? { name: "一般門診", price: 600, health: Math.min(100, next.health + 25), energy: Math.min(100, next.energy + 10), minutes: 60 }
+      : { name: "完整治療", price: 1500, health: Math.max(80, next.health), energy: Math.min(100, next.energy + 30), minutes: 120 };
+    if (next.cash < care.price) return fail("醫療費不足。");
+    const previousIllness = next.illness;
+    next.cash -= care.price; next.health = care.health; next.energy = care.energy; next.illness = ""; minutes = care.minutes;
+    title = previousIllness ? `治癒${previousIllness}` : care.name;
+    message = `${care.name}完成，健康恢復至 ${next.health}${previousIllness ? `，${previousIllness}已痊癒` : ""}。`;
   } else if (action === "reset") {
     return { player: { ...INITIAL_PLAYER }, title: "重新開始人生", message: "新的人生已開始，所有試玩進度回到起點。" };
   } else return fail("未知的行動。");
+  if (action !== "hospital") {
+    if (next.hunger <= 15) next.health = Math.max(0, next.health - 6);
+    if (next.energy <= 5) next.health = Math.max(0, next.health - 4);
+    if (!next.illness && next.health < 70) {
+      const chance = next.health < 30 ? .35 : next.health < 50 ? .18 : .08;
+      if (Math.random() < chance) {
+        next.illness = next.health < 30 ? "重感冒" : "感冒";
+        title = `生病：${next.illness}`;
+        message += ` 健康偏低，你罹患了${next.illness}，請前往市立醫院。`;
+      }
+    }
+  }
   next.elapsedMinutes += minutes;
   return { player: next, title, message };
 }
@@ -163,6 +231,10 @@ export default function Home() {
   const [notice, setNotice] = useState("正在連接人生世界……");
   const gameClock = useMemo(() => clock(player.elapsedMinutes), [player.elapsedMinutes]);
   const currentLocation = locations.find((item) => item.id === player.location)!;
+  const career = careerFor(player.workExp);
+  const nextCareer = nextCareerFor(player.workExp);
+  const careerProgress = nextCareer ? Math.max(0, Math.min(100, ((player.workExp - career.threshold) / (nextCareer.threshold - career.threshold)) * 100)) : 100;
+  const avatarSrc = profile?.avatarUrl ? `${API_ORIGIN}${profile.avatarUrl}` : "";
 
   const loadWorld = useCallback(async (quiet = false) => {
     try {
@@ -250,6 +322,30 @@ export default function Home() {
     setNotice("已登出；目前為訪客試玩模式。");
   }
 
+  async function uploadAvatar(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !profile || busy) return;
+    setBusy(true);
+    try {
+      const image = await prepareAvatar(file);
+      const token = window.localStorage.getItem(TOKEN_KEY);
+      const response = await fetch(`${API_ORIGIN}/api/profile/avatar`, {
+        method: "POST",
+        headers: { "Content-Type": image.type, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: image,
+      });
+      const data = await response.json() as { avatarUrl?: string; message?: string };
+      if (!response.ok || !data.avatarUrl) throw new Error(data.message || "大頭貼上傳失敗。");
+      setProfile((current) => current ? { ...current, avatarUrl: data.avatarUrl! } : current);
+      setNotice(data.message || "大頭貼已更新。");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "大頭貼上傳失敗。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <main className="game-shell">
       <header className="topbar">
@@ -275,8 +371,20 @@ export default function Home() {
       <div className="game-grid" id="main-game" aria-busy={loading || busy}>
         <aside className="character-panel panel">
           <div className="panel-kicker">MY LIFE / {profile ? "ONLINE" : "GUEST"}</div>
-          <div className="identity"><div className="avatar">{profile?.displayName.slice(0, 1) ?? "旅"}</div><div><p>18 歲 · 人生新手</p><h1>{profile?.displayName ?? "旅行者"}</h1><span className="job-tag">城市居民</span></div></div>
+          <div className="identity">
+            <div className={`avatar ${avatarSrc ? "has-photo" : ""}`}>
+              {avatarSrc ? <img src={avatarSrc} alt={`${profile?.displayName}的大頭貼`} /> : (profile?.displayName.slice(0, 1) ?? "旅")}
+              {profile && <label className="avatar-upload" title="上傳自己的照片">換照片<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => void uploadAvatar(event)} disabled={busy} /></label>}
+            </div>
+            <div><p>18 歲 · 人生新手</p><h1>{profile?.displayName ?? "旅行者"}</h1><span className="job-tag">{career.title}</span></div>
+          </div>
           <div className="cash-card"><span>可用資產</span><strong><small>NT$</small>{formatMoney(player.cash)}</strong><p>{profile ? "伺服器已安全保存" : "訪客模式暫存"}</p></div>
+          <div className="career-card">
+            <div><span>目前職業</span><strong>{career.title}</strong></div><small>時薪 NT${formatMoney(career.hourlyPay)}</small>
+            <div className="career-track"><i style={{ width: `${careerProgress}%` }} /></div>
+            <p>{nextCareer ? `再累積 ${nextCareer.threshold - player.workExp} 工作 EXP 升遷為${nextCareer.title}` : "已達職涯最高階級"}</p>
+          </div>
+          {player.illness && <div className="illness-alert"><strong>目前生病：{player.illness}</strong><span>工作、上課與運動暫停，請前往市立醫院。</span></div>}
           <div className="stat-list">
             {statMeta.map((item) => <div className="stat-row" key={item.key}><span className="stat-label"><span>{item.icon}</span>{item.label}</span><div className="stat-track"><i style={{ width: `${player[item.key]}%` }} /></div><strong>{player[item.key]}</strong></div>)}
           </div>
@@ -293,10 +401,11 @@ export default function Home() {
             <div className="action-intro"><span>今天，想把時間花在哪裡？</span><h3>{actionTitle(player.location)}</h3><p>{actionDescription(player.location)}</p></div>
             <div className="action-cards">
               {player.location === "home" && <ActionCard icon="☾" title="睡眠 8 小時" meta="體力全滿 · 健康 +5 · 心情 +10" button="好好休息" onClick={() => void act("sleep")} disabled={busy} />}
-              {player.location === "business" && <><ActionCard icon="01" title="短班 1 小時" meta="收入 NT$180 · 體力 -5" button="開始工作" onClick={() => void act("work", { hours: 1 })} disabled={busy} /><ActionCard icon="04" title="標準班 4 小時" meta="收入 NT$720 · 體力 -20" button="開始工作" onClick={() => void act("work", { hours: 4 })} featured disabled={busy} /><ActionCard icon="08" title="長班 8 小時" meta="收入 NT$1,440 · 體力 -40" button="開始工作" onClick={() => void act("work", { hours: 8 })} disabled={busy} /></>}
+              {player.location === "business" && <><ActionCard icon="01" title="短班 1 小時" meta={`收入 NT$${formatMoney(career.hourlyPay)} · 工作 EXP +4`} button="開始工作" onClick={() => void act("work", { hours: 1 })} disabled={busy} /><ActionCard icon="04" title="標準班 4 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 4)} · 工作 EXP +16`} button="開始工作" onClick={() => void act("work", { hours: 4 })} featured disabled={busy} /><ActionCard icon="08" title="長班 8 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 8)} · 工作 EXP +32`} button="開始工作" onClick={() => void act("work", { hours: 8 })} disabled={busy} /></>}
               {player.location === "shopping" && <><ActionCard icon="飯" title="巷口飯糰" meta="NT$45 · 飽足 +20" button="買來吃" onClick={() => void act("eat", { kind: "rice" })} disabled={busy} /><ActionCard icon="餐" title="豐盛便當" meta="NT$100 · 飽足 +45 · 心情 +3" button="享用便當" onClick={() => void act("eat", { kind: "bento" })} featured disabled={busy} /></>}
               {player.location === "park" && <ActionCard icon="跑" title="運動 1 小時" meta="健康 +4 · 心情 +8 · 體能 EXP +15" button="開始鍛鍊" onClick={() => void act("exercise")} featured disabled={busy} />}
               {player.location === "school" && <ActionCard icon="學" title="程式設計課" meta="NT$500 · 2 小時 · 程式 EXP +25" button="報名上課" onClick={() => void act("study")} featured disabled={busy} />}
+              {player.location === "hospital" && <><ActionCard icon="診" title="一般門診" meta="NT$600 · 健康 +25 · 治癒疾病" button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={busy} /><ActionCard icon="療" title="完整治療" meta="NT$1,500 · 健康至少恢復至 80 · 治癒疾病" button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} featured disabled={busy} /></>}
             </div>
           </div>
           <footer className="world-footer"><span>遊戲 1 小時 = 現實一次行動</span><button onClick={() => void act("reset")} disabled={busy}>重新開始人生</button></footer>
@@ -312,7 +421,7 @@ export default function Home() {
           <ol className="feed-list">
             {feed.slice(0, 6).map((item) => <li key={item.id} className={item.tone}><time>{item.time}</time><div><strong>{item.playerName ? `${item.playerName} · ` : ""}{item.title}</strong><p>{item.detail}</p></div></li>)}
           </ol>
-          <div className="next-goal"><span>下一個里程碑</span><strong>程式設計 Lv.2</strong><div><i style={{ width: `${levelProgress(player.programmingExp)}%` }} /></div><small>{player.programmingExp} / 100 EXP</small></div>
+          <div className="next-goal"><span>職涯里程碑</span><strong>{nextCareer ? `升遷：${nextCareer.title}` : "職涯最高階級"}</strong><div><i style={{ width: `${careerProgress}%` }} /></div><small>{nextCareer ? `${player.workExp} / ${nextCareer.threshold} 工作 EXP` : `${player.workExp} 工作 EXP`}</small></div>
         </aside>
       </div>
       {authOpen && <div className="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="auth-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setAuthOpen(false); }}>
@@ -342,9 +451,9 @@ function ActionCard({ icon, title, meta, button, featured = false, disabled, onC
 }
 
 function actionTitle(location: LocationId) {
-  return { home: "休息不是停下，而是為下一步蓄力", business: "工作換來收入，也打開新的機會", shopping: "照顧日常，才能走得更遠", park: "健康是所有選擇的底氣", school: "今天學會的，會成為明天的選項" }[location];
+  return { home: "休息不是停下，而是為下一步蓄力", business: "累積經驗，向下一次升遷前進", shopping: "照顧日常，才能走得更遠", park: "健康是所有選擇的底氣", school: "今天學會的，會成為明天的選項", hospital: "及早治療，才能繼續人生旅程" }[location];
 }
 
 function actionDescription(location: LocationId) {
-  return { home: "回到自己的空間。睡一覺能恢復體力與心情，但也別忘了補充飽足。", business: "選擇不同工時，取得收入與工作經驗。長工時回報高，也會快速消耗狀態。", shopping: "用合理的花費補充飽足。更豐盛的餐點，也能讓今天的心情好一點。", park: "用一小時運動換取長期健康與體能。當體力太低時，先回家休息。", school: "支付學費與時間，累積程式設計能力。能力提升後，人生將有更多路可以走。" }[location];
+  return { home: "回到自己的空間。睡一覺能恢復體力與心情，但也別忘了補充飽足。", business: "工作會累積職涯經驗並自動升遷；職位越高，每小時收入越多。長工時也會消耗健康。", shopping: "用合理的花費補充飽足。更豐盛的餐點，也能讓今天的心情好一點。", park: "用一小時運動換取長期健康與體能。當體力太低時，先回家休息。", school: "支付學費與時間，累積程式設計能力。能力提升後，人生將有更多路可以走。", hospital: "健康低於 70 時，行動後可能生病。門診與完整治療都能治癒疾病，完整治療的恢復效果更好。" }[location];
 }
