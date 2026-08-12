@@ -32,6 +32,8 @@ type PlayerRow = {
   owns_home: number;
   rental_name: string;
   rented_until: number;
+  action_available_at: number;
+  action_label: string;
   elapsed_minutes: number;
   location: LocationId;
 };
@@ -63,6 +65,11 @@ function scratchPrize() {
 }
 function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
+}
+
+function actionWaitMessage(player: PlayerRow, now = Date.now()) {
+  const seconds = Math.max(1, Math.ceil((player.action_available_at - now) / 1000));
+  return `${player.action_label || "目前的行動"}尚未完成，請等待 ${seconds} 秒；移動不受限制。`;
 }
 
 function corsHeaders(request: Request, env: Env) {
@@ -121,13 +128,13 @@ async function identity(request: Request, db?: D1Database): Promise<AuthUser | n
 }
 
 function guestPlayer() {
-  return { cash: 10000, bankBalance: 0, loanBalance: 0, mainStory: "legacy", energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, creativityExp: 0, physicalExp: 0, socialExp: 0, charismaExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, elapsedMinutes: worldMinutes(), location: "realtor" as LocationId };
+  return { cash: 10000, bankBalance: 0, loanBalance: 0, mainStory: "legacy", energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, creativityExp: 0, physicalExp: 0, socialExp: 0, charismaExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, actionAvailableAt: 0, actionLabel: "", elapsedMinutes: worldMinutes(), location: "realtor" as LocationId };
 }
 
 function serializePlayer(row: PlayerRow) {
   const currentJob = jobInfo(row.current_job) ? row.current_job : "待業者";
   const location = VALID_LOCATIONS.has(row.location) ? row.location : "casino";
-  return { cash: row.cash, bankBalance: row.bank_balance, loanBalance: row.loan_balance, mainStory: row.main_story, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, creativityExp: row.programming_exp, physicalExp: row.fitness_exp, socialExp: row.work_exp, charismaExp: row.charisma_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, elapsedMinutes: worldMinutes(), location };
+  return { cash: row.cash, bankBalance: row.bank_balance, loanBalance: row.loan_balance, mainStory: row.main_story, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, creativityExp: row.programming_exp, physicalExp: row.fitness_exp, socialExp: row.work_exp, charismaExp: row.charisma_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, actionAvailableAt: row.action_available_at, actionLabel: row.action_label, elapsedMinutes: worldMinutes(), location };
 }
 
 function profileFor(user: AuthUser) {
@@ -167,6 +174,7 @@ async function ensureSchema(db: D1Database) {
       job_exp INTEGER NOT NULL DEFAULT 0,
       owns_home INTEGER NOT NULL DEFAULT 0, rental_name TEXT NOT NULL DEFAULT '',
       rented_until INTEGER NOT NULL DEFAULT 0,
+      action_available_at INTEGER NOT NULL DEFAULT 0, action_label TEXT NOT NULL DEFAULT '',
       elapsed_minutes INTEGER NOT NULL DEFAULT 450,
       location TEXT NOT NULL DEFAULT 'realtor', created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL
@@ -220,8 +228,9 @@ async function upsertPlayer(db: D1Database, user: AuthUser) {
     let bankBalance = row.bank_balance;
     let loanBalance = row.loan_balance;
     for (let day = 0; day < elapsedDays; day += 1) {
-      bankBalance = Math.min(9_000_000_000_000_000, Math.floor(bankBalance * 1.03));
-      loanBalance = Math.min(9_000_000_000_000_000, Math.ceil(loanBalance * 1.05));
+      bankBalance = Math.min(9_000_000_000_000_000, Math.floor(bankBalance * 1.001));
+      const dailyLoanRate = row.main_story === "prodigal_return" ? 1.002 : 1.005;
+      loanBalance = Math.min(9_000_000_000_000_000, Math.ceil(loanBalance * dailyLoanRate));
     }
     await db.prepare("UPDATE players SET bank_balance=?, loan_balance=?, finance_day=?, updated_at=? WHERE user_id=?")
       .bind(bankBalance, loanBalance, today, now, user.userId).run();
@@ -349,6 +358,7 @@ async function casinoAction(request: Request, env: Env) {
   if (player.location !== "casino") return json({ message: "請先前往幸運賭場。" }, 400);
   let body: { action?: string; bet?: number; seatNo?: number };
   try { body = await request.json(); } catch { return json({ message: "牌桌資料格式錯誤。" }, 400); }
+  if (body.action !== "leave" && player.action_available_at > Date.now()) return json({ message: actionWaitMessage(player) }, 409);
   await revealReadyCasinoRound(env.DB);
   const now = Date.now(); const cutoff = now - 5 * 60 * 1000;
   await env.DB.prepare("UPDATE casino_hands SET status='expired', seat_no=NULL, reveal_at=0 WHERE status IN ('waiting','playing','stood') AND updated_at<?").bind(cutoff).run();
@@ -547,6 +557,7 @@ async function pokerAction(request: Request, env: Env) {
   if (!player || player.location !== "casino") return json({ message: "請先前往幸運賭場。" }, 400);
   let body: { action?: string; bet?: number; seatNo?: number };
   try { body = await request.json(); } catch { return json({ message: "牌桌資料格式錯誤。" }, 400); }
+  if (body.action !== "leave" && player.action_available_at > Date.now()) return json({ message: actionWaitMessage(player) }, 409);
   await resolvePokerRound(env.DB);
   const now = Date.now(); let message = "德州撲克牌桌已更新。";
   if (body.action === "join") {
@@ -567,15 +578,19 @@ async function pokerAction(request: Request, env: Env) {
     if (!Number.isSafeInteger(bet) || bet < 1 || bet > 1_000_000) return json({ message: "請輸入 NT$1～1,000,000 的整數下注金額。" }, 400);
     const ownSeat = await env.DB.prepare("SELECT * FROM poker_hands WHERE user_id=? AND status='seated'").bind(user.userId).first<PokerRow>();
     if (!ownSeat) return json({ message: "請先選擇德州撲克的空位加入。" }, 400);
-    const pending = await env.DB.prepare("SELECT reveal_at FROM poker_hands WHERE status='waiting' AND reveal_at>? ORDER BY reveal_at LIMIT 1").bind(now).first<{ reveal_at: number }>();
+    const pending = await env.DB.prepare("SELECT reveal_at, bet FROM poker_hands WHERE status='waiting' AND reveal_at>? ORDER BY reveal_at LIMIT 1").bind(now).first<{ reveal_at: number; bet: number }>();
+    if (pending && bet !== pending.bet) return json({ message: `本局採等額下注，請下注 NT$${pending.bet}。` }, 409);
     if (!pending) await env.DB.prepare("UPDATE poker_hands SET hole_cards='[]', community_cards='[]', bet=0, result='', reveal_at=0 WHERE status='seated'").run();
     const revealAt = pending?.reveal_at ?? now + 5_000;
     const charged = await env.DB.prepare("UPDATE players SET cash=cash-?, updated_at=?, last_seen_at=? WHERE user_id=? AND cash>=? RETURNING user_id").bind(bet, now, now, user.userId, bet).run();
     if (charged.results.length !== 1) return json({ message: "現金不足，無法下注。" }, 400);
-    const queued = await env.DB.prepare("UPDATE poker_hands SET bet=?, status='waiting', result='', reveal_at=?, updated_at=? WHERE user_id=? AND status='seated' RETURNING user_id").bind(bet, revealAt, now, user.userId).run();
+    const queued = await env.DB.prepare(`UPDATE poker_hands SET bet=?, status='waiting', result='', reveal_at=?, updated_at=?
+      WHERE user_id=? AND status='seated'
+      AND NOT EXISTS (SELECT 1 FROM poker_hands WHERE status='waiting' AND reveal_at>? AND bet<>?)
+      RETURNING user_id`).bind(bet, revealAt, now, user.userId, now, bet).run();
     if (queued.results.length !== 1) {
       await env.DB.prepare("UPDATE players SET cash=cash+? WHERE user_id=?").bind(bet, user.userId).run();
-      return json({ message: "下注狀態已變更，款項已退回。" }, 409);
+      return json({ message: "本局已有其他下注金額，款項已退回；請依牌桌顯示改成相同金額。" }, 409);
     }
     message = `已下注 NT$${bet}，5 秒後至少兩位玩家即可攤牌。`;
   } else if (body.action === "leave") {
@@ -682,6 +697,7 @@ async function takeAction(request: Request, env: Env) {
   let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; academy?: string; story?: string };
   try { body = await request.json(); } catch { return json({ message: "行動資料格式錯誤。" }, 400); }
   if (current.main_story === "unselected" && body.action !== "choose_story") return json({ message: "請先選擇人生主線。" }, 409);
+  if (!["move", "choose_story", "reset"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
   const next = { ...current };
   const sharedMinutes = worldMinutes();
   next.elapsed_minutes = sharedMinutes;
@@ -697,7 +713,7 @@ async function takeAction(request: Request, env: Env) {
     case "choose_story":
       if (next.main_story !== "unselected") return json({ message: "人生主線選定後不能再次更換。" }, 409);
       if (body.story !== "prodigal_return") return json({ message: "這條人生主線目前尚未開放。" }, 400);
-      Object.assign(next, { cash: 37, bank_balance: 0, loan_balance: 250_000, main_story: "prodigal_return", finance_day: Math.floor(sharedMinutes / 1440) + 1, energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, location: "realtor" });
+      Object.assign(next, { cash: 37, bank_balance: 0, loan_balance: 250_000, main_story: "prodigal_return", finance_day: Math.floor(sharedMinutes / 1440) + 1, energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", location: "realtor" });
       title = "選擇主線：《浪子回頭》"; message = "你帶著 NT$37 與 NT$250,000 負債，決定承認失敗並重新開始。"; tone = "neutral"; break;
     case "move": {
       if (!VALID_LOCATIONS.has(body.location as LocationId)) return json({ message: "目的地不存在。" }, 400);
@@ -723,11 +739,11 @@ async function takeAction(request: Request, env: Env) {
         title = `租下城市小套房 ${days} 天`; message = `支付 NT$${cost}，租期增加 ${days} 天。${next.owns_home ? "你原有的自有住宅仍然保留。" : "現在可以回到我的住所休息。"}`; break;
       }
       if (body.kind === "buy") {
-        const price = 150_000;
+        const price = 50_000;
         if (next.owns_home) return json({ message: "你已經擁有城市小宅，仍可繼續查看租屋方案。" }, 400);
-        if (next.cash < price) return json({ message: "購屋需要 NT$150,000，目前資金不足。" }, 400);
+        if (next.cash < price) return json({ message: "購屋需要 NT$50,000，目前資金不足。" }, 400);
         next.cash -= price; next.owns_home = 1; minutes = 60;
-        title = "買下城市小宅"; message = "支付 NT$150,000，取得永久住所；你仍可在房仲查看與承租其他房屋。"; break;
+        title = "買下城市小宅"; message = "支付 NT$50,000，取得永久住所；你仍可在房仲查看與承租其他房屋。"; break;
       }
       return json({ message: "房屋方案不存在。" }, 400);
     }
@@ -738,14 +754,14 @@ async function takeAction(request: Request, env: Env) {
       if (!Number.isSafeInteger(amount) || amount < 1 || amount > 9_000_000_000_000_000) return json({ message: "請輸入有效的整數金額。" }, 400);
       if (body.kind === "deposit") {
         if (next.cash < amount) return json({ message: "手上現金不足。" }, 400);
-        next.cash -= amount; next.bank_balance += amount; title = "存入銀行"; message = `已存入 NT$${amount}；每個遊戲日結算 3% 收益。`;
+        next.cash -= amount; next.bank_balance += amount; title = "存入銀行"; message = `已存入 NT$${amount}；每個遊戲日結算 0.1% 收益。`;
       } else if (body.kind === "withdraw") {
         if (next.bank_balance < amount) return json({ message: "銀行存款不足。" }, 400);
         next.bank_balance -= amount; next.cash += amount; title = "提領存款"; message = `已從銀行提領 NT$${amount}。`;
       } else if (body.kind === "borrow") {
         if (next.loan_balance > 0) return json({ message: "請先還清目前貸款，才能再次借款。" }, 400);
         if (amount > 50_000) return json({ message: "單筆貸款上限為 NT$50,000。" }, 400);
-        next.loan_balance = amount; next.cash += amount; title = "銀行貸款"; message = `借入 NT$${amount}；每個遊戲日結算 5% 利息。`;
+        next.loan_balance = amount; next.cash += amount; title = "銀行貸款"; message = `借入 NT$${amount}；每個遊戲日結算 0.5% 利息。`;
       } else if (body.kind === "repay") {
         if (next.loan_balance <= 0) return json({ message: "目前沒有貸款。" }, 400);
         if (amount > next.loan_balance) return json({ message: "還款金額不能超過貸款餘額。" }, 400);
@@ -862,7 +878,7 @@ async function takeAction(request: Request, env: Env) {
       message = `${care.name}完成，支付 NT$${care.price}，健康恢復至 ${next.health}${previousIllness ? `，${previousIllness}已痊癒` : ""}。`; break;
     }
     case "reset":
-      Object.assign(next, { cash: next.main_story === "prodigal_return" ? 37 : 10000, bank_balance: 0, loan_balance: next.main_story === "prodigal_return" ? 250_000 : 0, finance_day: Math.floor(sharedMinutes / 1440) + 1, energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, elapsed_minutes: sharedMinutes, location: "realtor" });
+      Object.assign(next, { cash: next.main_story === "prodigal_return" ? 37 : 10000, bank_balance: 0, loan_balance: next.main_story === "prodigal_return" ? 250_000 : 0, finance_day: Math.floor(sharedMinutes / 1440) + 1, energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", elapsed_minutes: sharedMinutes, location: "realtor" });
       title = "重新開始人生"; message = "新的人生已開始，所有進度回到起點。"; tone = "neutral"; break;
     default: return json({ message: "未知的行動。" }, 400);
   }
@@ -881,6 +897,14 @@ async function takeAction(request: Request, env: Env) {
     }
   }
 
+  if (minutes > 0) {
+    next.action_available_at = Date.now() + minutes * 1_000;
+    next.action_label = title;
+  } else if (next.action_available_at <= Date.now()) {
+    next.action_available_at = 0;
+    next.action_label = "";
+  }
+
   next.elapsed_minutes = worldMinutes();
   if (!next.owns_home && next.rented_until <= next.elapsed_minutes && next.location === "home") {
     next.location = "realtor";
@@ -890,8 +914,8 @@ async function takeAction(request: Request, env: Env) {
   const gameTime = `${String(Math.floor(eventMinute / 60)).padStart(2, "0")}:${String(eventMinute % 60).padStart(2, "0")}`;
   const now = Date.now();
   const eventId = crypto.randomUUID();
-  const statements = [env.DB.prepare(`UPDATE players SET cash=?, bank_balance=?, loan_balance=?, finance_day=?, main_story=?, energy=?, health=?, mood=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, charisma_exp=?, current_job=?, job_category=?, job_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, elapsed_minutes=?, location=?, updated_at=?, last_seen_at=? WHERE user_id=?`)
-    .bind(next.cash, next.bank_balance, next.loan_balance, next.finance_day, next.main_story, next.energy, next.health, next.mood, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.charisma_exp, next.current_job, next.job_category, next.job_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.elapsed_minutes, next.location, now, now, user.userId)];
+  const statements = [env.DB.prepare(`UPDATE players SET cash=?, bank_balance=?, loan_balance=?, finance_day=?, main_story=?, energy=?, health=?, mood=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, charisma_exp=?, current_job=?, job_category=?, job_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, action_available_at=?, action_label=?, elapsed_minutes=?, location=?, updated_at=?, last_seen_at=? WHERE user_id=?`)
+    .bind(next.cash, next.bank_balance, next.loan_balance, next.finance_day, next.main_story, next.energy, next.health, next.mood, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.charisma_exp, next.current_job, next.job_category, next.job_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.action_available_at, next.action_label, next.elapsed_minutes, next.location, now, now, user.userId)];
   if (body.action !== "move") statements.push(env.DB.prepare("INSERT INTO game_events (id, user_id, player_name, room_id, title, detail, tone, game_time, created_at) VALUES (?, ?, ?, 'lobby-01', ?, ?, ?, ?, ?)")
     .bind(eventId, user.userId, user.displayName.slice(0, 40), title, message, tone, gameTime, now));
   await env.DB.batch(statements);

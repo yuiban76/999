@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ABILITY_LABELS, ACADEMIES, careerForCategory, careerRequirements, categoryInfo, JOB_CATEGORIES, jobInfo, meetsCareerRequirements, nextCareerForCategory, type Abilities } from "../shared/jobs";
+import { ABILITY_LABELS, ACADEMIES, careerForCategory, careerRequirements, careerThresholdForCategory, categoryInfo, JOB_CATEGORIES, jobInfo, meetsCareerRequirements, nextCareerForCategory, type Abilities } from "../shared/jobs";
 import { isHospitalRegularOpen, isLocationOpen, worldMinutes } from "../shared/world";
 
 type LocationId = "home" | "realtor" | "bank" | "business" | "shopping" | "hotel" | "casino" | "school" | "hospital";
@@ -28,6 +28,8 @@ type Player = {
   ownsHome: boolean;
   rentalName: string;
   rentedUntil: number;
+  actionAvailableAt: number;
+  actionLabel: string;
   elapsedMinutes: number;
   location: LocationId;
 };
@@ -117,6 +119,8 @@ const INITIAL_PLAYER: Player = {
   ownsHome: false,
   rentalName: "",
   rentedUntil: 0,
+  actionAvailableAt: 0,
+  actionLabel: "",
   elapsedMinutes: 450,
   location: "realtor",
 };
@@ -155,7 +159,7 @@ function apiHeaders(jsonBody = false) {
 const locations: Array<{ id: LocationId; emoji: string; name: string; caption: string; hours: string }> = [
   { id: "home", emoji: "⌂", name: "我的住所", caption: "有有效租約或自有住宅後，才能在這裡休息", hours: "24 小時" },
   { id: "realtor", emoji: "鑰", name: "安心房仲", caption: "按天租屋或購買永久住所，屋主也能繼續查看租屋", hours: "09:00～18:00" },
-  { id: "bank", emoji: "銀", name: "城市銀行", caption: "存款每日收益 3%，貸款每日利息 5%", hours: "09:00～17:00" },
+  { id: "bank", emoji: "銀", name: "城市銀行", caption: "存款每日收益 0.1%，一般貸款每日利息 0.5%", hours: "09:00～17:00" },
   { id: "business", emoji: "▦", name: "商業區", caption: "用時間換取收入，累積職涯經驗", hours: "08:00～18:00" },
   { id: "shopping", emoji: "◇", name: "購物街", caption: "補充飽足，偶爾也犒賞一下自己", hours: "10:00～22:00" },
   { id: "hotel", emoji: "旅", name: "不夜旅店", caption: "沒有住所也能住宿，餐點較貴但全天供應", hours: "24 小時" },
@@ -247,8 +251,8 @@ function guestAction(current: Player, action: string, payload: Record<string, un
       title = `租下城市小套房 ${days} 天`; message = `支付 NT$${cost}，租期增加 ${days} 天。`;
     } else if (payload.kind === "buy") {
       if (next.ownsHome) return fail("你已擁有城市小宅，仍可繼續查看租屋方案。");
-      if (next.cash < 150000) return fail("購屋需要 NT$150,000，目前資金不足。");
-      next.cash -= 150000; next.ownsHome = true; minutes = 60; title = "買下城市小宅"; message = "取得永久住所；仍可在房仲查看租屋方案。";
+      if (next.cash < 50000) return fail("購屋需要 NT$50,000，目前資金不足。");
+      next.cash -= 50000; next.ownsHome = true; minutes = 60; title = "買下城市小宅"; message = "支付 NT$50,000，取得永久住所；仍可在房仲查看租屋方案。";
     } else return fail("房屋方案不存在。");
   } else if (action === "bank") {
     if (next.location !== "bank") return fail("請先前往城市銀行。");
@@ -264,7 +268,7 @@ function guestAction(current: Player, action: string, payload: Record<string, un
     } else if (payload.kind === "borrow") {
       if (next.loanBalance > 0) return fail("請先還清目前貸款。");
       if (amount > 50_000) return fail("單筆貸款上限為 NT$50,000。");
-      next.loanBalance = amount; next.cash += amount; title = "銀行貸款"; message = `借入 NT$${formatMoney(amount)}，每日利息 5%。`;
+      next.loanBalance = amount; next.cash += amount; title = "銀行貸款"; message = `借入 NT$${formatMoney(amount)}，每日利息 0.5%。`;
     } else if (payload.kind === "repay") {
       if (next.loanBalance <= 0) return fail("目前沒有貸款。");
       if (amount > next.loanBalance) return fail("還款金額不能超過貸款餘額。");
@@ -375,6 +379,10 @@ function guestAction(current: Player, action: string, payload: Record<string, un
       }
     }
   }
+  if (minutes > 0) {
+    next.actionAvailableAt = Date.now() + minutes * 1_000;
+    next.actionLabel = title;
+  }
   next.elapsedMinutes = worldMinutes();
   if (!next.ownsHome && next.rentedUntil <= next.elapsedMinutes && next.location === "home") {
     next.location = "realtor";
@@ -421,6 +429,9 @@ export default function Home() {
   const shoppingOpen = isLocationOpen("shopping", sharedMinutes);
   const schoolOpen = isLocationOpen("school", sharedMinutes);
   const hospitalRegularOpen = isHospitalRegularOpen(sharedMinutes);
+  const actionSecondsLeft = Math.max(0, Math.ceil((player.actionAvailableAt - Date.now()) / 1000));
+  const actionLocked = actionSecondsLeft > 0;
+  const actionBusy = busy || actionLocked;
 
   const loadWorld = useCallback(async (quiet = false) => {
     try {
@@ -475,6 +486,10 @@ export default function Home() {
 
   async function act(action: string, payload: Record<string, unknown> = {}) {
     if (busy) return;
+    if (actionLocked && !["move", "reset"].includes(action)) {
+      setNotice(`${player.actionLabel || "目前的行動"}尚未完成，請等待 ${actionSecondsLeft} 秒；仍可自由移動。`);
+      return;
+    }
     setBusy(true);
     if (!profile) {
       const result = guestAction(player, action, payload);
@@ -615,17 +630,17 @@ export default function Home() {
           </nav>
           <div className="action-stage">
             <div className="stage-number">{String(locations.findIndex((item) => item.id === player.location) + 1).padStart(2, "0")}</div>
-            <div className="action-intro"><span>今天，想把時間花在哪裡？</span><h3>{actionTitle(player.location)}</h3><p>{actionDescription(player.location)}</p></div>
+            <div className="action-intro"><span>今天，想把時間花在哪裡？</span><h3>{actionTitle(player.location)}</h3><p>{actionLocked ? `${player.actionLabel || "目前的行動"}進行中，${actionSecondsLeft} 秒後可再次行動；期間仍可移動。` : actionDescription(player.location)}</p></div>
             <div className="action-cards">
-              {player.location === "home" && <ActionCard icon="☾" title="睡眠 8 小時" meta="體力全滿 · 健康 +5 · 心情 +10" button="好好休息" onClick={() => void act("sleep")} disabled={busy} />}
-              {player.location === "realtor" && <><ActionCard icon="01" title="城市小套房 · 1 天" meta="每日 NT$350 · 租金 NT$350" button="租 1 天" onClick={() => void act("housing", { kind: "rent", days: 1 })} disabled={busy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /><ActionCard icon="07" title="城市小套房 · 7 天" meta="每日 NT$350 · 租金 NT$2,450" button="租 7 天" onClick={() => void act("housing", { kind: "rent", days: 7 })} featured disabled={busy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /><ActionCard icon="買" title="購買城市小宅" meta="NT$150,000 · 永久住所 · 買房後仍可查看租屋" button={player.ownsHome ? "已擁有，仍可看租屋" : "購買房屋"} onClick={() => void act("housing", { kind: "buy" })} disabled={busy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /></>}
-              {player.location === "bank" && <BankPanel player={player} busy={busy || !bankOpen} closed={!bankOpen} onAction={(kind, amount) => void act("bank", { kind, amount })} />}
-              {player.location === "business" && <><ActionCard icon="職" title="找工作" meta="12 條產業升遷路線 · 無固定職業" button="打開產業列表" onClick={() => setJobOpen(true)} featured disabled={busy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="01" title="短班 1 小時" meta={`收入 NT$${formatMoney(career.hourlyPay)} · 產業 EXP +4`} button="開始工作" onClick={() => void act("work", { hours: 1 })} disabled={busy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="04" title="標準班 4 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 4)} · 產業 EXP +16`} button="開始工作" onClick={() => void act("work", { hours: 4 })} disabled={busy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="08" title="長班 8 小時" meta={`收入 NT$${formatMoney(career.hourlyPay * 8)} · 產業 EXP +32`} button="開始工作" onClick={() => void act("work", { hours: 8 })} disabled={busy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /></>}
-              {player.location === "shopping" && <><ActionCard icon="刮" title="幸運刮刮樂" meta="每張 NT$100 · 最高獎金 NT$50,000" button="購買並刮開" onClick={() => void act("scratch")} featured disabled={busy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="飯" title="巷口飯糰" meta="NT$45 · 飽足 +20" button="買來吃" onClick={() => void act("eat", { kind: "rice" })} disabled={busy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="餐" title="豐盛便當" meta="NT$100 · 飽足 +45 · 心情 +3" button="享用便當" onClick={() => void act("eat", { kind: "bento" })} disabled={busy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /></>}
-              {player.location === "hotel" && <><ActionCard icon="宿" title="旅店住宿一晚" meta="NT$1,200 · 體力全滿 · 健康 +3 · 僅限無住所" button="辦理入住" onClick={() => void act("hotel", { kind: "stay" })} featured disabled={busy || player.ownsHome || rentalDaysLeft > 0} disabledLabel={player.ownsHome || rentalDaysLeft > 0 ? "已有住所" : undefined} /><ActionCard icon="餐" title="24 小時旅店餐" meta="NT$250 · 飽足 +45" button="購買旅店餐" onClick={() => void act("hotel", { kind: "meal" })} disabled={busy} /><ActionCard icon="豪" title="24 小時豪華餐" meta="NT$500 · 飽足 +80" button="購買豪華餐" onClick={() => void act("hotel", { kind: "luxury" })} disabled={busy} /></>}
-                {player.location === "casino" && <div className="casino-games"><div className="casino-game-tabs"><button className={casinoGame === "blackjack" ? "active" : ""} onClick={() => setCasinoGame("blackjack")}>二十一點</button><button className={casinoGame === "poker" ? "active" : ""} onClick={() => setCasinoGame("poker")}>德州撲克</button></div>{casinoGame === "blackjack" ? <CasinoTable state={casino} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`casino_${action}`, payload)} /> : <PokerTable state={poker} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`poker_${action}`, payload)} />}</div>}
-              {player.location === "school" && ACADEMIES.map((academy, index) => <ActionCard key={academy.id} icon={academy.icon} title={academy.name} meta={`NT$500 · 2 小時 · ${formatRequirements(academy.gains)}`} button="報名上課" onClick={() => void act("study", { academy: academy.id })} featured={index === 0} disabled={busy || !schoolOpen} disabledLabel={!schoolOpen ? "已關門" : undefined} />)}
-              {player.location === "hospital" && <><ActionCard icon="急" title="24 小時急診" meta="NT$2,500 · 健康至少恢復至 70 · 全天開放" button="前往急診" onClick={() => void act("hospital", { kind: "emergency" })} featured disabled={busy} /><ActionCard icon="診" title="一般門診" meta="08:00～20:00 · NT$600 · 健康 +25" button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={busy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /><ActionCard icon="療" title="完整治療" meta="08:00～20:00 · NT$1,500 · 健康至少恢復至 80" button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} disabled={busy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /></>}
+              {player.location === "home" && <ActionCard icon="☾" title="睡眠 8 小時" meta="現實等待 8 分鐘 · 體力全滿 · 健康 +5" button="好好休息" onClick={() => void act("sleep")} disabled={actionBusy} />}
+              {player.location === "realtor" && <><ActionCard icon="01" title="城市小套房 · 1 天" meta="每日 NT$350 · 租金 NT$350" button="租 1 天" onClick={() => void act("housing", { kind: "rent", days: 1 })} disabled={actionBusy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /><ActionCard icon="07" title="城市小套房 · 7 天" meta="每日 NT$350 · 租金 NT$2,450" button="租 7 天" onClick={() => void act("housing", { kind: "rent", days: 7 })} featured disabled={actionBusy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /><ActionCard icon="買" title="購買城市小宅" meta="NT$50,000 · 永久住所 · 買房後仍可查看租屋" button={player.ownsHome ? "已擁有，仍可看租屋" : "購買房屋"} onClick={() => void act("housing", { kind: "buy" })} disabled={actionBusy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /></>}
+              {player.location === "bank" && <BankPanel player={player} busy={actionBusy || !bankOpen} closed={!bankOpen} onAction={(kind, amount) => void act("bank", { kind, amount })} />}
+              {player.location === "business" && <><ActionCard icon="職" title="找工作" meta="第一階工作免能力門檻 · 12 條產業路線" button="打開產業列表" onClick={() => setJobOpen(true)} featured disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="01" title="短班 1 小時" meta={`現實等待 1 分鐘 · 收入 NT$${formatMoney(career.hourlyPay)} · EXP +4`} button="開始工作" onClick={() => void act("work", { hours: 1 })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="04" title="標準班 4 小時" meta={`現實等待 4 分鐘 · 收入 NT$${formatMoney(career.hourlyPay * 4)} · EXP +16`} button="開始工作" onClick={() => void act("work", { hours: 4 })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="08" title="長班 8 小時" meta={`現實等待 8 分鐘 · 收入 NT$${formatMoney(career.hourlyPay * 8)} · EXP +32`} button="開始工作" onClick={() => void act("work", { hours: 8 })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /></>}
+              {player.location === "shopping" && <><ActionCard icon="刮" title="幸運刮刮樂" meta="每張 NT$100 · 最高獎金 NT$50,000" button="購買並刮開" onClick={() => void act("scratch")} featured disabled={actionBusy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="飯" title="巷口飯糰" meta="NT$45 · 飽足 +20" button="買來吃" onClick={() => void act("eat", { kind: "rice" })} disabled={actionBusy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="餐" title="豐盛便當" meta="NT$100 · 飽足 +45 · 心情 +3" button="享用便當" onClick={() => void act("eat", { kind: "bento" })} disabled={actionBusy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /></>}
+              {player.location === "hotel" && <><ActionCard icon="宿" title="旅店住宿一晚" meta="NT$1,200 · 現實等待 8 分鐘 · 體力全滿" button="辦理入住" onClick={() => void act("hotel", { kind: "stay" })} featured disabled={actionBusy || player.ownsHome || rentalDaysLeft > 0} disabledLabel={player.ownsHome || rentalDaysLeft > 0 ? "已有住所" : undefined} /><ActionCard icon="餐" title="24 小時旅店餐" meta="NT$250 · 飽足 +45" button="購買旅店餐" onClick={() => void act("hotel", { kind: "meal" })} disabled={actionBusy} /><ActionCard icon="豪" title="24 小時豪華餐" meta="NT$500 · 飽足 +80" button="購買豪華餐" onClick={() => void act("hotel", { kind: "luxury" })} disabled={actionBusy} /></>}
+                {player.location === "casino" && <div className="casino-games"><div className="casino-game-tabs"><button className={casinoGame === "blackjack" ? "active" : ""} onClick={() => setCasinoGame("blackjack")}>二十一點</button><button className={casinoGame === "poker" ? "active" : ""} onClick={() => setCasinoGame("poker")}>德州撲克 · 同局等額下注</button></div>{casinoGame === "blackjack" ? <CasinoTable state={casino} signedIn={Boolean(profile)} busy={actionBusy} maxBet={player.cash} onAction={(action, payload) => void act(`casino_${action}`, payload)} /> : <PokerTable state={poker} signedIn={Boolean(profile)} busy={actionBusy} maxBet={player.cash} onAction={(action, payload) => void act(`poker_${action}`, payload)} />}</div>}
+              {player.location === "school" && ACADEMIES.map((academy, index) => <ActionCard key={academy.id} icon={academy.icon} title={academy.name} meta={`NT$500 · 現實等待 2 分鐘 · ${formatRequirements(academy.gains)}`} button="報名上課" onClick={() => void act("study", { academy: academy.id })} featured={index === 0} disabled={actionBusy || !schoolOpen} disabledLabel={!schoolOpen ? "已關門" : undefined} />)}
+              {player.location === "hospital" && <><ActionCard icon="急" title="24 小時急診" meta="NT$2,500 · 健康至少恢復至 70 · 全天開放" button="前往急診" onClick={() => void act("hospital", { kind: "emergency" })} featured disabled={actionBusy} /><ActionCard icon="診" title="一般門診" meta="08:00～20:00 · NT$600 · 健康 +25" button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /><ActionCard icon="療" title="完整治療" meta="08:00～20:00 · NT$1,500 · 健康至少恢復至 80" button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /></>}
             </div>
           </div>
           <footer className="world-footer"><span>現實 1 分鐘 = 遊戲 1 小時 · 全服同步</span><button onClick={() => void act("reset")} disabled={busy}>重新開始人生</button></footer>
@@ -659,9 +674,9 @@ export default function Home() {
           <div className="job-categories" role="tablist" aria-label="職業分類">
             {JOB_CATEGORIES.map((category) => <button role="tab" aria-selected={jobCategory === category.id} className={jobCategory === category.id ? "active" : ""} key={category.id} onClick={() => setJobCategory(category.id)}>{category.label}</button>)}
           </div>
-          {selectedJobCategory.id === "unfixed" ? <div className="job-list">{selectedJobCategory.jobs.map((job) => <button className={player.currentJob === job ? "current" : ""} key={job} onClick={() => { setJobOpen(false); void act("job", { job }); }} disabled={busy}><span>{job}</span><small>{player.currentJob === job ? "目前狀態" : "無固定工作與收入"}</small></button>)}</div> : <div className="career-route">
-            <div className="route-steps">{selectedJobCategory.jobs.map((job, index) => <div className={player.jobCategory === selectedJobCategory.id && player.currentJob === job ? "current" : ""} key={job}><small>第 {index + 1} 階</small><strong>{job}</strong><span>{index === 0 ? "入行" : `${[100, 250, 500, 900, 1400, 2000, 2700][index]} EXP`} · {formatRequirements(careerRequirements(selectedJobCategory.id, index))}</span></div>)}</div>
-            <button className="enter-industry" onClick={() => { setJobOpen(false); void act("job", { job: selectedJobCategory.jobs[0] }); }} disabled={busy || (player.jobCategory === selectedJobCategory.id && player.jobExp === 0)}>進入{selectedJobCategory.label} · 從{selectedJobCategory.jobs[0]}開始</button>
+          {selectedJobCategory.id === "unfixed" ? <div className="job-list">{selectedJobCategory.jobs.map((job) => <button className={player.currentJob === job ? "current" : ""} key={job} onClick={() => { setJobOpen(false); void act("job", { job }); }} disabled={actionBusy}><span>{job}</span><small>{player.currentJob === job ? "目前狀態" : "無固定工作與收入"}</small></button>)}</div> : <div className="career-route">
+              <div className="route-steps">{selectedJobCategory.jobs.map((job, index) => <div className={player.jobCategory === selectedJobCategory.id && player.currentJob === job ? "current" : ""} key={job}><small>第 {index + 1} 階</small><strong>{job}</strong><span>{index === 0 ? "免能力門檻入行" : `${careerThresholdForCategory(selectedJobCategory.id, index)} EXP`} · {formatRequirements(careerRequirements(selectedJobCategory.id, index))}</span></div>)}</div>
+            <button className="enter-industry" onClick={() => { setJobOpen(false); void act("job", { job: selectedJobCategory.jobs[0] }); }} disabled={actionBusy || (player.jobCategory === selectedJobCategory.id && player.jobExp === 0)}>進入{selectedJobCategory.label} · 從{selectedJobCategory.jobs[0]}開始</button>
           </div>}
         </section>
       </div>}
@@ -706,7 +721,7 @@ function BankPanel({ player, busy, closed, onAction }: { player: Player; busy: b
   const valid = Number.isSafeInteger(value) && value > 0;
   return <section className="bank-panel">
     <header><div><span>BANK ACCOUNT</span><strong>存款 NT${formatMoney(player.bankBalance)}</strong></div><div><span>LOAN BALANCE</span><strong className={player.loanBalance ? "debt" : ""}>貸款 NT${formatMoney(player.loanBalance)}</strong></div></header>
-    <p>存款每個遊戲日複利 3%；貸款每個遊戲日增加 5% 利息。每個遊戲日等於現實 48 分鐘。</p>
+    <p>存款每個遊戲日複利 0.1%；一般貸款每日增加 0.5%，《浪子回頭》主線債務每日增加 0.2%。每個遊戲日等於現實 24 分鐘。</p>
     <label>輸入金額<div><span>NT$</span><input type="number" inputMode="numeric" min="1" step="1" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={busy} /></div></label>
     <div className="bank-actions">
       <button onClick={() => onAction("deposit", value)} disabled={busy || !valid}>存款</button>
@@ -822,5 +837,5 @@ function actionTitle(location: LocationId) {
 }
 
 function actionDescription(location: LocationId) {
-  return { home: "有效租約或自有住宅才能進入，全天 24 小時開放。睡一覺能恢復體力與健康。", realtor: "營業時間 09:00～18:00。租屋每日 NT$350，也能買下永久住所；買房後租屋方案仍會保留。", bank: "營業時間 09:00～17:00。存款每日收益 3%；貸款上限 NT$50,000，每日利息 5%。", business: "營業時間 08:00～18:00。工作會累積職涯經驗；經驗與指定能力都達標後才會升遷。", shopping: "營業時間 10:00～22:00。用合理的花費補充飽足，也能購買刮刮樂。", hotel: "全天 24 小時營業。無住所玩家可花 NT$1,200 住宿；餐點全天供應，但價格較高。", casino: "全天 24 小時開放。二十一點與德州撲克各有一張最多五人的同步牌桌。", school: "開放時間 08:00～21:00。五所學院分別培養體力、智力、創造力、社交與魅力。", hospital: "健康低於 50 時，行動後開始有機率生病。急診 24 小時開放；一般診療為 08:00～20:00。" }[location];
+  return { home: "有效租約或自有住宅才能進入，全天 24 小時開放。睡一覺能恢復體力與健康。", realtor: "營業時間 09:00～18:00。租屋每日 NT$350，城市小宅售價 NT$50,000。", bank: "營業時間 09:00～17:00。存款每日收益 0.1%；一般貸款上限 NT$50,000，每日利息 0.5%。", business: "營業時間 08:00～18:00。第一階工作免能力門檻；工作會累積職涯經驗。", shopping: "營業時間 10:00～22:00。用合理的花費補充飽足，也能購買刮刮樂。", hotel: "全天 24 小時營業。無住所玩家可花 NT$1,200 住宿；餐點全天供應，但價格較高。", casino: "全天 24 小時開放。二十一點與德州撲克各有一張最多五人的同步牌桌；德州撲克同局等額下注。", school: "開放時間 08:00～21:00。五所學院分別培養體力、智力、創造力、社交與魅力。", hospital: "健康低於 50 時，行動後開始有機率生病。急診 24 小時開放；一般診療為 08:00～20:00。" }[location];
 }

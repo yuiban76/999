@@ -45,6 +45,8 @@ export const players = sqliteTable("players", {
   ownsHome: integer("owns_home", { mode: "boolean" }).notNull().default(false),
   rentalName: text("rental_name").notNull().default(""),
   rentedUntil: integer("rented_until").notNull().default(0),
+  actionAvailableAt: integer("action_available_at").notNull().default(0),
+  actionLabel: text("action_label").notNull().default(""),
   elapsedMinutes: integer("elapsed_minutes").notNull().default(450),
   location: text("location").notNull().default("realtor"),
   createdAt: integer("created_at").notNull(),

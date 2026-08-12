@@ -65,10 +65,26 @@ export function jobInfo(job: string) {
 export function careerRequirements(categoryId: string, index: number): Partial<Abilities> {
   const profile = CAREER_ABILITY_PROFILE[categoryId];
   if (!profile) return {};
+  if (index === 0) return { [profile[0]]: 0, [profile[1]]: 0 };
+  const tier = normalizedCareerTier(categoryId, index);
   return {
-    [profile[0]]: PRIMARY_REQUIREMENTS[index] ?? PRIMARY_REQUIREMENTS.at(-1),
-    [profile[1]]: SECONDARY_REQUIREMENTS[index] ?? SECONDARY_REQUIREMENTS.at(-1),
+    [profile[0]]: PRIMARY_REQUIREMENTS[tier] ?? PRIMARY_REQUIREMENTS.at(-1),
+    [profile[1]]: SECONDARY_REQUIREMENTS[tier] ?? SECONDARY_REQUIREMENTS.at(-1),
   };
+}
+
+function normalizedCareerTier(categoryId: string, index: number) {
+  const category = categoryInfo(categoryId);
+  if (!category || category.jobs.length <= 1) return 0;
+  return Math.round((index * (CAREER_THRESHOLDS.length - 1)) / (category.jobs.length - 1));
+}
+
+export function careerThresholdForCategory(categoryId: string, index: number) {
+  return CAREER_THRESHOLDS[normalizedCareerTier(categoryId, index)] ?? CAREER_THRESHOLDS.at(-1)!;
+}
+
+export function careerPayForCategory(categoryId: string, index: number) {
+  return CAREER_PAY[normalizedCareerTier(categoryId, index)] ?? CAREER_PAY.at(-1)!;
 }
 
 export function meetsCareerRequirements(abilities: Abilities, requirements: Partial<Abilities>) {
@@ -81,9 +97,9 @@ export function careerForCategory(categoryId: string, exp: number, fallback = "�
   const existingIndex = category.jobs.findIndex((job) => job === fallback);
   let index = Math.max(0, existingIndex);
   for (let cursor = index + 1; cursor < category.jobs.length; cursor += 1) {
-    if (exp >= CAREER_THRESHOLDS[cursor] && (!abilities || meetsCareerRequirements(abilities, careerRequirements(categoryId, cursor)))) index = cursor;
+    if (exp >= careerThresholdForCategory(categoryId, cursor) && (!abilities || meetsCareerRequirements(abilities, careerRequirements(categoryId, cursor)))) index = cursor;
   }
-  return { title: category.jobs[index], hourlyPay: CAREER_PAY[index], threshold: CAREER_THRESHOLDS[index], index };
+  return { title: category.jobs[index], hourlyPay: careerPayForCategory(categoryId, index), threshold: careerThresholdForCategory(categoryId, index), index };
 }
 
 export function nextCareerForCategory(categoryId: string, exp: number, fallback = "待業者", abilities?: Abilities) {
@@ -92,5 +108,5 @@ export function nextCareerForCategory(categoryId: string, exp: number, fallback 
   const current = careerForCategory(categoryId, exp, fallback, abilities);
   const nextIndex = current.index + 1;
   if (nextIndex >= category.jobs.length) return null;
-  return { title: category.jobs[nextIndex], threshold: CAREER_THRESHOLDS[nextIndex], hourlyPay: CAREER_PAY[nextIndex], index: nextIndex, requirements: careerRequirements(categoryId, nextIndex) };
+  return { title: category.jobs[nextIndex], threshold: careerThresholdForCategory(categoryId, nextIndex), hourlyPay: careerPayForCategory(categoryId, nextIndex), index: nextIndex, requirements: careerRequirements(categoryId, nextIndex) };
 }
