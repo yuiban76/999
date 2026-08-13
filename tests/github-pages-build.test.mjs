@@ -35,3 +35,18 @@ test("personal finance time only advances during continuous online heartbeats", 
   assert.match(page, /player\.rentedUntil - player\.elapsedMinutes/);
   assert.match(page, /離線期間不結算/);
 });
+
+test("administrative actions are instant and gameplay waits stay shortened", async () => {
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+
+  assert.doesNotMatch(worker, /next\.owns_home = 1; minutes =/);
+  assert.doesNotMatch(worker, /next\.current_job = selected\.job;[^\n]*minutes =/);
+  assert.doesNotMatch(worker, /next\.cash = next\.cash - 100 \+ prize; minutes =/);
+  assert.match(worker, /minutes = hours === 1 \? 30 : hours === 4 \? 120 : 240/);
+  assert.match(worker, /一般門診", price: 600, minutes: 15/);
+  assert.match(worker, /完整治療", price: 1500, minutes: 30/);
+  assert.match(worker, /急診治療", price: 2500, minutes: 20/);
+  assert.match(page, /換工作立即完成/);
+  assert.match(page, /睡眠 8 小時" meta="現實等待 2 分鐘/);
+});

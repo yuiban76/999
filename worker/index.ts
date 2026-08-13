@@ -842,14 +842,14 @@ async function takeAction(request: Request, env: Env) {
         const cost = dailyRent * days;
         if (next.cash < cost) return json({ message: "現金不足，無法支付租金。" }, 400);
         const leaseStart = Math.max(next.elapsed_minutes, next.rented_until);
-        next.cash -= cost; next.rental_name = "城市小套房"; next.rented_until = leaseStart + days * 1440; minutes = 30;
+        next.cash -= cost; next.rental_name = "城市小套房"; next.rented_until = leaseStart + days * 1440;
         title = `租下城市小套房 ${days} 天`; message = `支付 NT$${cost}，租期增加 ${days} 天。${next.owns_home ? "你原有的自有住宅仍然保留。" : "現在可以回到我的住所休息。"}`; break;
       }
       if (body.kind === "buy") {
         const price = 50_000;
         if (next.owns_home) return json({ message: "你已經擁有城市小宅，仍可繼續查看租屋方案。" }, 400);
         if (next.cash < price) return json({ message: "購屋需要 NT$50,000，目前資金不足。" }, 400);
-        next.cash -= price; next.owns_home = 1; minutes = 60;
+        next.cash -= price; next.owns_home = 1;
         title = "買下城市小宅"; message = "支付 NT$50,000，取得永久住所；你仍可在房仲查看與承租其他房屋。"; break;
       }
       return json({ message: "房屋方案不存在。" }, 400);
@@ -877,26 +877,26 @@ async function takeAction(request: Request, env: Env) {
         if (next.main_story === "prodigal_return") next.daily_payment_made += amount;
         title = "償還貸款"; message = `已償還 NT$${amount}，剩餘貸款 NT$${next.loan_balance}。${next.main_story === "prodigal_return" ? ` 本日累計已繳 NT$${next.daily_payment_made}／最低 NT$${next.daily_minimum_payment}。` : ""}`;
       } else return json({ message: "銀行服務不存在。" }, 400);
-      minutes = 10; break;
+      break;
     }
     case "hotel": {
       if (next.location !== "hotel") return json({ message: "請先前往不夜旅店。" }, 400);
       if (body.kind === "stay") {
         if (next.owns_home || next.rented_until > next.elapsed_minutes) return json({ message: "你目前已有住所，不需要入住旅店。" }, 400);
         if (next.cash < 1_200) return json({ message: "住宿需要 NT$1,200，目前現金不足。" }, 400);
-        next.cash -= 1_200; next.energy = 100; next.health = clamp(next.health + 3); next.hunger = clamp(next.hunger - 12); minutes = 300;
+        next.cash -= 1_200; next.energy = 100; next.health = clamp(next.health + 3); next.hunger = clamp(next.hunger - 12); minutes = 120;
         title = "入住不夜旅店"; message = "支付 NT$1,200，體力全滿、健康 +3。"; break;
       }
       if (body.kind === "work") {
         if (next.illness) return json({ message: `目前罹患${next.illness}，請先前往醫院治療。` }, 400);
         if (next.energy < 5) return json({ message: "體力不足，先休息後再打工吧。" }, 400);
-        next.cash += 120; next.energy = clamp(next.energy - 5); next.hunger = clamp(next.hunger - 2); minutes = 60;
+        next.cash += 120; next.energy = clamp(next.energy - 5); next.hunger = clamp(next.hunger - 2); minutes = 45;
         title = "完成旅店臨時工"; message = "收入 +NT$120；這份臨時工作不增加職業經驗或能力。"; break;
       }
       const meal = body.kind === "meal" ? { name: "旅店餐", price: 250, hunger: 45 } : body.kind === "luxury" ? { name: "豪華餐", price: 500, hunger: 80 } : null;
       if (!meal) return json({ message: "旅店服務不存在。" }, 400);
       if (next.cash < meal.price) return json({ message: "手上現金不足。" }, 400);
-      next.cash -= meal.price; next.hunger = clamp(next.hunger + meal.hunger); minutes = 20;
+      next.cash -= meal.price; next.hunger = clamp(next.hunger + meal.hunger);
       title = `享用${meal.name}`; message = `${meal.name}讓飽足 +${meal.hunger}。`; break;
     }
     case "job": {
@@ -910,7 +910,7 @@ async function takeAction(request: Request, env: Env) {
       if (category.id !== "unfixed" && selected.job !== category.jobs[0]) return json({ message: `進入${category.label}必須從${category.jobs[0]}開始。` }, 400);
       const entryRequirements = careerRequirements(category.id, 0);
       if (category.id !== "unfixed" && !meetsCareerRequirements(abilitiesFor(next), entryRequirements)) return json({ message: `進入${category.label}需要${formatRequirements(entryRequirements)}。` }, 400);
-      next.current_job = selected.job; next.job_category = selected.categoryId; next.job_exp = 0; minutes = 60;
+      next.current_job = selected.job; next.job_category = selected.categoryId; next.job_exp = 0;
       title = category.id === "unfixed" ? `狀態變更：${selected.job}` : `進入${selected.categoryLabel}`;
       message = category.id === "unfixed" ? `目前狀態已改為${selected.job}。` : `成功進入「${selected.categoryLabel}」，從${selected.job}開始發展；產業升遷經驗從 0 開始。`; break;
     }
@@ -924,7 +924,7 @@ async function takeAction(request: Request, env: Env) {
       if (next.energy < hours * 5) return json({ message: "體力不足，先回家休息吧。" }, 400);
       const previousCareer = careerForCategory(next.job_category, next.job_exp, next.current_job, abilitiesFor(next));
       const income = hours * previousCareer.hourlyPay;
-      next.cash += income; next.energy = clamp(next.energy - hours * 5); next.health = clamp(next.health - Math.ceil(hours / 2)); next.mood = clamp(next.mood - Math.ceil(hours * .9)); next.hunger = clamp(next.hunger - hours * 2); next.job_exp += hours * 4; minutes = hours === 1 ? 45 : hours === 4 ? 180 : 360;
+      next.cash += income; next.energy = clamp(next.energy - hours * 5); next.health = clamp(next.health - Math.ceil(hours / 2)); next.mood = clamp(next.mood - Math.ceil(hours * .9)); next.hunger = clamp(next.hunger - hours * 2); next.job_exp += hours * 4; minutes = hours === 1 ? 30 : hours === 4 ? 120 : 240;
       const newCareer = careerForCategory(next.job_category, next.job_exp, next.current_job, abilitiesFor(next));
       next.current_job = newCareer.title;
       title = newCareer.title !== previousCareer.title ? `升遷為${newCareer.title}` : `工作 ${hours} 小時`;
@@ -947,7 +947,7 @@ async function takeAction(request: Request, env: Env) {
       }
       const promoted = careerForCategory(next.job_category, next.job_exp, next.current_job, abilitiesFor(next));
       const promotionMessage = promoted.title !== next.current_job ? ` 能力達標，升遷為${promoted.title}！` : "";
-      next.current_job = promoted.title; minutes = 120;
+      next.current_job = promoted.title; minutes = 60;
       title = `完成${academy.name}課程`; message = `${formatRequirements(academy.gains)}。${promotionMessage}`; break;
     }
     case "eat": {
@@ -956,7 +956,7 @@ async function takeAction(request: Request, env: Env) {
       const meal = body.kind === "rice" ? { name: "飯糰", price: 45, hunger: 20, mood: 1 } : body.kind === "bento" ? { name: "便當", price: 100, hunger: 45, mood: 3 } : null;
       if (!meal) return json({ message: "餐點不存在。" }, 400);
       if (next.cash < meal.price) return json({ message: "現金不足。" }, 400);
-      next.cash -= meal.price; next.hunger = clamp(next.hunger + meal.hunger); next.mood = clamp(next.mood + meal.mood); minutes = 20;
+      next.cash -= meal.price; next.hunger = clamp(next.hunger + meal.hunger); next.mood = clamp(next.mood + meal.mood);
       title = `享用${meal.name}`; message = `${meal.name}讓飽足 +${meal.hunger}。`; break;
     }
     case "scratch": {
@@ -965,7 +965,7 @@ async function takeAction(request: Request, env: Env) {
       if (next.cash < 100) return json({ message: "購買刮刮樂需要 NT$100，目前現金不足。" }, 400);
       const prize = scratchPrize();
       scratch = { price: 100, prize };
-      next.cash = next.cash - 100 + prize; minutes = 5;
+      next.cash = next.cash - 100 + prize;
       title = prize ? `刮刮樂中獎 NT$${prize}` : "刮刮樂未中獎";
       message = prize ? `花費 NT$100，刮中 NT$${prize}，獎金已存入資產。` : "花費 NT$100，這張沒有中獎。";
       tone = prize >= 1_000 ? "good" : "neutral"; break;
@@ -973,17 +973,17 @@ async function takeAction(request: Request, env: Env) {
     case "sleep":
       if (next.location !== "home") return json({ message: "請先回到溫暖小屋。" }, 400);
       if (!next.owns_home && next.rented_until <= next.elapsed_minutes) return json({ message: "租約已到期，請先到房仲續租。" }, 400);
-      next.energy = 100; next.health = clamp(next.health + 5); next.mood = clamp(next.mood + 10); next.hunger = clamp(next.hunger - 12); minutes = 300;
+      next.energy = 100; next.health = clamp(next.health + 5); next.mood = clamp(next.mood + 10); next.hunger = clamp(next.hunger - 12); minutes = 120;
       title = "好好睡了一覺"; message = "體力完全恢復，健康 +5、心情 +10。"; break;
     case "hospital": {
       if (next.location !== "hospital") return json({ message: "請先前往市立醫院。" }, 400);
       if (body.kind !== "emergency" && !isHospitalRegularOpen(sharedMinutes)) return json({ message: "一般門診與完整治療時間為 08:00～20:00；急診 24 小時開放。" }, 400);
       const care = body.kind === "clinic"
-        ? { name: "一般門診", price: 600, minutes: 60, health: Math.min(100, next.health + 25), energy: Math.min(100, next.energy + 10) }
+        ? { name: "一般門診", price: 600, minutes: 15, health: Math.min(100, next.health + 25), energy: Math.min(100, next.energy + 10) }
         : body.kind === "treatment"
-          ? { name: "完整治療", price: 1500, minutes: 120, health: Math.max(80, next.health), energy: Math.min(100, next.energy + 30) }
+          ? { name: "完整治療", price: 1500, minutes: 30, health: Math.max(80, next.health), energy: Math.min(100, next.energy + 30) }
           : body.kind === "emergency"
-            ? { name: "急診治療", price: 2500, minutes: 90, health: Math.max(70, next.health), energy: Math.min(100, next.energy + 20) }
+            ? { name: "急診治療", price: 2500, minutes: 20, health: Math.max(70, next.health), energy: Math.min(100, next.energy + 20) }
           : null;
       if (!care) return json({ message: "醫療項目不存在。" }, 400);
       if (next.cash < care.price) return json({ message: "醫療費不足。" }, 400);
