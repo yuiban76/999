@@ -1,4 +1,5 @@
 import { ABILITY_LABELS, ACADEMIES, careerForCategory, careerRequirements, categoryInfo, jobInfo, meetsCareerRequirements, type Abilities } from "../shared/jobs";
+import { CITY_EVENTS, STORY_CHAPTERS, storyChapterForDebt, talentInfo } from "../shared/progression";
 import { isHospitalRegularOpen, isLocationOpen, minuteOfDay, OPENING_HOURS, worldMinutes } from "../shared/world";
 
 type LocationId = "home" | "realtor" | "bank" | "business" | "shopping" | "hotel" | "casino" | "school" | "hospital";
@@ -45,6 +46,8 @@ type PlayerRow = {
 type CasinoRow = { user_id: string; player_name: string; player_cards: string; dealer_cards: string; bet: number; status: string; result: string; seat_no: number | null; reveal_at: number; updated_at: number };
 type PokerRow = { user_id: string; player_name: string; hole_cards: string; community_cards: string; bet: number; status: string; result: string; seat_no: number | null; reveal_at: number; street_bet: number; acted: number; updated_at: number };
 type PokerTableRow = { id: string; deck: string; community_cards: string; street: string; current_bet: number; turn_seat: number; pot: number; status: string; updated_at: number };
+type ProgressRow = { user_id: string; talent_exp: number; talents: string; story_chapter: number; last_event_day: number; pending_event: string; updated_at: number };
+type MemoryRow = { cycle_day: number; work_count: number; hospital_count: number; housing_count: number; casino_count: number; study_count: number; event_count: number };
 
 const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "bank", "business", "shopping", "hotel", "casino", "school", "hospital"]);
 // The client sends a heartbeat every five seconds. Only a short, continuous
@@ -138,13 +141,19 @@ async function identity(request: Request, db?: D1Database): Promise<AuthUser | n
 }
 
 function guestPlayer() {
-  return { cash: 10000, bankBalance: 0, loanBalance: 0, dailyMinimumPayment: 0, dailyPaymentMade: 0, missedPaymentDays: 0, gameOver: "", mainStory: "legacy", energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, creativityExp: 0, physicalExp: 0, socialExp: 0, charismaExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, actionAvailableAt: 0, actionLabel: "", elapsedMinutes: worldMinutes(), location: "realtor" as LocationId };
+  return { cash: 10000, bankBalance: 0, loanBalance: 0, dailyMinimumPayment: 0, dailyPaymentMade: 0, missedPaymentDays: 0, gameOver: "", mainStory: "legacy", energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, creativityExp: 0, physicalExp: 0, socialExp: 0, charismaExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, actionAvailableAt: 0, actionLabel: "", elapsedMinutes: worldMinutes(), location: "realtor" as LocationId, talentExp: 0, talentLevel: 0, talentPoints: 0, talents: [] as string[], storyChapter: 0, pendingEvent: "" };
 }
 
-function serializePlayer(row: PlayerRow) {
+function parseList(value: string) {
+  try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []; } catch { return []; }
+}
+
+function serializePlayer(row: PlayerRow, progress?: ProgressRow | null) {
   const currentJob = jobInfo(row.current_job) ? row.current_job : "待業者";
   const location = VALID_LOCATIONS.has(row.location) ? row.location : "casino";
-  return { cash: row.cash, bankBalance: row.bank_balance, loanBalance: row.loan_balance, dailyMinimumPayment: row.daily_minimum_payment, dailyPaymentMade: row.daily_payment_made, missedPaymentDays: row.missed_payment_days, gameOver: row.game_over, mainStory: row.main_story, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, creativityExp: row.programming_exp, physicalExp: row.fitness_exp, socialExp: row.work_exp, charismaExp: row.charisma_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, actionAvailableAt: row.action_available_at, actionLabel: row.action_label, elapsedMinutes: row.elapsed_minutes, location };
+  const talents = progress ? parseList(progress.talents) : [];
+  const talentLevel = Math.min(10, Math.floor((progress?.talent_exp ?? 0) / 100));
+  return { cash: row.cash, bankBalance: row.bank_balance, loanBalance: row.loan_balance, dailyMinimumPayment: row.daily_minimum_payment, dailyPaymentMade: row.daily_payment_made, missedPaymentDays: row.missed_payment_days, gameOver: row.game_over, mainStory: row.main_story, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, creativityExp: row.programming_exp, physicalExp: row.fitness_exp, socialExp: row.work_exp, charismaExp: row.charisma_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, actionAvailableAt: row.action_available_at, actionLabel: row.action_label, elapsedMinutes: row.elapsed_minutes, location, talentExp: progress?.talent_exp ?? 0, talentLevel, talentPoints: Math.max(0, talentLevel - talents.length), talents, storyChapter: progress?.story_chapter ?? 0, pendingEvent: progress?.pending_event ?? "" };
 }
 
 function profileFor(user: AuthUser) {
@@ -221,6 +230,23 @@ async function ensureSchema(db: D1Database) {
       turn_seat INTEGER NOT NULL DEFAULT 0, pot INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'idle', updated_at INTEGER NOT NULL
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS player_progress (
+      user_id TEXT PRIMARY KEY, talent_exp INTEGER NOT NULL DEFAULT 0,
+      talents TEXT NOT NULL DEFAULT '[]', story_chapter INTEGER NOT NULL DEFAULT 0,
+      last_event_day INTEGER NOT NULL DEFAULT 0, pending_event TEXT NOT NULL DEFAULT '',
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS city_memory_contributions (
+      user_id TEXT NOT NULL, cycle_day INTEGER NOT NULL,
+      work_count INTEGER NOT NULL DEFAULT 0, hospital_count INTEGER NOT NULL DEFAULT 0,
+      housing_count INTEGER NOT NULL DEFAULT 0, casino_count INTEGER NOT NULL DEFAULT 0,
+      study_count INTEGER NOT NULL DEFAULT 0, event_count INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, cycle_day)
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS mystery_clues (
+      user_id TEXT NOT NULL, clue_key TEXT NOT NULL, found_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, clue_key)
+    )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_players_last_seen ON players(last_seen_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_events_room_created ON game_events(room_id, created_at DESC)"),
     db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_email ON accounts(email)"),
@@ -230,6 +256,8 @@ async function ensureSchema(db: D1Database) {
     db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_casino_seat ON casino_hands(seat_no)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_poker_status_updated ON poker_hands(status, updated_at)"),
     db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_poker_seat ON poker_hands(seat_no)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_city_memory_cycle ON city_memory_contributions(cycle_day)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_mystery_clues_key ON mystery_clues(clue_key)"),
   ]);
 }
 
@@ -250,6 +278,7 @@ async function upsertPlayer(db: D1Database, user: AuthUser) {
     .bind(user.userId, user.displayName.slice(0, 40), user.email, now, now, now, ONLINE_HEARTBEAT_GRACE_MS).run();
   const row = await db.prepare("SELECT * FROM players WHERE user_id = ?").bind(user.userId).first<PlayerRow>();
   if (!row) return null;
+  const progress = await ensureProgress(db, row);
   const today = Math.floor(row.elapsed_minutes / 1440) + 1;
   // Existing story saves receive a fresh first deadline when this system is introduced.
   if (row.main_story === "prodigal_return" && row.loan_balance > 0 && row.daily_minimum_payment <= 0 && !row.game_over) {
@@ -283,7 +312,7 @@ async function upsertPlayer(db: D1Database, user: AuthUser) {
         if (missedPaymentDays >= 2) gameOver = PRODIGAL_FAILURE_ENDING;
       } else if (loanBalance <= 0) missedPaymentDays = 0;
       bankBalance = Math.min(9_000_000_000_000_000, Math.floor(bankBalance * 1.001));
-      const dailyLoanRate = row.main_story === "prodigal_return" ? 1.002 : 1.005;
+      const dailyLoanRate = row.main_story === "prodigal_return" ? (parseList(progress.talents).includes("credit_rebuild") ? 1.0018 : 1.002) : 1.005;
       loanBalance = Math.min(9_000_000_000_000_000, Math.ceil(loanBalance * dailyLoanRate));
       paymentMade = 0;
       minimumPayment = row.main_story === "prodigal_return" && !gameOver ? prodigalMinimumPayment(loanBalance) : 0;
@@ -293,6 +322,62 @@ async function upsertPlayer(db: D1Database, user: AuthUser) {
     row.bank_balance = bankBalance; row.loan_balance = loanBalance; row.finance_day = today; row.daily_minimum_payment = minimumPayment; row.daily_payment_made = paymentMade; row.missed_payment_days = missedPaymentDays; row.game_over = gameOver;
   }
   return row;
+}
+
+async function ensureProgress(db: D1Database, player: PlayerRow) {
+  const now = Date.now();
+  await db.prepare("INSERT INTO player_progress (user_id, updated_at) VALUES (?, ?) ON CONFLICT(user_id) DO NOTHING")
+    .bind(player.user_id, now).run();
+  let progress = await db.prepare("SELECT * FROM player_progress WHERE user_id=?").bind(player.user_id).first<ProgressRow>();
+  if (!progress) throw new Error("Unable to initialize player progression");
+  const chapter = player.main_story === "prodigal_return" ? storyChapterForDebt(player.loan_balance) : 0;
+  if (chapter > progress.story_chapter) {
+    const reward = STORY_CHAPTERS.filter((item) => item.chapter > progress!.story_chapter && item.chapter <= chapter).reduce((sum, item) => sum + item.reward, 0);
+    await db.prepare("UPDATE player_progress SET story_chapter=?, talent_exp=MIN(1099, talent_exp+?), updated_at=? WHERE user_id=?")
+      .bind(chapter, reward, now, player.user_id).run();
+    progress = { ...progress, story_chapter: chapter, talent_exp: Math.min(1099, progress.talent_exp + reward), updated_at: now };
+  }
+  return progress;
+}
+
+function memoryCycleDay() {
+  const day = Math.floor(worldMinutes() / 1440) + 1;
+  return day - ((day - 1) % 3);
+}
+
+async function recordCityMemory(db: D1Database, userId: string, metric: "work" | "hospital" | "housing" | "casino" | "study" | "event") {
+  const cycle = memoryCycleDay();
+  const column = `${metric}_count`;
+  await db.prepare(`INSERT INTO city_memory_contributions (user_id, cycle_day, ${column}) VALUES (?, ?, 1)
+    ON CONFLICT(user_id, cycle_day) DO UPDATE SET ${column}=MIN(5, ${column}+1)`)
+    .bind(userId, cycle).run();
+}
+
+async function cityMemory(db: D1Database) {
+  const cycleDay = memoryCycleDay();
+  const row = await db.prepare(`SELECT ? AS cycle_day,
+    COALESCE(SUM(work_count),0) AS work_count, COALESCE(SUM(hospital_count),0) AS hospital_count,
+    COALESCE(SUM(housing_count),0) AS housing_count, COALESCE(SUM(casino_count),0) AS casino_count,
+    COALESCE(SUM(study_count),0) AS study_count, COALESCE(SUM(event_count),0) AS event_count
+    FROM city_memory_contributions WHERE cycle_day=?`).bind(cycleDay, cycleDay).first<MemoryRow>();
+  const memory = row ?? { cycle_day: cycleDay, work_count: 0, hospital_count: 0, housing_count: 0, casino_count: 0, study_count: 0, event_count: 0 };
+  const state = memory.work_count >= 20 ? { name: "就業熱潮", description: "全城工作收入暫時提高 5%。", tone: "good" }
+    : memory.hospital_count >= 10 ? { name: "健康警報", description: "市立醫院費用暫時降低 20%。", tone: "warn" }
+      : memory.housing_count >= 15 ? { name: "租屋熱潮", description: "城市正在關注快速增加的居住需求。", tone: "neutral" }
+        : { name: "平靜日常", description: "城市正在記住每位居民今天做出的選擇。", tone: "neutral" };
+  return { cycleDay, days: 3, state, totals: { work: memory.work_count, hospital: memory.hospital_count, housing: memory.housing_count, casino: memory.casino_count, study: memory.study_count, event: memory.event_count } };
+}
+
+async function maybeFindMysteryClue(db: D1Database, userId: string, location: LocationId) {
+  const clueByLocation: Partial<Record<LocationId, string>> = { realtor: "address", bank: "loan", hospital: "record", hotel: "key", business: "company", school: "map", casino: "joker" };
+  const clue = clueByLocation[location];
+  if (!clue || Math.random() >= .08) return "";
+  const inserted = await db.prepare("INSERT INTO mystery_clues (user_id, clue_key, found_at) VALUES (?, ?, ?) ON CONFLICT(user_id, clue_key) DO NOTHING RETURNING clue_key")
+    .bind(userId, clue, Date.now()).first<{ clue_key: string }>();
+  if (!inserted) return "";
+  const notes: Record<string, string> = { address: "收據背面寫著一個地圖上不存在的地址。", loan: "一筆沒有屋主姓名的舊貸款從畫面上一閃而過。", record: "病歷櫃深處夾著一張沒有姓名的病歷。", key: "櫃台下方有一把沒有房號的舊鑰匙。", company: "停業公司的資料裡反覆出現同一棟房子。", map: "舊地圖的空白處似乎被人刻意刮去。", joker: "陌生人留下半句話：那間房子從來不在地圖上。" };
+  const shared = await db.prepare("SELECT COUNT(DISTINCT clue_key) AS total FROM mystery_clues").first<{ total: number }>();
+  return ` 你似乎發現了不屬於這裡的東西：${notes[clue]}${(shared?.total ?? 0) >= 7 ? " 城市裡不同的人似乎已經看見了同一個輪廓；某扇沒有地址的門，短暫地亮起了燈。" : ""}`;
 }
 
 async function multiplayer(db: D1Database) {
@@ -514,7 +599,9 @@ async function casinoAction(request: Request, env: Env) {
     }
   }
   const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
-  return json({ player: serializePlayer(saved!), casino: await casinoState(env.DB, user.userId), message });
+  if (body.action === "deal") await recordCityMemory(env.DB, user.userId, "casino");
+  const progress = await ensureProgress(env.DB, saved!);
+  return json({ player: serializePlayer(saved!, progress), casino: await casinoState(env.DB, user.userId), message, cityMemory: await cityMemory(env.DB) });
 }
 
 const POKER_ACTIVE_STATUSES = "('seated','ready','playing','folded','settling')";
@@ -709,7 +796,9 @@ async function pokerAction(request: Request, env: Env) {
     message = "已離開德州撲克牌桌。";
   } else return json({ message: "未知的德州撲克牌桌行動。" }, 400);
   const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
-  return json({ player: serializePlayer(saved!), poker: await pokerState(env.DB, user.userId), message });
+  if (["bet", "call", "raise"].includes(body.action || "")) await recordCityMemory(env.DB, user.userId, "casino");
+  const progress = await ensureProgress(env.DB, saved!);
+  return json({ player: serializePlayer(saved!, progress), poker: await pokerState(env.DB, user.userId), message, cityMemory: await cityMemory(env.DB) });
 }
 
 async function auth(request: Request, env: Env, mode: "register" | "login") {
@@ -788,9 +877,10 @@ async function bootstrap(request: Request, env: Env) {
   await ensureSchema(env.DB);
   const row = await upsertPlayer(env.DB, user);
   if (!row) return json({ message: "無法載入玩家資料" }, 500);
+  const progress = await ensureProgress(env.DB, row);
   const world = await multiplayer(env.DB);
-  const [casino, poker] = await Promise.all([casinoState(env.DB, user.userId), pokerState(env.DB, user.userId)]);
-  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row), room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker });
+  const [casino, poker, memory] = await Promise.all([casinoState(env.DB, user.userId), pokerState(env.DB, user.userId), cityMemory(env.DB)]);
+  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress), room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, cityMemory: memory });
 }
 
 async function takeAction(request: Request, env: Env) {
@@ -800,23 +890,66 @@ async function takeAction(request: Request, env: Env) {
   await ensureSchema(env.DB);
   const current = await upsertPlayer(env.DB, user);
   if (!current) return json({ message: "找不到玩家資料。" }, 404);
+  let progress = await ensureProgress(env.DB, current);
+  let talents = new Set(parseList(progress.talents));
+  const clampEnergy = (value: number) => Math.max(0, Math.min(talents.has("strong_body") ? 120 : 100, value));
 
-  let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; academy?: string; story?: string };
+  let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; academy?: string; story?: string; talent?: string; choice?: string };
   try { body = await request.json(); } catch { return json({ message: "行動資料格式錯誤。" }, 400); }
   if (current.game_over && body.action !== "reset") return json({ message: "這段人生已經結束，請重新開始。" }, 409);
   if (current.main_story === "unselected" && body.action !== "choose_story") return json({ message: "請先選擇人生主線。" }, 409);
-  if (!["move", "choose_story", "reset"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
+  if (!["move", "choose_story", "reset", "city_event"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
   const next = { ...current };
   const sharedMinutes = worldMinutes();
+  const memoryBefore = await cityMemory(env.DB);
   const storedJob = jobInfo(next.current_job);
   if (!storedJob || storedJob.categoryId !== next.job_category) { next.current_job = "unemployed"; next.job_category = "unfixed"; next.job_exp = 0; }
   let title = "完成行動";
   let message = "行動完成。";
   let tone: "good" | "neutral" | "warn" = "good";
   let minutes = 0;
+  let talentExpGain = 0;
   let scratch: { price: number; prize: number } | null = null;
 
   switch (body.action) {
+    case "talent": {
+      if (body.kind === "reset") {
+        if (!talents.size) return json({ message: "目前沒有已配置的天賦。" }, 400);
+        if (next.cash < 2_000) return json({ message: "重置天賦需要 NT$2,000。" }, 400);
+        next.cash -= 2_000; talents = new Set();
+        await env.DB.prepare("UPDATE player_progress SET talents='[]', updated_at=? WHERE user_id=?").bind(Date.now(), user.userId).run();
+        progress = { ...progress, talents: "[]" };
+        title = "重新配置天賦"; message = "已支付 NT$2,000，所有天賦點已返還。"; break;
+      }
+      const info = talentInfo(body.talent || "");
+      if (!info) return json({ message: "天賦不存在。" }, 400);
+      if (talents.has(info.id)) return json({ message: "你已經擁有這項天賦。" }, 409);
+      const level = Math.min(10, Math.floor(progress.talent_exp / 100));
+      if (talents.size >= level) return json({ message: "目前沒有可用的天賦點。" }, 400);
+      if (!info.requires.every((required) => talents.has(required))) return json({ message: "請先解鎖前置天賦。" }, 400);
+      talents.add(info.id);
+      await env.DB.prepare("UPDATE player_progress SET talents=?, updated_at=? WHERE user_id=?").bind(JSON.stringify([...talents]), Date.now(), user.userId).run();
+      progress = { ...progress, talents: JSON.stringify([...talents]) };
+      title = `解鎖天賦：${info.name}`; message = info.description; break;
+    }
+    case "city_event": {
+      const event = CITY_EVENTS.find((item) => item.id === progress.pending_event);
+      if (!event) return json({ message: "目前沒有等待處理的城市事件。" }, 400);
+      const choice = event.choices.find((item) => item.id === body.choice);
+      if (!choice || ("requires" in choice && choice.requires && !talents.has(choice.requires))) return json({ message: "這個選項目前無法使用。" }, 400);
+      const cashChange = "cash" in choice ? choice.cash ?? 0 : 0;
+      if (cashChange < 0 && next.cash < Math.abs(cashChange)) return json({ message: "現金不足，請選擇其他處理方式。" }, 400);
+      next.cash += cashChange;
+      next.energy = Math.min(talents.has("strong_body") ? 120 : 100, Math.max(0, next.energy + ("energy" in choice ? choice.energy ?? 0 : 0)));
+      next.health = clamp(next.health + ("health" in choice ? choice.health ?? 0 : 0));
+      next.intelligence_exp += "intelligence" in choice ? choice.intelligence ?? 0 : 0;
+      if ("rentalDays" in choice && choice.rentalDays) next.rented_until = Math.max(next.elapsed_minutes, next.rented_until) + choice.rentalDays * 1440;
+      const gained = "talentExp" in choice ? choice.talentExp ?? 0 : 0;
+      await env.DB.prepare("UPDATE player_progress SET talent_exp=MIN(1099,talent_exp+?), pending_event='', updated_at=? WHERE user_id=?")
+        .bind(gained, Date.now(), user.userId).run();
+      progress = { ...progress, talent_exp: Math.min(1099, progress.talent_exp + gained), pending_event: "" };
+      title = event.title; message = choice.result; tone = cashChange < 0 || ("health" in choice && (choice.health ?? 0) < 0) ? "warn" : "good"; break;
+    }
     case "choose_story":
       if (next.main_story !== "unselected") return json({ message: "人生主線選定後不能再次更換。" }, 409);
       if (body.story !== "prodigal_return") return json({ message: "這條人生主線目前尚未開放。" }, 400);
@@ -828,7 +961,7 @@ async function takeAction(request: Request, env: Env) {
       if (body.location === "home" && !next.owns_home && next.rented_until <= next.elapsed_minutes) return json({ message: "你目前沒有住所，請先到房仲租屋或買房。" }, 400);
       const target = body.location as LocationId;
       if (!isLocationOpen(target, sharedMinutes)) return json({ message: `${OPENING_HOURS[target]?.label} 營業，現在已關門。` }, 400);
-      next.location = body.location as LocationId; next.energy = clamp(next.energy - 1); next.hunger = clamp(next.hunger - 1);
+      next.location = body.location as LocationId; next.energy = clampEnergy(next.energy - 1); next.hunger = clamp(next.hunger - 1);
       const placeName = ({ home: "我的住所", realtor: "安心房仲", bank: "城市銀行", business: "商業區", shopping: "購物街", hotel: "不夜旅店", casino: "幸運賭場", school: "未來學院", hospital: "市立醫院" } as Record<LocationId, string>)[next.location as LocationId];
       title = "移動完成"; message = `已抵達${placeName}。`; tone = "neutral"; break;
     }
@@ -838,7 +971,7 @@ async function takeAction(request: Request, env: Env) {
       if (body.kind === "rent") {
         const days = Number(body.days);
         if (![1, 7, 30].includes(days)) return json({ message: "租屋天數不正確。" }, 400);
-        const dailyRent = 350;
+        const dailyRent = talents.has("rent_master") ? 315 : 350;
         const cost = dailyRent * days;
         if (next.cash < cost) return json({ message: "現金不足，無法支付租金。" }, 400);
         const leaseStart = Math.max(next.elapsed_minutes, next.rented_until);
@@ -873,8 +1006,12 @@ async function takeAction(request: Request, env: Env) {
         if (next.loan_balance <= 0) return json({ message: "目前沒有貸款。" }, 400);
         if (amount > next.loan_balance) return json({ message: "還款金額不能超過貸款餘額。" }, 400);
         if (next.cash < amount) return json({ message: "手上現金不足。" }, 400);
+        const wasMinimumComplete = next.daily_payment_made >= next.daily_minimum_payment;
         next.cash -= amount; next.loan_balance -= amount;
-        if (next.main_story === "prodigal_return") next.daily_payment_made += amount;
+        if (next.main_story === "prodigal_return") {
+          next.daily_payment_made += amount;
+          if (!wasMinimumComplete && next.daily_payment_made >= next.daily_minimum_payment) talentExpGain += 3;
+        }
         title = "償還貸款"; message = `已償還 NT$${amount}，剩餘貸款 NT$${next.loan_balance}。${next.main_story === "prodigal_return" ? ` 本日累計已繳 NT$${next.daily_payment_made}／最低 NT$${next.daily_minimum_payment}。` : ""}`;
       } else return json({ message: "銀行服務不存在。" }, 400);
       break;
@@ -884,16 +1021,17 @@ async function takeAction(request: Request, env: Env) {
       if (body.kind === "stay") {
         if (next.owns_home || next.rented_until > next.elapsed_minutes) return json({ message: "你目前已有住所，不需要入住旅店。" }, 400);
         if (next.cash < 1_200) return json({ message: "住宿需要 NT$1,200，目前現金不足。" }, 400);
-        next.cash -= 1_200; next.energy = 100; next.health = clamp(next.health + 3); next.hunger = clamp(next.hunger - 12); minutes = 120;
+        next.cash -= 1_200; next.energy = talents.has("strong_body") ? 120 : 100; next.health = clamp(next.health + 3); next.hunger = clamp(next.hunger - 12); minutes = 120;
         title = "入住不夜旅店"; message = "支付 NT$1,200，體力全滿、健康 +3。"; break;
       }
       if (body.kind === "work") {
         if (next.illness) return json({ message: `目前罹患${next.illness}，請先前往醫院治療。` }, 400);
         if (next.energy < 5) return json({ message: "體力不足，先休息後再打工吧。" }, 400);
-        next.cash += 120; next.energy = clamp(next.energy - 5); next.hunger = clamp(next.hunger - 2); minutes = 45;
+        next.cash += 120; next.energy = clampEnergy(next.energy - 5); next.hunger = clamp(next.hunger - 2); minutes = 45;
         title = "完成旅店臨時工"; message = "收入 +NT$120；這份臨時工作不增加職業經驗或能力。"; break;
       }
-      const meal = body.kind === "meal" ? { name: "旅店餐", price: 250, hunger: 45 } : body.kind === "luxury" ? { name: "豪華餐", price: 500, hunger: 80 } : null;
+      const mealDiscount = talents.has("frugal") ? .9 : 1;
+      const meal = body.kind === "meal" ? { name: "旅店餐", price: Math.floor(250 * mealDiscount), hunger: 45 } : body.kind === "luxury" ? { name: "豪華餐", price: Math.floor(500 * mealDiscount), hunger: 80 } : null;
       if (!meal) return json({ message: "旅店服務不存在。" }, 400);
       if (next.cash < meal.price) return json({ message: "手上現金不足。" }, 400);
       next.cash -= meal.price; next.hunger = clamp(next.hunger + meal.hunger);
@@ -923,12 +1061,17 @@ async function takeAction(request: Request, env: Env) {
       if (![1, 4, 8].includes(hours)) return json({ message: "工時選擇不正確。" }, 400);
       if (next.energy < hours * 5) return json({ message: "體力不足，先回家休息吧。" }, 400);
       const previousCareer = careerForCategory(next.job_category, next.job_exp, next.current_job, abilitiesFor(next));
-      const income = hours * previousCareer.hourlyPay;
-      next.cash += income; next.energy = clamp(next.energy - hours * 5); next.health = clamp(next.health - Math.ceil(hours / 2)); next.mood = clamp(next.mood - Math.ceil(hours * .9)); next.hunger = clamp(next.hunger - hours * 2); next.job_exp += hours * 4; minutes = hours === 1 ? 30 : hours === 4 ? 120 : 240;
+      const incomeMultiplier = 1 + (talents.has("workaholic_1") ? .05 : 0) + (talents.has("workaholic_2") ? .05 : 0) + (memoryBefore.state.name === "就業熱潮" ? .05 : 0);
+      const income = Math.floor(hours * previousCareer.hourlyPay * incomeMultiplier);
+      const energyCost = Math.ceil(hours * 5 * (talents.has("endurance") ? .85 : 1));
+      const jobGain = Math.ceil(hours * 4 * (talents.has("skilled") ? 1.15 : 1));
+      next.cash += income; next.energy = Math.max(0, next.energy - energyCost); next.health = clamp(next.health - Math.ceil(hours / 2)); next.mood = clamp(next.mood - Math.ceil(hours * .9)); next.hunger = clamp(next.hunger - hours * 2); next.job_exp += jobGain; minutes = hours === 1 ? 30 : hours === 4 ? 120 : 240;
+      if (talents.has("workaholic_2")) minutes = Math.ceil(minutes * .9);
       const newCareer = careerForCategory(next.job_category, next.job_exp, next.current_job, abilitiesFor(next));
       next.current_job = newCareer.title;
+      if (newCareer.title !== previousCareer.title) talentExpGain += 10;
       title = newCareer.title !== previousCareer.title ? `升遷為${newCareer.title}` : `工作 ${hours} 小時`;
-      message = `以${previousCareer.title}完成工作，收入 +NT$${income}，職業經驗 +${hours * 4}。${newCareer.title !== previousCareer.title ? ` 恭喜升遷為${newCareer.title}！` : ""}`; break;
+      message = `以${previousCareer.title}完成工作，收入 +NT$${income}，職業經驗 +${jobGain}。${newCareer.title !== previousCareer.title ? ` 恭喜升遷為${newCareer.title}！` : ""}`; break;
     }
     case "study": {
       if (next.location !== "school") return json({ message: "請先前往未來學院。" }, 400);
@@ -937,7 +1080,7 @@ async function takeAction(request: Request, env: Env) {
       const academy = ACADEMIES.find((item) => item.id === body.academy);
       if (!academy) return json({ message: "這所學院不存在。" }, 400);
       if (next.cash < 500 || next.energy < 10) return json({ message: next.cash < 500 ? "學費不足。" : "體力不足，先休息一下吧。" }, 400);
-      next.cash -= 500; next.energy = clamp(next.energy - 10); next.hunger = clamp(next.hunger - 4);
+      next.cash -= 500; next.energy = clampEnergy(next.energy - 10); next.hunger = clamp(next.hunger - 4);
       for (const [key, gain] of Object.entries(academy.gains)) {
         if (key === "physical") next.fitness_exp += gain;
         if (key === "intelligence") next.intelligence_exp += gain;
@@ -953,7 +1096,8 @@ async function takeAction(request: Request, env: Env) {
     case "eat": {
       if (next.location !== "shopping") return json({ message: "請先前往購物街。" }, 400);
       if (!isLocationOpen("shopping", sharedMinutes)) return json({ message: `購物街營業時間為 ${OPENING_HOURS.shopping?.label}。` }, 400);
-      const meal = body.kind === "rice" ? { name: "飯糰", price: 45, hunger: 20, mood: 1 } : body.kind === "bento" ? { name: "便當", price: 100, hunger: 45, mood: 3 } : null;
+      const mealDiscount = talents.has("frugal") ? .9 : 1;
+      const meal = body.kind === "rice" ? { name: "飯糰", price: Math.floor(45 * mealDiscount), hunger: 20, mood: 1 } : body.kind === "bento" ? { name: "便當", price: Math.floor(100 * mealDiscount), hunger: 45, mood: 3 } : null;
       if (!meal) return json({ message: "餐點不存在。" }, 400);
       if (next.cash < meal.price) return json({ message: "現金不足。" }, 400);
       next.cash -= meal.price; next.hunger = clamp(next.hunger + meal.hunger); next.mood = clamp(next.mood + meal.mood);
@@ -973,17 +1117,19 @@ async function takeAction(request: Request, env: Env) {
     case "sleep":
       if (next.location !== "home") return json({ message: "請先回到溫暖小屋。" }, 400);
       if (!next.owns_home && next.rented_until <= next.elapsed_minutes) return json({ message: "租約已到期，請先到房仲續租。" }, 400);
-      next.energy = 100; next.health = clamp(next.health + 5); next.mood = clamp(next.mood + 10); next.hunger = clamp(next.hunger - 12); minutes = 120;
+      next.energy = talents.has("strong_body") ? 120 : 100; next.health = clamp(next.health + 5); next.mood = clamp(next.mood + 10); next.hunger = clamp(next.hunger - 12); minutes = 120;
       title = "好好睡了一覺"; message = "體力完全恢復，健康 +5、心情 +10。"; break;
     case "hospital": {
       if (next.location !== "hospital") return json({ message: "請先前往市立醫院。" }, 400);
       if (body.kind !== "emergency" && !isHospitalRegularOpen(sharedMinutes)) return json({ message: "一般門診與完整治療時間為 08:00～20:00；急診 24 小時開放。" }, 400);
+      const careDiscount = memoryBefore.state.name === "健康警報" ? .8 : 1;
+      const energyMax = talents.has("strong_body") ? 120 : 100;
       const care = body.kind === "clinic"
-        ? { name: "一般門診", price: 600, minutes: 15, health: Math.min(100, next.health + 25), energy: Math.min(100, next.energy + 10) }
+        ? { name: "一般門診", price: Math.floor(600 * careDiscount), minutes: 15, health: Math.min(100, next.health + 25), energy: Math.min(energyMax, next.energy + 10) }
         : body.kind === "treatment"
-          ? { name: "完整治療", price: 1500, minutes: 30, health: Math.max(80, next.health), energy: Math.min(100, next.energy + 30) }
+          ? { name: "完整治療", price: Math.floor(1500 * careDiscount), minutes: 30, health: Math.max(80, next.health), energy: Math.min(energyMax, next.energy + 30) }
           : body.kind === "emergency"
-            ? { name: "急診治療", price: 2500, minutes: 20, health: Math.max(70, next.health), energy: Math.min(100, next.energy + 20) }
+            ? { name: "急診治療", price: Math.floor(2500 * careDiscount), minutes: 20, health: Math.max(70, next.health), energy: Math.min(energyMax, next.energy + 20) }
           : null;
       if (!care) return json({ message: "醫療項目不存在。" }, 400);
       if (next.cash < care.price) return json({ message: "醫療費不足。" }, 400);
@@ -994,8 +1140,16 @@ async function takeAction(request: Request, env: Env) {
     }
     case "reset":
       Object.assign(next, { cash: next.main_story === "prodigal_return" ? 37 : 10000, bank_balance: 0, loan_balance: next.main_story === "prodigal_return" ? 250_000 : 0, finance_day: 1, daily_minimum_payment: next.main_story === "prodigal_return" ? 750 : 0, daily_payment_made: 0, missed_payment_days: 0, game_over: "", energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", elapsed_minutes: 450, location: "realtor" });
+      await env.DB.prepare("UPDATE player_progress SET talent_exp=0, talents='[]', story_chapter=0, last_event_day=0, pending_event='', updated_at=? WHERE user_id=?").bind(Date.now(), user.userId).run();
+      progress = { ...progress, talent_exp: 0, talents: "[]", story_chapter: 0, last_event_day: 0, pending_event: "" }; talents = new Set();
       title = "重新開始人生"; message = "新的人生已開始，所有進度回到起點。"; tone = "neutral"; break;
     default: return json({ message: "未知的行動。" }, 400);
+  }
+
+  if (talentExpGain > 0) {
+    await env.DB.prepare("UPDATE player_progress SET talent_exp=MIN(1099,talent_exp+?), updated_at=? WHERE user_id=?")
+      .bind(talentExpGain, Date.now(), user.userId).run();
+    progress = { ...progress, talent_exp: Math.min(1099, progress.talent_exp + talentExpGain) };
   }
 
   if (body.action !== "hospital" && body.action !== "reset") {
@@ -1003,7 +1157,7 @@ async function takeAction(request: Request, env: Env) {
     if (next.energy <= 5) next.health = clamp(next.health - 4);
     if (!next.illness && next.health < 50) {
       const chance = next.health < 20 ? 0.35 : next.health < 35 ? 0.22 : 0.12;
-      if (Math.random() < chance) {
+      if (Math.random() < chance * (talents.has("resistance") ? .75 : 1)) {
         next.illness = next.health < 30 ? "重感冒" : "感冒";
         tone = "warn";
         title = `生病：${next.illness}`;
@@ -1034,8 +1188,26 @@ async function takeAction(request: Request, env: Env) {
     .bind(eventId, user.userId, user.displayName.slice(0, 40), title, message, tone, gameTime, now));
   await env.DB.batch(statements);
   const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id = ?").bind(user.userId).first<PlayerRow>();
+  const metric = body.action === "work" ? "work" : body.action === "hospital" ? "hospital" : body.action === "housing" ? "housing" : body.action === "study" ? "study" : body.action === "city_event" ? "event" : null;
+  if (metric) await recordCityMemory(env.DB, user.userId, metric);
+  const chapterBefore = progress.story_chapter;
+  progress = await ensureProgress(env.DB, saved!);
+  if (progress.story_chapter > chapterBefore) {
+    const chapter = STORY_CHAPTERS[progress.story_chapter - 1];
+    if (chapter) message += ` 主線章節解鎖——${chapter.chapter}. ${chapter.title}：${chapter.story}（天賦經驗 +${chapter.reward}）`;
+  }
+  const eligibleEvent = !["move", "choose_story", "reset", "talent", "city_event"].includes(body.action || "");
+  const personalDay = Math.floor(saved!.elapsed_minutes / 1440) + 1;
+  if (eligibleEvent && !progress.pending_event && progress.last_event_day < personalDay) {
+    const chance = talents.has("connections") ? .28 : .20;
+    const event = Math.random() < chance ? CITY_EVENTS[Math.floor(Math.random() * CITY_EVENTS.length)] : null;
+    await env.DB.prepare("UPDATE player_progress SET last_event_day=?, pending_event=?, updated_at=? WHERE user_id=?")
+      .bind(personalDay, event?.id ?? "", Date.now(), user.userId).run();
+    progress = { ...progress, last_event_day: personalDay, pending_event: event?.id ?? "" };
+  }
+  if (eligibleEvent) message += await maybeFindMysteryClue(env.DB, user.userId, saved!.location);
   const world = await multiplayer(env.DB);
-  return json({ player: serializePlayer(saved!), message, scratch, ...world });
+  return json({ player: serializePlayer(saved!, progress), message, scratch, cityMemory: await cityMemory(env.DB), ...world });
 }
 
 export default {

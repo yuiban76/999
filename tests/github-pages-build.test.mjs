@@ -44,9 +44,30 @@ test("administrative actions are instant and gameplay waits stay shortened", asy
   assert.doesNotMatch(worker, /next\.current_job = selected\.job;[^\n]*minutes =/);
   assert.doesNotMatch(worker, /next\.cash = next\.cash - 100 \+ prize; minutes =/);
   assert.match(worker, /minutes = hours === 1 \? 30 : hours === 4 \? 120 : 240/);
-  assert.match(worker, /一般門診", price: 600, minutes: 15/);
-  assert.match(worker, /完整治療", price: 1500, minutes: 30/);
-  assert.match(worker, /急診治療", price: 2500, minutes: 20/);
+  assert.match(worker, /一般門診", price: Math\.floor\(600 \* careDiscount\), minutes: 15/);
+  assert.match(worker, /完整治療", price: Math\.floor\(1500 \* careDiscount\), minutes: 30/);
+  assert.match(worker, /急診治療", price: Math\.floor\(2500 \* careDiscount\), minutes: 20/);
   assert.match(page, /換工作立即完成/);
   assert.match(page, /睡眠 8 小時" meta="現實等待 2 分鐘/);
+});
+
+test("story, talents, city memory, events, and hidden mystery are wired", async () => {
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const progression = await readFile(new URL("shared/progression.ts", root), "utf8");
+  const migration = await readFile(new URL("drizzle/0015_ambitious_gabe_jones.sql", root), "utf8");
+
+  assert.match(progression, /remainingRatio: \.90/);
+  assert.match(progression, /remainingRatio: \.75/);
+  assert.match(progression, /remainingRatio: \.50/);
+  assert.match(progression, /remainingRatio: \.25/);
+  assert.match(progression, /remainingRatio: \.10/);
+  assert.match(progression, /remainingRatio: 0/);
+  assert.match(worker, /Math\.random\(\) >= \.08/);
+  assert.doesNotMatch(page, /共同謎團進度|謎團任務/);
+  assert.match(page, /天賦樹/);
+  assert.match(page, /CITY MEMORY/);
+  assert.match(migration, /CREATE TABLE `player_progress`/);
+  assert.match(migration, /CREATE TABLE `city_memory_contributions`/);
+  assert.match(migration, /CREATE TABLE `mystery_clues`/);
 });

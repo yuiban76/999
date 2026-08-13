@@ -1,4 +1,4 @@
-import { blob, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { blob, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const accounts = sqliteTable("accounts", {
   id: text("id").primaryKey(),
@@ -115,3 +115,30 @@ export const pokerTableState = sqliteTable("poker_table_state", {
   status: text("status").notNull().default("idle"),
   updatedAt: integer("updated_at").notNull(),
 });
+
+export const playerProgress = sqliteTable("player_progress", {
+  userId: text("user_id").primaryKey(),
+  talentExp: integer("talent_exp").notNull().default(0),
+  talents: text("talents").notNull().default("[]"),
+  storyChapter: integer("story_chapter").notNull().default(0),
+  lastEventDay: integer("last_event_day").notNull().default(0),
+  pendingEvent: text("pending_event").notNull().default(""),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const cityMemoryContributions = sqliteTable("city_memory_contributions", {
+  userId: text("user_id").notNull(),
+  cycleDay: integer("cycle_day").notNull(),
+  workCount: integer("work_count").notNull().default(0),
+  hospitalCount: integer("hospital_count").notNull().default(0),
+  housingCount: integer("housing_count").notNull().default(0),
+  casinoCount: integer("casino_count").notNull().default(0),
+  studyCount: integer("study_count").notNull().default(0),
+  eventCount: integer("event_count").notNull().default(0),
+}, (table) => [primaryKey({ columns: [table.userId, table.cycleDay] }), index("idx_city_memory_cycle").on(table.cycleDay)]);
+
+export const mysteryClues = sqliteTable("mystery_clues", {
+  userId: text("user_id").notNull(),
+  clueKey: text("clue_key").notNull(),
+  foundAt: integer("found_at").notNull(),
+}, (table) => [primaryKey({ columns: [table.userId, table.clueKey] }), index("idx_mystery_clues_key").on(table.clueKey)]);

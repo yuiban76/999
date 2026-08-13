@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ABILITY_LABELS, ACADEMIES, careerForCategory, careerRequirements, careerThresholdForCategory, categoryInfo, JOB_CATEGORIES, jobInfo, meetsCareerRequirements, nextCareerForCategory, type Abilities } from "../shared/jobs";
+import { CITY_EVENTS, STORY_CHAPTERS, TALENTS } from "../shared/progression";
 import { isHospitalRegularOpen, isLocationOpen, worldMinutes } from "../shared/world";
 
 type LocationId = "home" | "realtor" | "bank" | "business" | "shopping" | "hotel" | "casino" | "school" | "hospital";
@@ -36,6 +37,12 @@ type Player = {
   actionLabel: string;
   elapsedMinutes: number;
   location: LocationId;
+  talentExp: number;
+  talentLevel: number;
+  talentPoints: number;
+  talents: string[];
+  storyChapter: number;
+  pendingEvent: string;
 };
 
 type Profile = {
@@ -103,7 +110,17 @@ type Bootstrap = {
   feed: FeedItem[];
   casino: CasinoState;
   poker: PokerState;
+  cityMemory?: CityMemory;
 };
+
+type CityMemory = {
+  cycleDay: number;
+  days: number;
+  state: { name: string; description: string; tone: string };
+  totals: { work: number; hospital: number; housing: number; casino: number; study: number; event: number };
+};
+
+const EMPTY_CITY_MEMORY: CityMemory = { cycleDay: 1, days: 3, state: { name: "平靜日常", description: "城市正在記住每位居民今天做出的選擇。", tone: "neutral" }, totals: { work: 0, hospital: 0, housing: 0, casino: 0, study: 0, event: 0 } };
 
 const INITIAL_PLAYER: Player = {
   cash: 10000,
@@ -134,6 +151,12 @@ const INITIAL_PLAYER: Player = {
   actionLabel: "",
   elapsedMinutes: 450,
   location: "realtor",
+  talentExp: 0,
+  talentLevel: 0,
+  talentPoints: 0,
+  talents: [],
+  storyChapter: 0,
+  pendingEvent: "",
 };
 
 const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN as string | undefined)?.replace(/\/$/, "") || "";
@@ -437,6 +460,8 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [jobOpen, setJobOpen] = useState(false);
+  const [talentOpen, setTalentOpen] = useState(false);
+  const [cityMemory, setCityMemory] = useState<CityMemory>(EMPTY_CITY_MEMORY);
   const [scratchResult, setScratchResult] = useState<{ price: number; prize: number } | null>(null);
   const [enlargedPlayer, setEnlargedPlayer] = useState<OnlinePlayer | null>(null);
   const [jobCategory, setJobCategory] = useState<string>(JOB_CATEGORIES[0].id);
@@ -466,6 +491,9 @@ export default function Home() {
   const actionSecondsLeft = Math.max(0, Math.ceil((player.actionAvailableAt - Date.now()) / 1000));
   const actionLocked = actionSecondsLeft > 0;
   const actionBusy = busy || actionLocked;
+  const pendingCityEvent = CITY_EVENTS.find((event) => event.id === player.pendingEvent);
+  const currentStoryChapter = player.storyChapter ? STORY_CHAPTERS[player.storyChapter - 1] : null;
+  const nextStoryChapter = STORY_CHAPTERS[player.storyChapter];
 
   const loadWorld = useCallback(async (quiet = false) => {
     try {
@@ -480,6 +508,7 @@ export default function Home() {
       setFeed(data.feed);
       setCasino(data.casino);
       if (data.poker) setPoker(data.poker);
+      if (data.cityMemory) setCityMemory(data.cityMemory);
       if (!quiet) {
         setNotice(data.authenticated ? `歡迎回來，${data.profile?.displayName}。進度已同步。` : "目前是訪客試玩；登入後即可永久保存並加入多人世界。");
       }
@@ -518,7 +547,7 @@ export default function Home() {
 
   async function act(action: string, payload: Record<string, unknown> = {}) {
     if (busy) return;
-    if (actionLocked && !["move", "reset"].includes(action)) {
+    if (actionLocked && !["move", "reset", "city_event"].includes(action)) {
       setNotice(`${player.actionLabel || "目前的行動"}尚未完成，請等待 ${actionSecondsLeft} 秒；仍可自由移動。`);
       return;
     }
@@ -541,13 +570,14 @@ export default function Home() {
         headers: apiHeaders(true),
         body: JSON.stringify({ action: action.startsWith("casino_") ? action.slice(7) : action.startsWith("poker_") ? action.slice(6) : action, ...payload }),
       });
-      const data = await response.json() as { player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; scratch?: { price: number; prize: number } | null; message?: string };
+      const data = await response.json() as { player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; cityMemory?: CityMemory; scratch?: { price: number; prize: number } | null; message?: string };
       if (!response.ok || !data.player) throw new Error(data.message || "行動失敗");
       setPlayer(data.player);
       if (data.online) setOnline(data.online);
       if (data.feed) setFeed(data.feed);
       if (data.casino) setCasino(data.casino);
       if (data.poker) setPoker(data.poker);
+      if (data.cityMemory) setCityMemory(data.cityMemory);
       if (data.scratch) setScratchResult(data.scratch);
       setNotice(data.message || "行動完成");
     } catch (error) {
@@ -647,9 +677,11 @@ export default function Home() {
             <div className="career-track"><i style={{ width: `${careerProgress}%` }} /></div>
             <p>{nextCareer && player.jobCategory !== "unfixed" ? `升遷為${nextCareerTitle}：${Math.max(0, nextCareer.threshold - player.jobExp)} EXP，${formatRequirements(nextCareer.requirements)}` : player.jobCategory === "unfixed" ? "前往商業區選擇產業路線" : "已達此產業最高職位"}</p>
           </div>
+          {player.mainStory === "prodigal_return" && <div className="story-progress-card"><span>浪子回頭 · 第 {player.storyChapter}/6 章</span><strong>{currentStoryChapter?.title ?? "故事尚未展開"}</strong><div><i style={{ width: `${Math.min(100, ((250_000 - Math.min(250_000, player.loanBalance)) / 250_000) * 100)}%` }} /></div><small>{nextStoryChapter ? `貸款降至初始負債的 ${Math.round(nextStoryChapter.remainingRatio * 100)}% 解鎖下一章` : "債務已清償，回家的路已開啟"}</small></div>}
+          <button className="talent-summary" type="button" onClick={() => setTalentOpen(true)} disabled={!profile}><span>天賦等級 {player.talentLevel}</span><strong>{player.talentPoints} 點可配置</strong><small>{player.talentExp % 100} / 100 天賦經驗 · 查看天賦樹</small></button>
           {player.illness && <div className="illness-alert"><strong>目前生病：{player.illness}</strong><span>工作與上課暫停，請前往市立醫院。</span></div>}
           <div className="stat-list">
-            {statMeta.map((item) => <div className="stat-row" key={item.key}><span className="stat-label"><span>{item.icon}</span>{item.label}</span><div className="stat-track"><i style={{ width: `${player[item.key]}%` }} /></div><strong>{player[item.key]}</strong></div>)}
+            {statMeta.map((item) => <div className="stat-row" key={item.key}><span className="stat-label"><span>{item.icon}</span>{item.label}</span><div className="stat-track"><i style={{ width: `${Math.min(100, player[item.key] / (item.key === "energy" && player.talents.includes("strong_body") ? 120 : 100) * 100)}%` }} /></div><strong>{player[item.key]}</strong></div>)}
           </div>
           <div className="skills-block"><div className="section-heading"><span>能力履歷</span><small>SKILLS</small></div><Skill name="體力" exp={player.physicalExp} /><Skill name="智力" exp={player.intelligenceExp} /><Skill name="創造力" exp={player.creativityExp} /><Skill name="社交" exp={player.socialExp} /><Skill name="魅力" exp={player.charismaExp} /></div>
         </aside>
@@ -687,6 +719,7 @@ export default function Home() {
           <ol className="feed-list">
             {feed.slice(0, 6).map((item) => <li key={item.id} className={item.tone}><time>{item.time}</time><div><strong>{item.playerName ? `${item.playerName} · ` : ""}{item.title}</strong><p>{item.detail}</p></div></li>)}
           </ol>
+          <div className={`city-memory-card ${cityMemory.state.tone}`}><span>CITY MEMORY · 3 DAY CYCLE</span><strong>{cityMemory.state.name}</strong><p>{cityMemory.state.description}</p><div><small>工作 {cityMemory.totals.work}</small><small>醫療 {cityMemory.totals.hospital}</small><small>居住 {cityMemory.totals.housing}</small><small>學習 {cityMemory.totals.study}</small><small>賭場 {cityMemory.totals.casino}</small><small>事件 {cityMemory.totals.event}</small></div></div>
           <div className="next-goal"><span>職涯里程碑</span><strong>{player.jobCategory === "unfixed" ? "先選擇一條產業路線" : nextCareer ? `升遷：${nextCareerTitle}` : "此產業最高職位"}</strong><div><i style={{ width: `${player.jobCategory === "unfixed" ? 0 : careerProgress}%` }} /></div><small>{player.jobCategory === "unfixed" ? "商業區 · 找工作" : nextCareer ? `${player.jobExp} / ${nextCareer.threshold} EXP · ${formatRequirements(nextCareer.requirements)}` : `${player.jobExp} 產業 EXP`}</small></div>
         </aside>
       </div>
@@ -696,6 +729,8 @@ export default function Home() {
       {profile && player.gameOver === "prodigal_insolvent" && <div className="story-select-overlay game-over-overlay" role="dialog" aria-modal="true" aria-labelledby="game-over-title">
         <section className="story-select-card game-over-card"><header><span>BAD ENDING</span><h2 id="game-over-title">《浪子回頭：無力償還》</h2><p>連續兩個遊戲日未繳足每日最低還款額</p></header><article><div className="story-prologue">{PRODIGAL_FAILURE_STORY.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div><button type="button" onClick={() => void act("reset")} disabled={busy}>{busy ? "正在重新開始……" : "重新開始《浪子回頭》"}<span>↻</span></button></article></section>
       </div>}
+      {talentOpen && <div className="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="talent-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setTalentOpen(false); }}><section className="talent-board"><button className="auth-close" type="button" aria-label="關閉天賦樹" onClick={() => setTalentOpen(false)}>×</button><span className="panel-kicker">LIFE TALENTS</span><h2 id="talent-title">天賦樹</h2><p>等級 {player.talentLevel} · 可用 {player.talentPoints} 點 · 每 100 經驗獲得 1 點。天賦不會改變賭場或刮刮樂機率。</p><div className="talent-branches">{["職涯", "生存", "財務", "機會"].map((branch) => <section key={branch}><h3>{branch}</h3>{TALENTS.filter((talent) => talent.branch === branch).map((talent) => { const owned = player.talents.includes(talent.id); const locked = talent.requires.some((required) => !player.talents.includes(required)); return <button className={owned ? "owned" : ""} key={talent.id} disabled={busy || owned || locked || player.talentPoints < 1} onClick={() => void act("talent", { talent: talent.id })}><strong>{talent.name}</strong><small>{talent.description}</small><em>{owned ? "已解鎖" : locked ? "需要前置天賦" : "使用 1 點"}</em></button>; })}</section>)}</div><button className="talent-reset" disabled={busy || !player.talents.length || player.cash < 2_000} onClick={() => void act("talent", { kind: "reset" })}>支付 NT$2,000 重置天賦</button></section></div>}
+      {profile && pendingCityEvent && <div className="auth-overlay city-event-overlay" role="dialog" aria-modal="true" aria-labelledby="city-event-title"><section className="city-event-card"><span>THE CITY FOUND YOU</span><h2 id="city-event-title">{pendingCityEvent.title}</h2><p>{pendingCityEvent.text}</p><div>{pendingCityEvent.choices.map((choice) => { const unavailable = "requires" in choice && choice.requires && !player.talents.includes(choice.requires); return <button key={choice.id} disabled={busy || Boolean(unavailable)} onClick={() => void act("city_event", { choice: choice.id })}>{choice.label}{unavailable ? <small>需要談判能力</small> : null}</button>; })}</div></section></div>}
       {enlargedPlayer && <div className="avatar-lightbox" role="dialog" aria-modal="true" aria-labelledby="avatar-lightbox-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setEnlargedPlayer(null); }}>
         <section><button className="auth-close" type="button" aria-label="關閉大頭貼" onClick={() => setEnlargedPlayer(null)}>×</button><div className={`enlarged-avatar ${enlargedPlayer.avatarUrl ? "has-photo" : ""}`}>{enlargedPlayer.avatarUrl ? <img src={`${API_ORIGIN}${enlargedPlayer.avatarUrl}`} alt={`${enlargedPlayer.displayName}的大頭貼`} /> : enlargedPlayer.displayName.slice(0, 1)}</div><h2 id="avatar-lightbox-title">{enlargedPlayer.displayName}</h2><p>現金 NT${formatMoney(enlargedPlayer.cash)} · 貸款 NT${formatMoney(enlargedPlayer.loanBalance)}</p></section>
       </div>}
