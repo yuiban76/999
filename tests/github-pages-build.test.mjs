@@ -83,3 +83,10 @@ test("story objective replaces career milestone and promotion details live in bu
   assert.match(page, /能力要求：/);
   assert.match(page, /player\.location === "business"/);
 });
+
+test("placeholder weather and age labels are not shown", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+
+  assert.doesNotMatch(page, /\u53f0\u5317 \u00b7 \u6674\u6717 27\u00b0/);
+  assert.doesNotMatch(page, /18 \u6b72 \u00b7 \u4eba\u751f\u65b0\u624b/);
+});
