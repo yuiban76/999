@@ -219,6 +219,7 @@ button { color: inherit; }
 .location-header p { margin: 0 0 5px; color: var(--orange); font: 9px Consolas, monospace; letter-spacing: .18em; }
 .location-header h2 { margin: 0; font: 700 36px/1.1 Georgia, "Noto Serif TC", serif; }
 .location-header h2 span { margin-right: 10px; font-size: 32px; }
+.location-header h2 .location-photo { width: 64px; height: 36px; margin-right: 12px; border-radius: 8px; object-fit: cover; vertical-align: middle; }
 .location-header small { display: block; margin-top: 7px; color: var(--muted); font-size: 11px; }
 
 .location-strip { display: grid; grid-template-columns: repeat(9, 1fr); border-bottom: 1px solid var(--ink); }
@@ -227,6 +228,7 @@ button { color: inherit; }
 .location-strip button:hover { background: var(--paper-bright); }
 .location-strip button.active { background: var(--moss); color: white; }
 .location-strip button span { display: block; margin-bottom: 4px; font-size: 22px; filter: grayscale(.25); }
+.location-strip button .location-photo { display: block; width: 48px; height: 27px; margin: 0 auto 5px; border-radius: 6px; object-fit: cover; }
 .location-strip button small { font-size: 10px; font-weight: 700; }
 .location-strip button em { display: block; margin-top: 3px; color: var(--muted); font-size: 7px; font-style: normal; }
 .location-strip button.active em { color: rgba(255,255,255,.75); }

@@ -90,3 +90,12 @@ test("placeholder weather and age labels are not shown", async () => {
   assert.doesNotMatch(page, /\u53f0\u5317 \u00b7 \u6674\u6717 27\u00b0/);
   assert.doesNotMatch(page, /18 \u6b72 \u00b7 \u4eba\u751f\u65b0\u624b/);
 });
+
+test("casino uses the cropped photo icon", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const icon = await readFile(new URL("public/casino-icon.png", root));
+
+  assert.match(page, /image: "\.\/casino-icon\.png"/);
+  assert.match(page, /className="location-photo"/);
+  assert.ok(icon.length > 0);
+});
