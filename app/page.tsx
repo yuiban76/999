@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ABILITY_LABELS, ACADEMIES, careerForCategory, careerRequirements, careerThresholdForCategory, categoryInfo, JOB_CATEGORIES, jobInfo, meetsCareerRequirements, nextCareerForCategory, type Abilities } from "../shared/jobs";
 import { isHospitalRegularOpen, isLocationOpen, worldMinutes } from "../shared/world";
 
@@ -444,9 +444,9 @@ export default function Home() {
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authError, setAuthError] = useState("");
   const [notice, setNotice] = useState("正在連接人生世界……");
-  const clockOffsetRef = useRef(0);
   const [sharedMinutes, setSharedMinutes] = useState(worldMinutes());
   const gameClock = useMemo(() => clock(sharedMinutes), [sharedMinutes]);
+  const playClock = useMemo(() => clock(player.elapsedMinutes), [player.elapsedMinutes]);
   const currentLocation = locations.find((item) => item.id === player.location)!;
   const playerAbilities = abilitiesFor(player);
   const career = careerForCategory(player.jobCategory, player.jobExp, player.currentJob, playerAbilities);
@@ -454,7 +454,7 @@ export default function Home() {
   const nextCareerTitle = nextCareer?.title ?? "職涯最高階級";
   const careerProgress = nextCareer ? Math.max(0, Math.min(100, ((player.jobExp - career.threshold) / (nextCareer.threshold - career.threshold)) * 100)) : 100;
   const avatarSrc = profile?.avatarUrl ? `${API_ORIGIN}${profile.avatarUrl}` : "";
-  const rentalMinutesLeft = Math.max(0, player.rentedUntil - sharedMinutes);
+  const rentalMinutesLeft = Math.max(0, player.rentedUntil - player.elapsedMinutes);
   const rentalDaysLeft = rentalMinutesLeft ? Math.ceil(rentalMinutesLeft / 1440) : 0;
   const housingLabel = player.ownsHome ? "自有住宅 · 城市小宅" : rentalDaysLeft ? `租屋 · ${player.rentalName}（剩 ${rentalDaysLeft} 天）` : "目前沒有住所";
   const selectedJobCategory = JOB_CATEGORIES.find((category) => category.id === jobCategory) ?? JOB_CATEGORIES[0];
@@ -473,8 +473,6 @@ export default function Home() {
       const response = await fetch(`${API_ORIGIN}/api/game`, { headers: apiHeaders() });
       if (!response.ok) throw new Error("世界暫時無法連線");
       const data = await response.json() as Bootstrap;
-      clockOffsetRef.current = data.player.elapsedMinutes - worldMinutes();
-      setSharedMinutes(data.player.elapsedMinutes);
       if (data.authenticated || !quiet) {
         setPlayer(data.player);
         setProfile(data.profile);
@@ -500,7 +498,7 @@ export default function Home() {
   }, [loadWorld]);
 
   useEffect(() => {
-    const updateClock = () => setSharedMinutes(worldMinutes() + clockOffsetRef.current);
+    const updateClock = () => setSharedMinutes(worldMinutes());
     updateClock();
     const timer = window.setInterval(updateClock, 1_000);
     return () => window.clearInterval(timer);
@@ -546,8 +544,6 @@ export default function Home() {
       });
       const data = await response.json() as { player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; scratch?: { price: number; prize: number } | null; message?: string };
       if (!response.ok || !data.player) throw new Error(data.message || "行動失敗");
-      clockOffsetRef.current = data.player.elapsedMinutes - worldMinutes();
-      setSharedMinutes(data.player.elapsedMinutes);
       setPlayer(data.player);
       if (data.online) setOnline(data.online);
       if (data.feed) setFeed(data.feed);
@@ -619,7 +615,7 @@ export default function Home() {
           <span className="brand-mark">人</span>
           <span><strong>人生 ONLINE</strong><small>LIFE, ONE CHOICE AT A TIME.</small></span>
         </a>
-        <div className="world-time"><span>{gameClock.day}</span><strong>{gameClock.time}</strong><span>全體玩家同步</span></div>
+        <div className="world-time"><span>{playClock.day}</span><strong>{gameClock.time}</strong><span>上線時計時 · 城市同步</span></div>
         <div className="account-area">
           <span className={`connection-dot ${profile ? "connected" : ""}`} />
           {profile ? (
@@ -679,7 +675,7 @@ export default function Home() {
               {player.location === "hospital" && <><ActionCard icon="急" title="24 小時急診" meta="NT$2,500 · 健康至少恢復至 70 · 全天開放" button="前往急診" onClick={() => void act("hospital", { kind: "emergency" })} featured disabled={actionBusy} /><ActionCard icon="診" title="一般門診" meta="08:00～20:00 · NT$600 · 健康 +25" button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /><ActionCard icon="療" title="完整治療" meta="08:00～20:00 · NT$1,500 · 健康至少恢復至 80" button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /></>}
             </div>
           </div>
-          <footer className="world-footer"><span>現實 1 分鐘 = 遊戲 1 小時 · 全服同步</span><button onClick={() => void act("reset")} disabled={busy}>重新開始人生</button></footer>
+          <footer className="world-footer"><span>只有上線時計入個人遊玩天數 · 城市時間全服同步</span><button onClick={() => void act("reset")} disabled={busy}>重新開始人生</button></footer>
         </section>
 
         <aside className="story-panel panel">
@@ -760,7 +756,7 @@ function BankPanel({ player, busy, closed, onAction }: { player: Player; busy: b
   const valid = Number.isSafeInteger(value) && value > 0;
   return <section className="bank-panel">
     <header><div><span>BANK ACCOUNT</span><strong>存款 NT${formatMoney(player.bankBalance)}</strong></div><div><span>LOAN BALANCE</span><strong className={player.loanBalance ? "debt" : ""}>貸款 NT${formatMoney(player.loanBalance)}</strong></div></header>
-    <p>存款每個遊戲日複利 0.1%；一般貸款每日增加 0.5%，《浪子回頭》主線債務每日增加 0.2%。遊戲日結束時若手動還款不足，會從銀行存款自動扣除差額；銀行存款不足才記為欠繳。每個遊戲日等於現實 24 分鐘。</p>
+    <p>存款每個遊戲日複利 0.1%；一般貸款每日增加 0.5%，《浪子回頭》主線債務每日增加 0.2%。遊戲日結束時若手動還款不足，會從銀行存款自動扣除差額；銀行存款不足才記為欠繳。每個遊戲日等於上線遊玩 24 分鐘，離線期間不結算。</p>
     {player.mainStory === "prodigal_return" && player.loanBalance > 0 && <div className={`bank-payment-status ${player.missedPaymentDays ? "warning" : ""}`}><strong>本日最低繳款 NT${formatMoney(player.dailyMinimumPayment)}</strong><span>已繳 NT${formatMoney(player.dailyPaymentMade)} · 尚欠 NT${formatMoney(Math.max(0, player.dailyMinimumPayment - player.dailyPaymentMade))}</span><small>隔日會優先從銀行存款自動補足；存款不足才記欠繳。連續欠繳 {player.missedPaymentDays}/2 天。</small></div>}
     <label>輸入金額<div><span>NT$</span><input type="number" inputMode="numeric" min="1" step="1" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={busy} /></div></label>
     <div className="bank-actions">

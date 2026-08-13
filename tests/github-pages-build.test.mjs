@@ -22,3 +22,16 @@ test("creates a complete full-stack game build", async () => {
   assert.ok(assets.some((file) => file.endsWith(".js")));
   assert.ok(assets.some((file) => file.endsWith(".css")));
 });
+
+test("personal finance time only advances during continuous online heartbeats", async () => {
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+
+  assert.match(worker, /ONLINE_HEARTBEAT_GRACE_MS = 15_000/);
+  assert.match(worker, /players\.last_seen_at >= excluded\.last_seen_at - \?/);
+  assert.match(worker, /elapsedMinutes: row\.elapsed_minutes/);
+  assert.match(worker, /Math\.floor\(row\.elapsed_minutes \/ 1440\) \+ 1/);
+  assert.doesNotMatch(worker, /next\.elapsed_minutes = worldMinutes\(\)/);
+  assert.match(page, /player\.rentedUntil - player\.elapsedMinutes/);
+  assert.match(page, /離線期間不結算/);
+});
