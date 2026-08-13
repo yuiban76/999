@@ -492,8 +492,9 @@ export default function Home() {
   const actionLocked = actionSecondsLeft > 0;
   const actionBusy = busy || actionLocked;
   const pendingCityEvent = CITY_EVENTS.find((event) => event.id === player.pendingEvent);
-  const currentStoryChapter = player.storyChapter ? STORY_CHAPTERS[player.storyChapter - 1] : null;
   const nextStoryChapter = STORY_CHAPTERS[player.storyChapter];
+  const nextStoryDebt = nextStoryChapter ? Math.round(250_000 * nextStoryChapter.remainingRatio) : 0;
+  const storyProgress = Math.min(100, Math.max(0, ((250_000 - player.loanBalance) / 250_000) * 100));
 
   const loadWorld = useCallback(async (quiet = false) => {
     try {
@@ -677,7 +678,6 @@ export default function Home() {
             <div className="career-track"><i style={{ width: `${careerProgress}%` }} /></div>
             <p>{nextCareer && player.jobCategory !== "unfixed" ? `升遷為${nextCareerTitle}：${Math.max(0, nextCareer.threshold - player.jobExp)} EXP，${formatRequirements(nextCareer.requirements)}` : player.jobCategory === "unfixed" ? "前往商業區選擇產業路線" : "已達此產業最高職位"}</p>
           </div>
-          {player.mainStory === "prodigal_return" && <div className="story-progress-card"><span>浪子回頭 · 第 {player.storyChapter}/6 章</span><strong>{currentStoryChapter?.title ?? "故事尚未展開"}</strong><div><i style={{ width: `${Math.min(100, ((250_000 - Math.min(250_000, player.loanBalance)) / 250_000) * 100)}%` }} /></div><small>{nextStoryChapter ? `貸款降至初始負債的 ${Math.round(nextStoryChapter.remainingRatio * 100)}% 解鎖下一章` : "債務已清償，回家的路已開啟"}</small></div>}
           <button className="talent-summary" type="button" onClick={() => setTalentOpen(true)} disabled={!profile}><span>天賦等級 {player.talentLevel}</span><strong>{player.talentPoints} 點可配置</strong><small>{player.talentExp % 100} / 100 天賦經驗 · 查看天賦樹</small></button>
           {player.illness && <div className="illness-alert"><strong>目前生病：{player.illness}</strong><span>工作與上課暫停，請前往市立醫院。</span></div>}
           <div className="stat-list">
@@ -687,7 +687,7 @@ export default function Home() {
         </aside>
 
         <section className="world-panel panel">
-          <div className="location-header"><div><p>YOU ARE HERE</p><h2><span>{currentLocation.emoji}</span>{currentLocation.name}</h2><small>{currentLocation.caption} · {currentLocation.hours}</small></div><span className="map-index">CITY · LOBBY 01</span></div>
+          <div className="location-header"><div><p>YOU ARE HERE</p><h2><span>{currentLocation.emoji}</span>{currentLocation.name}</h2><small>{currentLocation.caption} · {currentLocation.hours}</small></div>{player.location === "business" ? <div className="location-career-progress"><span>PROMOTION PROGRESS</span><strong>{player.jobCategory === "unfixed" ? "尚未選擇產業" : nextCareer ? `下一階：${nextCareerTitle}` : "已達產業最高職位"}</strong><div><i style={{ width: `${player.jobCategory === "unfixed" ? 0 : careerProgress}%` }} /></div><small>{player.jobCategory === "unfixed" ? "請從下方「找工作」選擇產業路線" : nextCareer ? `職業經驗：${player.jobExp} / ${nextCareer.threshold} EXP` : `目前累積 ${player.jobExp} EXP`}</small><small>{nextCareer && player.jobCategory !== "unfixed" ? `能力要求：${formatRequirements(nextCareer.requirements) || "無"}` : player.jobCategory === "unfixed" ? "入行第一階免能力門檻" : "能力與經驗均已達標"}</small></div> : <span className="map-index">CITY · LOBBY 01</span>}</div>
           <nav className="location-strip" aria-label="城市地點">
             {locations.map((item) => <button className={`${item.id === player.location ? "active" : ""} ${!isLocationOpen(item.id, sharedMinutes) ? "closed" : ""}`} key={item.id} onClick={() => void act("move", { location: item.id })} disabled={busy}><span>{item.emoji}</span><small>{item.name}</small><em>{isLocationOpen(item.id, sharedMinutes) ? item.hours : "已關門"}</em></button>)}
           </nav>
@@ -720,7 +720,7 @@ export default function Home() {
             {feed.slice(0, 6).map((item) => <li key={item.id} className={item.tone}><time>{item.time}</time><div><strong>{item.playerName ? `${item.playerName} · ` : ""}{item.title}</strong><p>{item.detail}</p></div></li>)}
           </ol>
           <div className={`city-memory-card ${cityMemory.state.tone}`}><span>CITY MEMORY · 3 DAY CYCLE</span><strong>{cityMemory.state.name}</strong><p>{cityMemory.state.description}</p><div><small>工作 {cityMemory.totals.work}</small><small>醫療 {cityMemory.totals.hospital}</small><small>居住 {cityMemory.totals.housing}</small><small>學習 {cityMemory.totals.study}</small><small>賭場 {cityMemory.totals.casino}</small><small>事件 {cityMemory.totals.event}</small></div></div>
-          <div className="next-goal"><span>職涯里程碑</span><strong>{player.jobCategory === "unfixed" ? "先選擇一條產業路線" : nextCareer ? `升遷：${nextCareerTitle}` : "此產業最高職位"}</strong><div><i style={{ width: `${player.jobCategory === "unfixed" ? 0 : careerProgress}%` }} /></div><small>{player.jobCategory === "unfixed" ? "商業區 · 找工作" : nextCareer ? `${player.jobExp} / ${nextCareer.threshold} EXP · ${formatRequirements(nextCareer.requirements)}` : `${player.jobExp} 產業 EXP`}</small></div>
+          <div className="next-goal"><span>當前《浪子回頭》任務進度</span><strong>{player.mainStory !== "prodigal_return" ? "尚未開始《浪子回頭》" : nextStoryChapter ? `第 ${nextStoryChapter.chapter} 章 · ${nextStoryChapter.title}` : "第 6 章完成 · 回家的路"}</strong><div><i style={{ width: `${player.mainStory === "prodigal_return" ? storyProgress : 0}%` }} /></div><small>{player.mainStory !== "prodigal_return" ? "選擇人生主線後開始記錄" : nextStoryChapter ? `目前貸款 NT$${formatMoney(player.loanBalance)} · 目標降至 NT$${formatMoney(nextStoryDebt)}（初始負債 ${Math.round(nextStoryChapter.remainingRatio * 100)}%）` : "貸款已全部清償 · 《浪子回頭》全章完成"}</small></div>
         </aside>
       </div>
       {profile && player.mainStory === "unselected" && <div className="story-select-overlay" role="dialog" aria-modal="true" aria-labelledby="story-select-title">

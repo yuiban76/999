@@ -71,3 +71,15 @@ test("story, talents, city memory, events, and hidden mystery are wired", async 
   assert.match(migration, /CREATE TABLE `city_memory_contributions`/);
   assert.match(migration, /CREATE TABLE `mystery_clues`/);
 });
+
+test("story objective replaces career milestone and promotion details live in business header", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+
+  assert.match(page, /當前《浪子回頭》任務進度/);
+  assert.match(page, /目前貸款 NT\$/);
+  assert.doesNotMatch(page, />職涯里程碑</);
+  assert.match(page, /location-career-progress/);
+  assert.match(page, /職業經驗：/);
+  assert.match(page, /能力要求：/);
+  assert.match(page, /player\.location === "business"/);
+});

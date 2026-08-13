@@ -692,6 +692,12 @@ body {
 }
 .location-header small { color: rgba(255, 255, 255, .8); font-size: 12px; }
 .location-header .map-index { align-self: flex-start; padding: 8px 11px; border-radius: 999px; background: rgba(255, 255, 255, .15); color: #fff; letter-spacing: .04em; }
+.location-career-progress { width: min(360px, 48%); padding: 14px 16px; border: 1px solid rgba(255,255,255,.24); border-radius: 15px; background: rgba(255,255,255,.13); backdrop-filter: blur(10px); }
+.location-career-progress > span { display: block; color: rgba(255,255,255,.68); font-size: 9px; font-weight: 800; letter-spacing: .1em; }
+.location-career-progress > strong { display: block; margin-top: 5px; color: #fff; font-size: 15px; }
+.location-career-progress > div { height: 5px; margin: 10px 0 7px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.2); }
+.location-career-progress > div i { display: block; height: 100%; border-radius: inherit; background: #fff; transition: width .35s ease; }
+.location-career-progress > small { margin-top: 4px; color: rgba(255,255,255,.88); font-size: 10px; line-height: 1.45; }
 
 .location-strip {
   display: flex;
@@ -965,6 +971,8 @@ input:focus-visible { outline: 3px solid rgba(0, 113, 227, .38); outline-offset:
   .location-header { min-height: 148px; margin: 14px; padding: 22px; }
   .location-header h2 { font-size: 31px; }
   .location-header .map-index { display: none; }
+  .location-header:has(.location-career-progress) { align-items: stretch; flex-direction: column; gap: 16px; }
+  .location-career-progress { width: 100%; }
   .location-strip { grid-template-columns: none; margin: 0 14px; }
   .action-stage { padding: 22px 14px; }
   .action-cards { grid-template-columns: 1fr; }
