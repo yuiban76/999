@@ -899,11 +899,25 @@ input:focus-visible { outline: 3px solid rgba(0, 113, 227, .38); outline-offset:
 
 @media (max-width: 760px) {
   .game-shell { width: 100%; min-height: 100vh; margin: 0; border: 0; border-radius: 0; }
-  .topbar { padding: 14px 16px; }
-  .world-time { border-color: #dedee3; }
+  .topbar {
+    height: auto;
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 12px;
+    padding: max(14px, env(safe-area-inset-top)) 16px 14px;
+  }
+  .world-time {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    justify-content: space-between;
+    padding-top: 11px;
+    border-top: 1px solid #dedee3;
+  }
   .marquee { padding: 0 14px; }
-  .game-grid { display: block; }
-  .character-panel { padding: 20px 16px; border-right: 0; border-bottom: 1px solid #dedee3; }
+  .game-grid { display: flex; flex-direction: column; }
+  .world-panel { order: 1; }
+  .character-panel { order: 2; padding: 20px 16px; border-right: 0; border-bottom: 1px solid #dedee3; }
+  .story-panel { order: 3; }
   .location-header { min-height: 148px; margin: 14px; padding: 22px; }
   .location-header h2 { font-size: 31px; }
   .location-header .map-index { display: none; }
@@ -911,10 +925,126 @@ input:focus-visible { outline: 3px solid rgba(0, 113, 227, .38); outline-offset:
   .action-stage { padding: 22px 14px; }
   .action-cards { grid-template-columns: 1fr; }
   .action-card { min-height: 156px; }
+  .action-card button,
+  .bank-actions button,
+  .casino-controls button,
+  .bet-buttons button,
+  .casino-seats button,
+  .table-leave { min-height: 44px; }
+  .casino-games,
+  .casino-table {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .casino-game-tabs,
+  .casino-seats,
+  .shared-player-hands { min-width: 0; max-width: 100%; }
+  .casino-table > header { flex-wrap: wrap; }
+  .casino-table > header > strong { white-space: normal; }
+  .casino-seats {
+    width: 100%;
+    grid-template-columns: repeat(5, minmax(80px, 1fr));
+    overflow-x: auto;
+  }
   .story-panel { display: grid; padding: 22px 14px; }
   .feed-list { display: block; }
-  .world-footer { padding: 0 14px; }
-  .story-select-card { min-height: 100vh; border-radius: 0; }
+  .world-footer { flex-wrap: wrap; gap: 8px 14px; padding: 10px 14px; }
+
+  .auth-overlay,
+  .avatar-lightbox {
+    align-items: start;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow-y: auto;
+    padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  }
+  .auth-card,
+  .job-board,
+  .avatar-lightbox > section,
+  .scratch-ticket { margin: auto 0; }
+  .job-board { max-height: calc(100dvh - 24px); }
+
+  .story-select-overlay {
+    display: block;
+    height: 100vh;
+    height: 100dvh;
+    padding: 0;
+    overflow: hidden;
+  }
+  .story-select-card {
+    display: flex;
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    max-height: none;
+    flex-direction: column;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: hidden;
+  }
+  .story-select-card > header {
+    flex: 0 0 auto;
+    padding: max(20px, env(safe-area-inset-top)) 20px 16px;
+  }
+  .story-select-card > header h2 { margin-top: 6px; font-size: 25px; }
+  .story-select-card > article {
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    padding: 16px 20px max(14px, env(safe-area-inset-bottom));
+    overflow: hidden;
+  }
+  .story-choice-title { flex: 0 0 auto; padding-bottom: 10px; }
+  .story-choice-title h3 { font-size: 21px; }
+  .story-prologue {
+    min-height: 80px;
+    flex: 1 1 auto;
+    columns: unset;
+    column-count: unset;
+    column-width: auto;
+    margin: 12px -4px 12px 0;
+    padding: 0 10px 0 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .story-prologue p { margin-bottom: 11px; line-height: 1.7; }
+  .story-starting-stats {
+    flex: 0 0 auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin: 0 0 10px;
+  }
+  .story-starting-stats > div { padding: 10px 12px; }
+  .story-starting-stats strong { font-size: 17px; }
+  .story-select-card article > button {
+    min-height: 48px;
+    flex: 0 0 auto;
+    padding: 13px 16px;
+    touch-action: manipulation;
+  }
+
+  .auth-card input,
+  .bank-panel input,
+  .custom-bet input { font-size: 16px; }
+}
+
+@media (max-width: 380px) {
+  .brand strong { font-size: 15px; }
+  .account-area a,
+  .account-button { padding-inline: 11px; }
+  .world-time { gap: 7px; }
+  .world-time strong { font-size: 20px; }
+  .world-time span { font-size: 9px; }
+  .marquee { grid-template-columns: auto minmax(0, 1fr); gap: 9px; }
+  .marquee .weather { display: none; }
+  .story-select-card > header { padding-bottom: 14px; }
+  .story-select-card > header p { line-height: 1.5; }
+  .story-select-card > article { padding-inline: 16px; }
 }
 
 @media (prefers-color-scheme: dark) {
