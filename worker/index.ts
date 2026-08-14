@@ -41,6 +41,7 @@ type PlayerRow = {
   action_label: string;
   elapsed_minutes: number;
   location: LocationId;
+  last_seen_at: number;
 };
 
 type CasinoRow = { user_id: string; player_name: string; player_cards: string; dealer_cards: string; bet: number; status: string; result: string; seat_no: number | null; reveal_at: number; updated_at: number };
@@ -50,9 +51,10 @@ type ProgressRow = { user_id: string; talent_exp: number; talents: string; story
 type MemoryRow = { cycle_day: number; work_count: number; hospital_count: number; housing_count: number; casino_count: number; study_count: number; event_count: number };
 
 const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "bank", "business", "shopping", "hotel", "casino", "school", "hospital"]);
-// The client sends a heartbeat every five seconds. Only a short, continuous
-// heartbeat gap counts as online play; returning after going offline adds no time.
-const ONLINE_HEARTBEAT_GRACE_MS = 15_000;
+// Persist at most one idle heartbeat every ten seconds. Only a short,
+// continuous gap counts as online play; returning after going offline adds no time.
+const HEARTBEAT_WRITE_INTERVAL_MS = 10_000;
+const ONLINE_HEARTBEAT_GRACE_MS = 30_000;
 const clamp = (value: number) => Math.max(0, Math.min(100, value));
 const abilitiesFor = (player: PlayerRow): Abilities => ({
   physical: player.fitness_exp,
@@ -141,7 +143,7 @@ async function identity(request: Request, db?: D1Database): Promise<AuthUser | n
 }
 
 function guestPlayer() {
-  return { cash: 10000, bankBalance: 0, loanBalance: 0, dailyMinimumPayment: 0, dailyPaymentMade: 0, missedPaymentDays: 0, gameOver: "", mainStory: "legacy", energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, creativityExp: 0, physicalExp: 0, socialExp: 0, charismaExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, actionAvailableAt: 0, actionLabel: "", elapsedMinutes: worldMinutes(), location: "realtor" as LocationId, talentExp: 0, talentLevel: 0, talentPoints: 0, talents: [] as string[], storyChapter: 0, pendingEvent: "" };
+  return { cash: 10000, bankBalance: 0, loanBalance: 0, dailyMinimumPayment: 0, dailyPaymentMade: 0, missedPaymentDays: 0, gameOver: "", mainStory: "legacy", energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, creativityExp: 0, physicalExp: 0, socialExp: 0, charismaExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, actionAvailableAt: 0, actionLabel: "", elapsedMinutes: 0, location: "realtor" as LocationId, talentExp: 0, talentLevel: 0, talentPoints: 0, talents: [] as string[], storyChapter: 0, pendingEvent: "" };
 }
 
 function parseList(value: string) {
@@ -196,7 +198,7 @@ async function ensureSchema(db: D1Database) {
       owns_home INTEGER NOT NULL DEFAULT 0, rental_name TEXT NOT NULL DEFAULT '',
       rented_until INTEGER NOT NULL DEFAULT 0,
       action_available_at INTEGER NOT NULL DEFAULT 0, action_label TEXT NOT NULL DEFAULT '',
-      elapsed_minutes INTEGER NOT NULL DEFAULT 450,
+      elapsed_minutes INTEGER NOT NULL DEFAULT 0,
       location TEXT NOT NULL DEFAULT 'realtor', created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL
     )`),
@@ -261,24 +263,35 @@ async function ensureSchema(db: D1Database) {
   ]);
 }
 
-async function upsertPlayer(db: D1Database, user: AuthUser) {
+let schemaReady: Promise<void> | null = null;
+async function ensureSchemaOnce(db: D1Database) {
+  if (!schemaReady) {
+    schemaReady = ensureSchema(db).catch((error) => {
+      schemaReady = null;
+      throw error;
+    });
+  }
+  await schemaReady;
+}
+
+async function upsertPlayer(db: D1Database, user: AuthUser, forceHeartbeat = false) {
   const now = Date.now();
-  await db.prepare(`INSERT INTO players (user_id, display_name, email, main_story, current_job, location, created_at, updated_at, last_seen_at)
-    VALUES (?, ?, ?, 'unselected', 'unemployed', 'realtor', ?, ?, ?)
-    ON CONFLICT(user_id) DO UPDATE SET
-      display_name = excluded.display_name,
-      email = excluded.email,
-      elapsed_minutes = players.elapsed_minutes + CASE
-        WHEN players.last_seen_at <= excluded.last_seen_at
-          AND players.last_seen_at >= excluded.last_seen_at - ?
-        THEN (excluded.last_seen_at - players.last_seen_at) / 1000.0
-        ELSE 0
-      END,
-      last_seen_at = excluded.last_seen_at`)
-    .bind(user.userId, user.displayName.slice(0, 40), user.email, now, now, now, ONLINE_HEARTBEAT_GRACE_MS).run();
-  const row = await db.prepare("SELECT * FROM players WHERE user_id = ?").bind(user.userId).first<PlayerRow>();
+  let row = await db.prepare("SELECT * FROM players WHERE user_id = ?").bind(user.userId).first<PlayerRow>();
+  if (!row) {
+    row = await db.prepare(`INSERT INTO players (user_id, display_name, email, main_story, current_job, location, elapsed_minutes, created_at, updated_at, last_seen_at)
+      VALUES (?, ?, ?, 'unselected', 'unemployed', 'realtor', 0, ?, ?, ?)
+      RETURNING *`).bind(user.userId, user.displayName.slice(0, 40), user.email, now, now, now).first<PlayerRow>();
+  } else {
+    const heartbeatGap = Math.max(0, now - row.last_seen_at);
+    if (forceHeartbeat || heartbeatGap >= HEARTBEAT_WRITE_INTERVAL_MS) {
+      const creditedMinutes = heartbeatGap <= ONLINE_HEARTBEAT_GRACE_MS ? Math.floor(heartbeatGap / 1000) : 0;
+      const elapsedMinutes = Math.floor(row.elapsed_minutes) + creditedMinutes;
+      await db.prepare("UPDATE players SET display_name=?, email=?, elapsed_minutes=?, last_seen_at=? WHERE user_id=?")
+        .bind(user.displayName.slice(0, 40), user.email, elapsedMinutes, now, user.userId).run();
+      row = { ...row, display_name: user.displayName.slice(0, 40), email: user.email, elapsed_minutes: elapsedMinutes, last_seen_at: now };
+    }
+  }
   if (!row) return null;
-  const progress = await ensureProgress(db, row);
   const today = Math.floor(row.elapsed_minutes / 1440) + 1;
   // Existing story saves receive a fresh first deadline when this system is introduced.
   if (row.main_story === "prodigal_return" && row.loan_balance > 0 && row.daily_minimum_payment <= 0 && !row.game_over) {
@@ -293,6 +306,7 @@ async function upsertPlayer(db: D1Database, user: AuthUser) {
     await db.prepare("UPDATE players SET finance_day=?, daily_minimum_payment=? WHERE user_id=?").bind(today, minimumPayment, user.userId).run();
     row.finance_day = today; row.daily_minimum_payment = minimumPayment;
   } else if (today > row.finance_day) {
+    const progress = await ensureProgress(db, row);
     const elapsedDays = today - row.finance_day;
     let bankBalance = row.bank_balance;
     let loanBalance = row.loan_balance;
@@ -326,9 +340,12 @@ async function upsertPlayer(db: D1Database, user: AuthUser) {
 
 async function ensureProgress(db: D1Database, player: PlayerRow) {
   const now = Date.now();
-  await db.prepare("INSERT INTO player_progress (user_id, updated_at) VALUES (?, ?) ON CONFLICT(user_id) DO NOTHING")
-    .bind(player.user_id, now).run();
   let progress = await db.prepare("SELECT * FROM player_progress WHERE user_id=?").bind(player.user_id).first<ProgressRow>();
+  if (!progress) {
+    progress = await db.prepare("INSERT INTO player_progress (user_id, updated_at) VALUES (?, ?) ON CONFLICT(user_id) DO NOTHING RETURNING *")
+      .bind(player.user_id, now).first<ProgressRow>();
+    if (!progress) progress = await db.prepare("SELECT * FROM player_progress WHERE user_id=?").bind(player.user_id).first<ProgressRow>();
+  }
   if (!progress) throw new Error("Unable to initialize player progression");
   const chapter = player.main_story === "prodigal_return" ? storyChapterForDebt(player.loan_balance) : 0;
   if (chapter > progress.story_chapter) {
@@ -437,14 +454,24 @@ async function revealReadyCasinoRound(db: D1Database) {
 }
 
 async function casinoState(db: D1Database, userId: string) {
-  await expireIdleBlackjackSeats(db);
-  await revealReadyCasinoRound(db);
-  const cutoff = Date.now() - 5 * 60 * 1000;
-  await db.prepare("UPDATE casino_hands SET status='expired', seat_no=NULL, reveal_at=0 WHERE status IN ('waiting','playing','stood') AND updated_at<?").bind(cutoff).run();
-  const [seats, own] = await Promise.all([
+  let [seats, own] = await Promise.all([
     db.prepare(`SELECT * FROM casino_hands WHERE status IN ${ACTIVE_CASINO_STATUSES} AND seat_no IS NOT NULL ORDER BY seat_no LIMIT 5`).all<CasinoRow>(),
     db.prepare("SELECT * FROM casino_hands WHERE user_id = ?").bind(userId).first<CasinoRow>(),
   ]);
+  const now = Date.now();
+  const needsIdleExpiry = seats.results.some((seat) => seat.status === "seated" && seat.updated_at < now - IDLE_CASINO_SEAT_TIMEOUT_MS);
+  const needsRoundReveal = seats.results.some((seat) => seat.status === "waiting" && seat.reveal_at > 0 && seat.reveal_at <= now);
+  const roundCutoff = now - 5 * 60 * 1000;
+  const needsRoundExpiry = seats.results.some((seat) => ["waiting", "playing", "stood"].includes(seat.status) && seat.updated_at < roundCutoff);
+  if (needsIdleExpiry || needsRoundReveal || needsRoundExpiry) {
+    if (needsIdleExpiry) await expireIdleBlackjackSeats(db);
+    if (needsRoundReveal) await revealReadyCasinoRound(db);
+    if (needsRoundExpiry) await db.prepare("UPDATE casino_hands SET status='expired', seat_no=NULL, reveal_at=0 WHERE status IN ('waiting','playing','stood') AND updated_at<?").bind(roundCutoff).run();
+    [seats, own] = await Promise.all([
+      db.prepare(`SELECT * FROM casino_hands WHERE status IN ${ACTIVE_CASINO_STATUSES} AND seat_no IS NOT NULL ORDER BY seat_no LIMIT 5`).all<CasinoRow>(),
+      db.prepare("SELECT * FROM casino_hands WHERE user_id = ?").bind(userId).first<CasinoRow>(),
+    ]);
+  }
   const ownIsActive = Boolean(own && ["seated", "waiting", "playing", "stood", "settling"].includes(own.status));
   const playing = ownIsActive && own?.status === "playing";
   const playerCards = own ? parseCards(own.player_cards) : [];
@@ -511,8 +538,8 @@ async function resolveCasinoRoundIfReady(db: D1Database) {
 async function casinoAction(request: Request, env: Env) {
   const user = await identity(request, env.DB);
   if (!user || !env.DB) return json({ message: "請先登入才能加入多人牌桌。" }, 401);
-  await ensureSchema(env.DB);
-  const player = await upsertPlayer(env.DB, user);
+  await ensureSchemaOnce(env.DB);
+  const player = await upsertPlayer(env.DB, user, true);
   if (!player) return json({ message: "找不到玩家資料。" }, 404);
   if (player.game_over) return json({ message: "這段人生已經結束，請重新開始。" }, 409);
   if (player.location !== "casino") return json({ message: "請先前往幸運賭場。" }, 400);
@@ -721,11 +748,17 @@ async function advancePoker(db: D1Database, players: PokerRow[], table: PokerTab
 }
 
 async function pokerState(db: D1Database, userId: string) {
-  await expireIdlePokerSeats(db);
-  const [seats, own, table] = await Promise.all([
+  let [seats, own, table] = await Promise.all([
     db.prepare(`SELECT * FROM poker_hands WHERE status IN ${POKER_ACTIVE_STATUSES} AND seat_no IS NOT NULL ORDER BY seat_no LIMIT 5`).all<PokerRow>(),
     db.prepare("SELECT * FROM poker_hands WHERE user_id=?").bind(userId).first<PokerRow>(), pokerTable(db),
   ]);
+  if (seats.results.some((seat) => ["seated", "ready"].includes(seat.status) && seat.updated_at < Date.now() - IDLE_CASINO_SEAT_TIMEOUT_MS)) {
+    await expireIdlePokerSeats(db);
+    [seats, own, table] = await Promise.all([
+      db.prepare(`SELECT * FROM poker_hands WHERE status IN ${POKER_ACTIVE_STATUSES} AND seat_no IS NOT NULL ORDER BY seat_no LIMIT 5`).all<PokerRow>(),
+      db.prepare("SELECT * FROM poker_hands WHERE user_id=?").bind(userId).first<PokerRow>(), pokerTable(db),
+    ]);
+  }
   const state = table ?? { street: "idle", current_bet: 0, turn_seat: 0, pot: 0, status: "idle", community_cards: "[]" };
   return { capacity: 5, activeCount: seats.results.length, phase: state.status === "playing" ? "playing" : "idle", communityCards: parseCards(state.community_cards), pot: state.pot, street: state.street, currentBet: state.current_bet, turnSeat: state.turn_seat,
     seats: seats.results.map((seat) => ({ id: seat.user_id, displayName: seat.player_name, seatNo: seat.seat_no, status: seat.status, bet: seat.bet, streetBet: seat.street_bet, cards: seat.user_id === userId || state.status !== "playing" ? parseCards(seat.hole_cards) : seat.status === "playing" ? ["🂠", "🂠"] : [], result: seat.result, isMine: seat.user_id === userId })),
@@ -735,8 +768,8 @@ async function pokerState(db: D1Database, userId: string) {
 async function pokerAction(request: Request, env: Env) {
   const user = await identity(request, env.DB);
   if (!user || !env.DB) return json({ message: "請先登入才能加入德州撲克牌桌。" }, 401);
-  await ensureSchema(env.DB);
-  const player = await upsertPlayer(env.DB, user);
+  await ensureSchemaOnce(env.DB);
+  const player = await upsertPlayer(env.DB, user, true);
   if (player?.game_over) return json({ message: "這段人生已經結束，請重新開始。" }, 409);
   if (!player || player.location !== "casino") return json({ message: "請先前往幸運賭場。" }, 400);
   await expireIdlePokerSeats(env.DB);
@@ -803,7 +836,7 @@ async function pokerAction(request: Request, env: Env) {
 
 async function auth(request: Request, env: Env, mode: "register" | "login") {
   if (!env.DB) return json({ message: "資料庫尚未連接。" }, 503);
-  await ensureSchema(env.DB);
+  await ensureSchemaOnce(env.DB);
   let body: { email?: string; password?: string; displayName?: string };
   try { body = await request.json(); } catch { return json({ message: "資料格式錯誤。" }, 400); }
   const email = body.email?.trim().toLowerCase() || "";
@@ -874,12 +907,18 @@ async function getAvatar(userId: string, env: Env) {
 async function bootstrap(request: Request, env: Env) {
   const user = await identity(request, env.DB);
   if (!user || !env.DB) return json({ authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [], casino: { capacity: 5, activeCount: 0, seats: [], hand: null }, poker: { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 } });
-  await ensureSchema(env.DB);
+  await ensureSchemaOnce(env.DB);
   const row = await upsertPlayer(env.DB, user);
   if (!row) return json({ message: "無法載入玩家資料" }, 500);
   const progress = await ensureProgress(env.DB, row);
   const world = await multiplayer(env.DB);
-  const [casino, poker, memory] = await Promise.all([casinoState(env.DB, user.userId), pokerState(env.DB, user.userId), cityMemory(env.DB)]);
+  const emptyCasino = { capacity: 5, activeCount: 0, seats: [], hand: null };
+  const emptyPoker = { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 };
+  const [casino, poker, memory] = await Promise.all([
+    row.location === "casino" ? casinoState(env.DB, user.userId) : Promise.resolve(emptyCasino),
+    row.location === "casino" ? pokerState(env.DB, user.userId) : Promise.resolve(emptyPoker),
+    cityMemory(env.DB),
+  ]);
   return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress), room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, cityMemory: memory });
 }
 
@@ -887,8 +926,8 @@ async function takeAction(request: Request, env: Env) {
   const user = await identity(request, env.DB);
   if (!user) return json({ message: "請先登入帳號，才能保存進度與加入多人世界。" }, 401);
   if (!env.DB) return json({ message: "遊戲資料庫尚未連接。" }, 503);
-  await ensureSchema(env.DB);
-  const current = await upsertPlayer(env.DB, user);
+  await ensureSchemaOnce(env.DB);
+  const current = await upsertPlayer(env.DB, user, true);
   if (!current) return json({ message: "找不到玩家資料。" }, 404);
   let progress = await ensureProgress(env.DB, current);
   let talents = new Set(parseList(progress.talents));
@@ -1139,7 +1178,7 @@ async function takeAction(request: Request, env: Env) {
       message = `${care.name}完成，支付 NT$${care.price}，健康恢復至 ${next.health}${previousIllness ? `，${previousIllness}已痊癒` : ""}。`; break;
     }
     case "reset":
-      Object.assign(next, { cash: next.main_story === "prodigal_return" ? 37 : 10000, bank_balance: 0, loan_balance: next.main_story === "prodigal_return" ? 250_000 : 0, finance_day: 1, daily_minimum_payment: next.main_story === "prodigal_return" ? 750 : 0, daily_payment_made: 0, missed_payment_days: 0, game_over: "", energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", elapsed_minutes: 450, location: "realtor" });
+      Object.assign(next, { cash: next.main_story === "prodigal_return" ? 37 : 10000, bank_balance: 0, loan_balance: next.main_story === "prodigal_return" ? 250_000 : 0, finance_day: 1, daily_minimum_payment: next.main_story === "prodigal_return" ? 750 : 0, daily_payment_made: 0, missed_payment_days: 0, game_over: "", energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", elapsed_minutes: 0, location: "realtor" });
       await env.DB.prepare("UPDATE player_progress SET talent_exp=0, talents='[]', story_chapter=0, last_event_day=0, pending_event='', updated_at=? WHERE user_id=?").bind(Date.now(), user.userId).run();
       progress = { ...progress, talent_exp: 0, talents: "[]", story_chapter: 0, last_event_day: 0, pending_event: "" }; talents = new Set();
       title = "重新開始人生"; message = "新的人生已開始，所有進度回到起點。"; tone = "neutral"; break;

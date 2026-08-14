@@ -27,13 +27,32 @@ test("personal finance time only advances during continuous online heartbeats", 
   const worker = await readFile(new URL("worker/index.ts", root), "utf8");
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
 
-  assert.match(worker, /ONLINE_HEARTBEAT_GRACE_MS = 15_000/);
-  assert.match(worker, /players\.last_seen_at >= excluded\.last_seen_at - \?/);
+  assert.match(worker, /HEARTBEAT_WRITE_INTERVAL_MS = 10_000/);
+  assert.match(worker, /ONLINE_HEARTBEAT_GRACE_MS = 30_000/);
+  assert.match(worker, /heartbeatGap <= ONLINE_HEARTBEAT_GRACE_MS/);
   assert.match(worker, /elapsedMinutes: row\.elapsed_minutes/);
   assert.match(worker, /Math\.floor\(row\.elapsed_minutes \/ 1440\) \+ 1/);
   assert.doesNotMatch(worker, /next\.elapsed_minutes = worldMinutes\(\)/);
   assert.match(page, /player\.rentedUntil - player\.elapsedMinutes/);
-  assert.match(page, /離線期間不結算/);
+  assert.match(page, /每滿 24:00 結算/);
+  assert.match(page, /僅在線時計時/);
+  assert.match(page, /在線時間每滿 24 小時結算/);
+});
+
+test("idle clients do not create unnecessary Cloudflare reads and writes", async () => {
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const wrangler = await readFile(new URL("wrangler.jsonc", root), "utf8");
+
+  assert.doesNotMatch(worker, /\bscheduled\s*\(|\balarm\s*\(/);
+  assert.doesNotMatch(wrangler, /"crons"|"triggers"/);
+  assert.match(worker, /ensureSchemaOnce/);
+  assert.match(worker, /heartbeatGap >= HEARTBEAT_WRITE_INTERVAL_MS/);
+  assert.match(worker, /row\.location === "casino" \? casinoState/);
+  assert.match(worker, /needsIdleExpiry \|\| needsRoundReveal \|\| needsRoundExpiry/);
+  assert.match(page, /if \(!profile\) return/);
+  assert.match(page, /document\.visibilityState === "visible"/);
+  assert.match(page, /setInterval\(refreshWhileActive, 10_000\)/);
 });
 
 test("administrative actions are instant and gameplay waits stay shortened", async () => {

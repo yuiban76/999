@@ -149,7 +149,7 @@ const INITIAL_PLAYER: Player = {
   rentedUntil: 0,
   actionAvailableAt: 0,
   actionLabel: "",
-  elapsedMinutes: 450,
+  elapsedMinutes: 0,
   location: "realtor",
   talentExp: 0,
   talentLevel: 0,
@@ -281,7 +281,7 @@ async function prepareAvatar(file: File) {
 
 function guestAction(current: Player, action: string, payload: Record<string, unknown>) {
   const sharedMinutes = worldMinutes();
-  const next = { ...current, elapsedMinutes: sharedMinutes };
+  const next = { ...current };
   let title = "完成行動";
   let message = "行動完成。";
   let minutes = 0;
@@ -440,7 +440,6 @@ function guestAction(current: Player, action: string, payload: Record<string, un
     next.actionAvailableAt = Date.now() + minutes * 1_000;
     next.actionLabel = title;
   }
-  next.elapsedMinutes = worldMinutes();
   if (!next.ownsHome && next.rentedUntil <= next.elapsedMinutes && next.location === "home") {
     next.location = "realtor";
     message += " 租約已到期，你已回到房仲尋找住所。";
@@ -522,9 +521,18 @@ export default function Home() {
 
   useEffect(() => {
     void loadWorld();
-    const timer = window.setInterval(() => void loadWorld(true), 5000);
-    return () => window.clearInterval(timer);
   }, [loadWorld]);
+
+  useEffect(() => {
+    if (!profile) return;
+    const refreshWhileActive = () => { if (document.visibilityState === "visible") void loadWorld(true); };
+    const timer = window.setInterval(refreshWhileActive, 10_000);
+    document.addEventListener("visibilitychange", refreshWhileActive);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhileActive);
+    };
+  }, [profile, loadWorld]);
 
   useEffect(() => {
     const updateClock = () => setSharedMinutes(worldMinutes());
@@ -534,10 +542,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if ((!casino.phase || casino.phase === "idle") && (!poker.phase || poker.phase === "idle")) return;
-    const timer = window.setInterval(() => void loadWorld(true), 750);
+    if (!profile || ((!casino.phase || casino.phase === "idle") && (!poker.phase || poker.phase === "idle"))) return;
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void loadWorld(true); }, 1_500);
     return () => window.clearInterval(timer);
-  }, [casino.phase, poker.phase, loadWorld]);
+  }, [profile, casino.phase, poker.phase, loadWorld]);
 
   useEffect(() => {
     if (!enlargedPlayer) return;
@@ -645,7 +653,7 @@ export default function Home() {
           <span className="brand-mark">人</span>
           <span><strong>人生 ONLINE</strong><small>LIFE, ONE CHOICE AT A TIME.</small></span>
         </a>
-        <div className="world-time"><span>{playClock.day}</span><strong>{gameClock.time}</strong><span>上線時計時 · 城市同步</span></div>
+        <div className="world-time"><span>{playClock.day} · 玩家時間</span><strong>{playClock.time}</strong><span>每滿 24:00 結算 · 城市 {gameClock.time}</span></div>
         <div className="account-area">
           <span className={`connection-dot ${profile ? "connected" : ""}`} />
           {profile ? (
@@ -672,7 +680,7 @@ export default function Home() {
           </div>
           <div className="cash-card"><span>資產概況</span><strong><small>手上 NT$</small>{formatMoney(player.cash)}</strong><div className="cash-breakdown"><p><span>銀行存款</span><b>NT${formatMoney(player.bankBalance)}</b></p><p className={player.loanBalance ? "debt" : ""}><span>貸款餘額</span><b>NT${formatMoney(player.loanBalance)}</b></p></div><small>{profile ? "伺服器已安全保存" : "訪客模式暫存"}</small></div>
           {player.mainStory === "prodigal_return" && player.loanBalance > 0 && <div className={`debt-deadline ${player.missedPaymentDays ? "warning" : ""}`}><span>本日最低繳款</span><strong>NT${formatMoney(player.dailyMinimumPayment)}</strong><small>已繳 NT${formatMoney(player.dailyPaymentMade)} · 尚欠 NT${formatMoney(Math.max(0, player.dailyMinimumPayment - player.dailyPaymentMade))} · 連續欠繳 {player.missedPaymentDays}/2 天</small></div>}
-          <div className={`housing-card ${!player.ownsHome && !rentalDaysLeft ? "homeless" : ""}`}><span>居住狀態</span><strong>{housingLabel}</strong><small>{player.ownsHome ? "永久住所" : rentalDaysLeft ? `租約至遊戲第 ${Math.ceil(player.rentedUntil / 1440)} 天` : "請前往安心房仲"}</small></div>
+          <div className={`housing-card ${!player.ownsHome && !rentalDaysLeft ? "homeless" : ""}`}><span>居住狀態</span><strong>{housingLabel}</strong><small>{player.ownsHome ? "永久住所" : rentalDaysLeft ? `剩餘 ${Math.floor(rentalMinutesLeft / 60)} 小時 ${Math.floor(rentalMinutesLeft % 60)} 分 · 僅在線時計時` : "請前往安心房仲"}</small></div>
           <div className="career-card">
             <div><span>目前職業</span><strong>{career.title}</strong></div><small>時薪 NT${formatMoney(career.hourlyPay)}</small>
             <div className="career-track"><i style={{ width: `${careerProgress}%` }} /></div>
@@ -791,7 +799,7 @@ function BankPanel({ player, busy, closed, onAction }: { player: Player; busy: b
   return <section className="bank-panel">
     <header><div><span>BANK ACCOUNT</span><strong>存款 NT${formatMoney(player.bankBalance)}</strong></div><div><span>LOAN BALANCE</span><strong className={player.loanBalance ? "debt" : ""}>貸款 NT${formatMoney(player.loanBalance)}</strong></div></header>
     <p>存款每個遊戲日複利 0.1%；一般貸款每日增加 0.5%，《浪子回頭》主線債務每日增加 0.2%。遊戲日結束時若手動還款不足，會從銀行存款自動扣除差額；銀行存款不足才記為欠繳。每個遊戲日等於上線遊玩 24 分鐘，離線期間不結算。</p>
-    {player.mainStory === "prodigal_return" && player.loanBalance > 0 && <div className={`bank-payment-status ${player.missedPaymentDays ? "warning" : ""}`}><strong>本日最低繳款 NT${formatMoney(player.dailyMinimumPayment)}</strong><span>已繳 NT${formatMoney(player.dailyPaymentMade)} · 尚欠 NT${formatMoney(Math.max(0, player.dailyMinimumPayment - player.dailyPaymentMade))}</span><small>隔日會優先從銀行存款自動補足；存款不足才記欠繳。連續欠繳 {player.missedPaymentDays}/2 天。</small></div>}
+    {player.mainStory === "prodigal_return" && player.loanBalance > 0 && <div className={`bank-payment-status ${player.missedPaymentDays ? "warning" : ""}`}><strong>本日最低繳款 NT${formatMoney(player.dailyMinimumPayment)}</strong><span>已繳 NT${formatMoney(player.dailyPaymentMade)} · 尚欠 NT${formatMoney(Math.max(0, player.dailyMinimumPayment - player.dailyPaymentMade))}</span><small>玩家在線時間每滿 24 小時結算，優先從銀行存款自動補足；存款不足才記欠繳。連續欠繳 {player.missedPaymentDays}/2 天。</small></div>}
     <label>輸入金額<div><span>NT$</span><input type="number" inputMode="numeric" min="1" step="1" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={busy} /></div></label>
     <div className="bank-actions">
       <button onClick={() => onAction("deposit", value)} disabled={busy || !valid}>存款</button>
