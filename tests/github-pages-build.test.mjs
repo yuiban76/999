@@ -96,8 +96,11 @@ test("multiplayer cash invitations support gifts and protected scam resolution",
   assert.match(page, /錦標賽 · 積分賽/);
   assert.match(page, /<BingoTable/);
   assert.match(page, /<TournamentTable/);
-  assert.match(worker, /BINGO_ENTRY_FEE = 100/);
-  assert.match(worker, /TOURNAMENT_ENTRY_FEE = 500/);
+  assert.match(worker, /MIN_CASINO_ENTRY_FEE = 100/);
+  assert.match(worker, /MAX_CASINO_ENTRY_FEE = 10_000/);
+  assert.match(worker, /TOURNAMENT_ROUNDS = 5/);
+  assert.match(worker, /entry_fee INTEGER NOT NULL DEFAULT 100/);
+  assert.match(worker, /entry_fee INTEGER NOT NULL DEFAULT 500/);
   assert.match(worker, /async function bingoAction/);
   assert.match(worker, /async function tournamentAction/);
   assert.match(worker, /bestPokerHand\(cards\)/);

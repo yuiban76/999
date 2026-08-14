@@ -160,7 +160,7 @@ export const playerTransferRequests = sqliteTable("player_transfer_requests", {
 
 export const casinoBingoState = sqliteTable("casino_bingo_state", {
   id: text("id").primaryKey(), roundNo: integer("round_no").notNull().default(1), status: text("status").notNull().default("lobby"),
-  drawnNumbers: text("drawn_numbers").notNull().default("[]"), nextDrawAt: integer("next_draw_at").notNull().default(0), updatedAt: integer("updated_at").notNull(),
+  hostUserId: text("host_user_id").notNull().default(""), entryFee: integer("entry_fee").notNull().default(100), drawnNumbers: text("drawn_numbers").notNull().default("[]"), nextDrawAt: integer("next_draw_at").notNull().default(0), updatedAt: integer("updated_at").notNull(),
 });
 
 export const casinoBingoEntries = sqliteTable("casino_bingo_entries", {
@@ -169,7 +169,7 @@ export const casinoBingoEntries = sqliteTable("casino_bingo_entries", {
 
 export const casinoTournamentState = sqliteTable("casino_tournament_state", {
   id: text("id").primaryKey(), roundNo: integer("round_no").notNull().default(1), currentRound: integer("current_round").notNull().default(0), game: text("game").notNull().default("blackjack"), status: text("status").notNull().default("lobby"),
-  roundLimit: integer("round_limit").notNull().default(3), nextRoundAt: integer("next_round_at").notNull().default(0), latestResult: text("latest_result").notNull().default(""), updatedAt: integer("updated_at").notNull(),
+  hostUserId: text("host_user_id").notNull().default(""), entryFee: integer("entry_fee").notNull().default(500), roundLimit: integer("round_limit").notNull().default(5), nextRoundAt: integer("next_round_at").notNull().default(0), latestResult: text("latest_result").notNull().default(""), updatedAt: integer("updated_at").notNull(),
 });
 
 export const casinoTournamentEntries = sqliteTable("casino_tournament_entries", {

@@ -127,6 +127,20 @@
       "when": 1786720585929,
       "tag": "0017_keen_sir_ram",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1786721248179,
+      "tag": "0018_brown_silvermane",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1786721470698,
+      "tag": "0019_melted_nehzno",
+      "breakpoints": true
     }
   ]
 }
