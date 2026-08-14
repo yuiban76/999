@@ -142,3 +142,18 @@ export const mysteryClues = sqliteTable("mystery_clues", {
   clueKey: text("clue_key").notNull(),
   foundAt: integer("found_at").notNull(),
 }, (table) => [primaryKey({ columns: [table.userId, table.clueKey] }), index("idx_mystery_clues_key").on(table.clueKey)]);
+
+export const playerTransferRequests = sqliteTable("player_transfer_requests", {
+  id: text("id").primaryKey(),
+  senderId: text("sender_id").notNull(),
+  senderName: text("sender_name").notNull(),
+  recipientId: text("recipient_id").notNull(),
+  kind: text("kind").notNull(),
+  amount: integer("amount").notNull(),
+  status: text("status").notNull().default("pending"),
+  outcome: text("outcome").notNull().default(""),
+  resolutionToken: text("resolution_token").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+  resolvedAt: integer("resolved_at"),
+}, (table) => [index("idx_transfer_requests_recipient_status").on(table.recipientId, table.status, table.expiresAt)]);

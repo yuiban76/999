@@ -49,12 +49,14 @@ type PokerRow = { user_id: string; player_name: string; hole_cards: string; comm
 type PokerTableRow = { id: string; deck: string; community_cards: string; street: string; current_bet: number; turn_seat: number; pot: number; status: string; updated_at: number };
 type ProgressRow = { user_id: string; talent_exp: number; talents: string; story_chapter: number; last_event_day: number; pending_event: string; updated_at: number };
 type MemoryRow = { cycle_day: number; work_count: number; hospital_count: number; housing_count: number; casino_count: number; study_count: number; event_count: number };
+type TransferRequestRow = { id: string; sender_id: string; sender_name: string; recipient_id: string; kind: "gift" | "scam"; amount: number; status: string; outcome: string; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
 
 const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "bank", "business", "shopping", "hotel", "casino", "school", "hospital"]);
 // Persist at most one idle heartbeat every ten seconds. Only a short,
 // continuous gap counts as online play; returning after going offline adds no time.
 const HEARTBEAT_WRITE_INTERVAL_MS = 10_000;
 const ONLINE_HEARTBEAT_GRACE_MS = 30_000;
+const TRANSFER_REQUEST_TIMEOUT_MS = 60_000;
 const clamp = (value: number) => Math.max(0, Math.min(100, value));
 const abilitiesFor = (player: PlayerRow): Abilities => ({
   physical: player.fitness_exp,
@@ -249,6 +251,13 @@ async function ensureSchema(db: D1Database) {
       user_id TEXT NOT NULL, clue_key TEXT NOT NULL, found_at INTEGER NOT NULL,
       PRIMARY KEY (user_id, clue_key)
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS player_transfer_requests (
+      id TEXT PRIMARY KEY, sender_id TEXT NOT NULL, sender_name TEXT NOT NULL,
+      recipient_id TEXT NOT NULL, kind TEXT NOT NULL, amount INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending', outcome TEXT NOT NULL DEFAULT '',
+      resolution_token TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL, resolved_at INTEGER
+    )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_players_last_seen ON players(last_seen_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_events_room_created ON game_events(room_id, created_at DESC)"),
     db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_email ON accounts(email)"),
@@ -260,6 +269,7 @@ async function ensureSchema(db: D1Database) {
     db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_poker_seat ON poker_hands(seat_no)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_city_memory_cycle ON city_memory_contributions(cycle_day)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_mystery_clues_key ON mystery_clues(clue_key)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_transfer_requests_recipient_status ON player_transfer_requests(recipient_id, status, expires_at)"),
   ]);
 }
 
@@ -410,6 +420,26 @@ async function multiplayer(db: D1Database) {
     online: players.results.map((row) => ({ id: row.user_id, displayName: row.display_name, location: row.location, cash: row.cash, loanBalance: row.loan_balance, updatedAt: row.last_seen_at, avatarUrl: row.has_avatar ? `/api/avatar/${row.user_id}?v=${row.avatar_updated_at ?? 0}` : null })),
     feed: events.results.map((row) => ({ id: row.id, playerName: row.player_name, title: row.title, detail: row.detail, tone: row.tone, time: row.game_time })),
   };
+}
+
+async function pendingTransferRequests(db: D1Database, recipientId: string) {
+  const requests = await db.prepare(`SELECT id, sender_id, sender_name, recipient_id, kind, amount, status, outcome, resolution_token, created_at, expires_at, resolved_at
+    FROM player_transfer_requests
+    WHERE recipient_id=? AND status='pending' AND expires_at>?
+    ORDER BY created_at ASC LIMIT 1`).bind(recipientId, Date.now()).all<TransferRequestRow>();
+  return requests.results.map((request) => ({ id: request.id, senderName: request.sender_name, amount: request.amount, expiresAt: request.expires_at }));
+}
+
+async function transferActionResponse(db: D1Database, user: AuthUser, player: PlayerRow, progress: ProgressRow, message: string) {
+  const [world, transfers] = await Promise.all([multiplayer(db), pendingTransferRequests(db, user.userId)]);
+  return json({ player: serializePlayer(player, progress), message, transferRequests: transfers, ...world });
+}
+
+async function recordTransferEvent(db: D1Database, senderId: string, senderName: string, title: string, detail: string, tone: "good" | "neutral" | "warn" = "neutral") {
+  const current = minuteOfDay(worldMinutes());
+  const gameTime = `${String(Math.floor(current / 60)).padStart(2, "0")}:${String(current % 60).padStart(2, "0")}`;
+  await db.prepare("INSERT INTO game_events (id, user_id, player_name, room_id, title, detail, tone, game_time, created_at) VALUES (?, ?, ?, 'lobby-01', ?, ?, ?, ?, ?)")
+    .bind(crypto.randomUUID(), senderId, senderName.slice(0, 40), title, detail, tone, gameTime, Date.now()).run();
 }
 
 const CARD_RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
@@ -914,12 +944,13 @@ async function bootstrap(request: Request, env: Env) {
   const world = await multiplayer(env.DB);
   const emptyCasino = { capacity: 5, activeCount: 0, seats: [], hand: null };
   const emptyPoker = { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 };
-  const [casino, poker, memory] = await Promise.all([
+  const [casino, poker, memory, transferRequests] = await Promise.all([
     row.location === "casino" ? casinoState(env.DB, user.userId) : Promise.resolve(emptyCasino),
     row.location === "casino" ? pokerState(env.DB, user.userId) : Promise.resolve(emptyPoker),
     cityMemory(env.DB),
+    pendingTransferRequests(env.DB, user.userId),
   ]);
-  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress), room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, cityMemory: memory });
+  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress), room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, cityMemory: memory, transferRequests });
 }
 
 async function takeAction(request: Request, env: Env) {
@@ -933,11 +964,11 @@ async function takeAction(request: Request, env: Env) {
   let talents = new Set(parseList(progress.talents));
   const clampEnergy = (value: number) => Math.max(0, Math.min(talents.has("strong_body") ? 120 : 100, value));
 
-  let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; academy?: string; story?: string; talent?: string; choice?: string };
+  let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; academy?: string; story?: string; talent?: string; choice?: string; targetId?: string; requestId?: string };
   try { body = await request.json(); } catch { return json({ message: "行動資料格式錯誤。" }, 400); }
   if (current.game_over && body.action !== "reset") return json({ message: "這段人生已經結束，請重新開始。" }, 409);
   if (current.main_story === "unselected" && body.action !== "choose_story") return json({ message: "請先選擇人生主線。" }, 409);
-  if (!["move", "choose_story", "reset", "city_event"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
+  if (!["move", "choose_story", "reset", "city_event", "transfer_request", "transfer_response"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
   const next = { ...current };
   const sharedMinutes = worldMinutes();
   const memoryBefore = await cityMemory(env.DB);
@@ -951,6 +982,75 @@ async function takeAction(request: Request, env: Env) {
   let scratch: { price: number; prize: number } | null = null;
 
   switch (body.action) {
+    case "transfer_request": {
+      const kind = body.kind === "gift" || body.kind === "scam" ? body.kind : null;
+      const amount = Number(body.amount);
+      if (!kind) return json({ message: "轉帳類型不正確。" }, 400);
+      if (!Number.isSafeInteger(amount) || amount < (kind === "scam" ? 2 : 1)) return json({ message: kind === "scam" ? "詐騙金額至少需 NT$2。" : "請輸入有效的贈送金額。" }, 400);
+      if (amount > current.cash) return json({ message: "金額不能超過你手上的現金。" }, 400);
+      if (!body.targetId || body.targetId === user.userId) return json({ message: "請選擇其他玩家。" }, 400);
+      const target = await env.DB.prepare("SELECT user_id, last_seen_at, main_story, game_over FROM players WHERE user_id=?")
+        .bind(body.targetId).first<{ user_id: string; last_seen_at: number; main_story: string; game_over: string }>();
+      if (!target || target.last_seen_at < Date.now() - ONLINE_HEARTBEAT_GRACE_MS) return json({ message: "這位玩家目前不在線上。" }, 409);
+      if (target.main_story === "unselected" || target.game_over) return json({ message: "這位玩家目前無法處理邀請。" }, 409);
+      const existing = await env.DB.prepare("SELECT id FROM player_transfer_requests WHERE recipient_id=? AND status='pending' AND expires_at>? LIMIT 1")
+        .bind(target.user_id, Date.now()).first<{ id: string }>();
+      if (existing) return json({ message: "這位玩家正在處理另一個現金邀請。" }, 409);
+      const now = Date.now();
+      await env.DB.prepare(`INSERT INTO player_transfer_requests (id, sender_id, sender_name, recipient_id, kind, amount, status, outcome, resolution_token, created_at, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', '', '', ?, ?)`)
+        .bind(crypto.randomUUID(), user.userId, user.displayName.slice(0, 40), target.user_id, kind, amount, now, now + TRANSFER_REQUEST_TIMEOUT_MS).run();
+      return transferActionResponse(env.DB, user, current, progress, kind === "gift" ? `已向對方送出 NT$${amount} 的贈送邀請，等待對方決定。` : `已送出 NT$${amount} 的現金邀請，等待對方決定。`);
+    }
+    case "transfer_response": {
+      if (!body.requestId || !["accept", "decline"].includes(body.kind || "")) return json({ message: "邀請回覆不正確。" }, 400);
+      const token = crypto.randomUUID();
+      const request = await env.DB.prepare(`UPDATE player_transfer_requests
+        SET status='processing', resolution_token=?
+        WHERE id=? AND recipient_id=? AND status='pending' AND expires_at>?
+        RETURNING id, sender_id, sender_name, recipient_id, kind, amount, status, outcome, resolution_token, created_at, expires_at, resolved_at`)
+        .bind(token, body.requestId, user.userId, Date.now()).first<TransferRequestRow>();
+      if (!request) return transferActionResponse(env.DB, user, current, progress, "這個現金邀請已失效或已被處理。" );
+      if (body.kind === "decline") {
+        await env.DB.prepare("UPDATE player_transfer_requests SET status='declined', outcome='declined', resolved_at=? WHERE id=? AND resolution_token=?")
+          .bind(Date.now(), request.id, token).run();
+        return transferActionResponse(env.DB, user, current, progress, "你已拒絕這筆現金邀請。" );
+      }
+      if (request.kind === "gift") {
+        const transfer = await env.DB.prepare(`UPDATE players SET cash=CASE WHEN user_id=? THEN cash-? ELSE cash+? END
+          WHERE user_id IN (?, ?) AND (SELECT cash FROM players WHERE user_id=?) >= ?
+          RETURNING user_id`).bind(request.sender_id, request.amount, request.amount, request.sender_id, request.recipient_id, request.sender_id, request.amount).all<{ user_id: string }>();
+        if (transfer.results.length !== 2) {
+          await env.DB.prepare("UPDATE player_transfer_requests SET status='cancelled', outcome='sender_insufficient', resolved_at=? WHERE id=? AND resolution_token=?")
+            .bind(Date.now(), request.id, token).run();
+          return transferActionResponse(env.DB, user, current, progress, "對方現金不足，這筆贈送已取消。" );
+        }
+        await env.DB.prepare("UPDATE player_transfer_requests SET status='accepted', outcome='gifted', resolved_at=? WHERE id=? AND resolution_token=?")
+          .bind(Date.now(), request.id, token).run();
+        const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
+        await recordTransferEvent(env.DB, request.sender_id, request.sender_name, "贈送現金", `向玩家贈送了 NT$${request.amount}。`, "good");
+        return transferActionResponse(env.DB, user, saved ?? current, progress, `你已收下 NT$${request.amount} 的現金。`);
+      }
+      if (Math.random() >= .5) {
+        await env.DB.prepare("UPDATE player_transfer_requests SET status='accepted', outcome='scam_failed', resolved_at=? WHERE id=? AND resolution_token=?")
+          .bind(Date.now(), request.id, token).run();
+        return transferActionResponse(env.DB, user, current, progress, "現金邀請沒有完成，沒有金錢變動。" );
+      }
+      const stolen = Math.floor(request.amount / 2);
+      const transfer = await env.DB.prepare(`UPDATE players SET cash=CASE WHEN user_id=? THEN cash+? ELSE cash-? END
+        WHERE user_id IN (?, ?) AND (SELECT cash FROM players WHERE user_id=?) >= ?
+        RETURNING user_id`).bind(request.sender_id, stolen, stolen, request.sender_id, request.recipient_id, request.recipient_id, stolen).all<{ user_id: string }>();
+      if (transfer.results.length !== 2) {
+        await env.DB.prepare("UPDATE player_transfer_requests SET status='accepted', outcome='recipient_insufficient', resolved_at=? WHERE id=? AND resolution_token=?")
+          .bind(Date.now(), request.id, token).run();
+        return transferActionResponse(env.DB, user, current, progress, "現金邀請沒有完成，餘額不足，沒有金錢變動。" );
+      }
+      await env.DB.prepare("UPDATE player_transfer_requests SET status='accepted', outcome='scam_success', resolved_at=? WHERE id=? AND resolution_token=?")
+        .bind(Date.now(), request.id, token).run();
+      const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
+      await recordTransferEvent(env.DB, request.sender_id, request.sender_name, "詐騙成功", `成功取得了 NT$${stolen}。`, "warn");
+      return transferActionResponse(env.DB, user, saved ?? current, progress, `你遭到詐騙，NT$${stolen} 已被對方取走。`);
+    }
     case "talent": {
       if (body.kind === "reset") {
         if (!talents.size) return json({ message: "目前沒有已配置的天賦。" }, 400);

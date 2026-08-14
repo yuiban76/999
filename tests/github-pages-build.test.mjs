@@ -73,6 +73,27 @@ test("longer opening hours are consistent in rules, interface, and worker respon
   assert.doesNotMatch(source, /09:00～18:00|09:00～17:00|08:00～18:00|10:00～22:00|08:00～21:00|08:00～20:00/);
 });
 
+test("multiplayer cash invitations support gifts and protected scam resolution", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+  const schema = await readFile(new URL("db/schema.ts", root), "utf8");
+  const migration = await readFile(new URL("drizzle/0016_eminent_naoko.sql", root), "utf8");
+
+  assert.match(page, /openTransfer\(item, "gift"\)/);
+  assert.match(page, /openTransfer\(item, "scam"\)/);
+  assert.match(page, /transfer_response/);
+  assert.match(page, /現金邀請/);
+  assert.match(worker, /TRANSFER_REQUEST_TIMEOUT_MS = 60_000/);
+  assert.match(worker, /case "transfer_request"/);
+  assert.match(worker, /case "transfer_response"/);
+  assert.match(worker, /Math\.random\(\) >= \.5/);
+  assert.match(worker, /cash=CASE WHEN user_id=\? THEN cash-\? ELSE cash\+\? END/);
+  assert.match(worker, /cash=CASE WHEN user_id=\? THEN cash\+\? ELSE cash-\? END/);
+  assert.match(schema, /playerTransferRequests = sqliteTable\("player_transfer_requests"/);
+  assert.match(migration, /CREATE TABLE `player_transfer_requests`/);
+  assert.match(migration, /idx_transfer_requests_recipient_status/);
+});
+
 test("administrative actions are instant and gameplay waits stay shortened", async () => {
   const worker = await readFile(new URL("worker/index.ts", root), "utf8");
   const page = await readFile(new URL("app/page.tsx", root), "utf8");

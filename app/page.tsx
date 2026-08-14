@@ -72,6 +72,13 @@ type FeedItem = {
   playerName?: string;
 };
 
+type TransferRequest = {
+  id: string;
+  senderName: string;
+  amount: number;
+  expiresAt: number;
+};
+
 type CasinoState = {
   capacity: number;
   bettingSeconds?: number;
@@ -111,6 +118,7 @@ type Bootstrap = {
   casino: CasinoState;
   poker: PokerState;
   cityMemory?: CityMemory;
+  transferRequests?: TransferRequest[];
 };
 
 type CityMemory = {
@@ -463,6 +471,9 @@ export default function Home() {
   const [cityMemory, setCityMemory] = useState<CityMemory>(EMPTY_CITY_MEMORY);
   const [scratchResult, setScratchResult] = useState<{ price: number; prize: number } | null>(null);
   const [enlargedPlayer, setEnlargedPlayer] = useState<OnlinePlayer | null>(null);
+  const [transferRequests, setTransferRequests] = useState<TransferRequest[]>([]);
+  const [transferTarget, setTransferTarget] = useState<{ player: OnlinePlayer; kind: "gift" | "scam" } | null>(null);
+  const [transferAmount, setTransferAmount] = useState("");
   const [jobCategory, setJobCategory] = useState<string>(JOB_CATEGORIES[0].id);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authError, setAuthError] = useState("");
@@ -494,6 +505,7 @@ export default function Home() {
   const nextStoryChapter = STORY_CHAPTERS[player.storyChapter];
   const nextStoryDebt = nextStoryChapter ? Math.round(250_000 * nextStoryChapter.remainingRatio) : 0;
   const storyProgress = Math.min(100, Math.max(0, ((250_000 - player.loanBalance) / 250_000) * 100));
+  const pendingTransfer = transferRequests[0] ?? null;
 
   const loadWorld = useCallback(async (quiet = false) => {
     try {
@@ -509,6 +521,7 @@ export default function Home() {
       setCasino(data.casino);
       if (data.poker) setPoker(data.poker);
       if (data.cityMemory) setCityMemory(data.cityMemory);
+      setTransferRequests(data.transferRequests ?? []);
       if (!quiet) {
         setNotice(data.authenticated ? `歡迎回來，${data.profile?.displayName}。進度已同步。` : "目前是訪客試玩；登入後即可永久保存並加入多人世界。");
       }
@@ -579,7 +592,7 @@ export default function Home() {
         headers: apiHeaders(true),
         body: JSON.stringify({ action: action.startsWith("casino_") ? action.slice(7) : action.startsWith("poker_") ? action.slice(6) : action, ...payload }),
       });
-      const data = await response.json() as { player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; cityMemory?: CityMemory; scratch?: { price: number; prize: number } | null; message?: string };
+      const data = await response.json() as { player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; cityMemory?: CityMemory; transferRequests?: TransferRequest[]; scratch?: { price: number; prize: number } | null; message?: string };
       if (!response.ok || !data.player) throw new Error(data.message || "行動失敗");
       setPlayer(data.player);
       if (data.online) setOnline(data.online);
@@ -587,6 +600,7 @@ export default function Home() {
       if (data.casino) setCasino(data.casino);
       if (data.poker) setPoker(data.poker);
       if (data.cityMemory) setCityMemory(data.cityMemory);
+      if (data.transferRequests) setTransferRequests(data.transferRequests);
       if (data.scratch) setScratchResult(data.scratch);
       setNotice(data.message || "行動完成");
     } catch (error) {
@@ -594,6 +608,26 @@ export default function Home() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function openTransfer(playerTarget: OnlinePlayer, kind: "gift" | "scam") {
+    if (!profile || playerTarget.id === profile.id) return;
+    setTransferTarget({ player: playerTarget, kind });
+    setTransferAmount("");
+  }
+
+  async function submitTransfer(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!transferTarget) return;
+    const amount = Number(transferAmount);
+    const minimum = transferTarget.kind === "scam" ? 2 : 1;
+    if (!Number.isSafeInteger(amount) || amount < minimum || amount > player.cash) {
+      setNotice(`請輸入 NT$${minimum}～NT$${formatMoney(player.cash)} 的整數金額。`);
+      return;
+    }
+    await act("transfer_request", { targetId: transferTarget.player.id, kind: transferTarget.kind, amount });
+    setTransferTarget(null);
+    setTransferAmount("");
   }
 
   async function submitAuth(event: React.FormEvent<HTMLFormElement>) {
@@ -617,7 +651,7 @@ export default function Home() {
   async function logout() {
     try { await fetch(`${API_ORIGIN}/api/auth/logout`, { method: "POST", headers: apiHeaders() }); } catch { /* local logout still works */ }
     window.localStorage.removeItem(TOKEN_KEY);
-    setProfile(null); setOnline([]); setFeed([]); setCasino({ capacity: 5, activeCount: 0, seats: [], hand: null }); setPlayer(INITIAL_PLAYER);
+    setProfile(null); setOnline([]); setFeed([]); setTransferRequests([]); setTransferTarget(null); setCasino({ capacity: 5, activeCount: 0, seats: [], hand: null }); setPlayer(INITIAL_PLAYER);
     setNotice("已登出；目前為訪客試玩模式。");
   }
 
@@ -721,7 +755,7 @@ export default function Home() {
           <div className="section-heading story-title"><span>多人世界</span><small>LIVE LOBBY</small></div>
           <div className="online-summary"><strong><i />{online.length} 位在線</strong><span>每 5 秒同步</span></div>
           <ul className="online-list">
-            {online.length ? online.slice(0, 8).map((item) => <li key={item.id}><button type="button" className={`mini-avatar ${item.avatarUrl ? "has-photo" : ""}`} aria-label={`放大查看${item.displayName}的大頭貼`} onClick={() => setEnlargedPlayer(item)}>{item.avatarUrl ? <img src={`${API_ORIGIN}${item.avatarUrl}`} alt="" /> : item.displayName.slice(0, 1)}</button><div><strong>{item.displayName}{item.id === profile?.id ? "（你）" : ""}</strong><small>正在 {locationName(item.location)}</small><span className="online-finance">現金 NT${formatMoney(item.cash)} · 貸款 NT${formatMoney(item.loanBalance)}</span></div></li>) : <li className="empty-online">登入後，你會在這裡遇見其他玩家。</li>}
+            {online.length ? online.slice(0, 8).map((item) => <li key={item.id}><button type="button" className={`mini-avatar ${item.avatarUrl ? "has-photo" : ""}`} aria-label={`放大查看${item.displayName}的大頭貼`} onClick={() => setEnlargedPlayer(item)}>{item.avatarUrl ? <img src={`${API_ORIGIN}${item.avatarUrl}`} alt="" /> : item.displayName.slice(0, 1)}</button><div><strong>{item.displayName}{item.id === profile?.id ? "（你）" : ""}</strong><small>正在 {locationName(item.location)}</small><span className="online-finance">現金 NT${formatMoney(item.cash)} · 貸款 NT${formatMoney(item.loanBalance)}</span>{profile && item.id !== profile.id && <span className="player-transfer-actions"><button type="button" onClick={() => openTransfer(item, "gift")} disabled={busy || player.cash < 1}>贈送</button><button type="button" className="scam" onClick={() => openTransfer(item, "scam")} disabled={busy || player.cash < 2}>詐騙</button></span>}</div></li>) : <li className="empty-online">登入後，你會在這裡遇見其他玩家。</li>}
           </ul>
           <div className="section-heading feed-heading"><span>城市動態</span><small>ACTIVITY</small></div>
           <ol className="feed-list">
@@ -739,6 +773,8 @@ export default function Home() {
       </div>}
       {talentOpen && <div className="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="talent-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setTalentOpen(false); }}><section className="talent-board"><button className="auth-close" type="button" aria-label="關閉天賦樹" onClick={() => setTalentOpen(false)}>×</button><span className="panel-kicker">LIFE TALENTS</span><h2 id="talent-title">天賦樹</h2><p>等級 {player.talentLevel} · 可用 {player.talentPoints} 點 · 每 100 經驗獲得 1 點。天賦不會改變賭場或刮刮樂機率。</p><div className="talent-branches">{["職涯", "生存", "財務", "機會"].map((branch) => <section key={branch}><h3>{branch}</h3>{TALENTS.filter((talent) => talent.branch === branch).map((talent) => { const owned = player.talents.includes(talent.id); const locked = talent.requires.some((required) => !player.talents.includes(required)); return <button className={owned ? "owned" : ""} key={talent.id} disabled={busy || owned || locked || player.talentPoints < 1} onClick={() => void act("talent", { talent: talent.id })}><strong>{talent.name}</strong><small>{talent.description}</small><em>{owned ? "已解鎖" : locked ? "需要前置天賦" : "使用 1 點"}</em></button>; })}</section>)}</div><button className="talent-reset" disabled={busy || !player.talents.length || player.cash < 2_000} onClick={() => void act("talent", { kind: "reset" })}>支付 NT$2,000 重置天賦</button></section></div>}
       {profile && pendingCityEvent && <div className="auth-overlay city-event-overlay" role="dialog" aria-modal="true" aria-labelledby="city-event-title"><section className="city-event-card"><span>THE CITY FOUND YOU</span><h2 id="city-event-title">{pendingCityEvent.title}</h2><p>{pendingCityEvent.text}</p><div>{pendingCityEvent.choices.map((choice) => { const unavailable = "requires" in choice && choice.requires && !player.talents.includes(choice.requires); return <button key={choice.id} disabled={busy || Boolean(unavailable)} onClick={() => void act("city_event", { choice: choice.id })}>{choice.label}{unavailable ? <small>需要談判能力</small> : null}</button>; })}</div></section></div>}
+      {transferTarget && <div className="auth-overlay transfer-overlay" role="dialog" aria-modal="true" aria-labelledby="transfer-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setTransferTarget(null); }}><form className="transfer-card" onSubmit={submitTransfer}><button className="auth-close" type="button" aria-label="關閉" onClick={() => setTransferTarget(null)}>×</button><span className="panel-kicker">PLAYER TO PLAYER</span><h2 id="transfer-title">{transferTarget.kind === "gift" ? "贈送現金" : "發送詐騙邀請"}</h2><p>{transferTarget.kind === "gift" ? `向 ${transferTarget.player.displayName} 贈送現金；對方接受後才會完成轉帳。` : `向 ${transferTarget.player.displayName} 發送與贈送相同外觀的現金邀請。對方接受時，有 50% 機率被騙走填寫金額的一半。`}</p><label>金額（最多 NT${formatMoney(player.cash)}）<input inputMode="numeric" type="number" min={transferTarget.kind === "scam" ? 2 : 1} max={player.cash} step="1" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} autoFocus required /></label><small>{transferTarget.kind === "scam" ? "詐騙金額以你手上的現金為上限；成功時對方失去此金額的一半。" : "送出邀請後，請等待對方接受或拒絕。"}</small><button className="transfer-submit" disabled={busy || player.cash < (transferTarget.kind === "scam" ? 2 : 1)}>{transferTarget.kind === "gift" ? "送出贈送邀請" : "送出現金邀請"}</button></form></div>}
+      {profile && pendingTransfer && <div className="auth-overlay transfer-overlay" role="dialog" aria-modal="true" aria-labelledby="incoming-transfer-title"><section className="transfer-card incoming-transfer"><span className="panel-kicker">CASH INVITATION</span><h2 id="incoming-transfer-title">現金邀請</h2><p><strong>{pendingTransfer.senderName}</strong> 想送給你 NT${formatMoney(pendingTransfer.amount)}，要接受這筆現金嗎？</p><small>接受後將立即處理；你也可以直接拒絕。</small><div className="transfer-response"><button type="button" className="decline" disabled={busy} onClick={() => void act("transfer_response", { requestId: pendingTransfer.id, kind: "decline" })}>拒絕</button><button type="button" disabled={busy} onClick={() => void act("transfer_response", { requestId: pendingTransfer.id, kind: "accept" })}>接受</button></div></section></div>}
       {enlargedPlayer && <div className="avatar-lightbox" role="dialog" aria-modal="true" aria-labelledby="avatar-lightbox-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setEnlargedPlayer(null); }}>
         <section><button className="auth-close" type="button" aria-label="關閉大頭貼" onClick={() => setEnlargedPlayer(null)}>×</button><div className={`enlarged-avatar ${enlargedPlayer.avatarUrl ? "has-photo" : ""}`}>{enlargedPlayer.avatarUrl ? <img src={`${API_ORIGIN}${enlargedPlayer.avatarUrl}`} alt={`${enlargedPlayer.displayName}的大頭貼`} /> : enlargedPlayer.displayName.slice(0, 1)}</div><h2 id="avatar-lightbox-title">{enlargedPlayer.displayName}</h2><p>現金 NT${formatMoney(enlargedPlayer.cash)} · 貸款 NT${formatMoney(enlargedPlayer.loanBalance)}</p></section>
       </div>}
