@@ -576,7 +576,7 @@ async function casinoAction(request: Request, env: Env) {
   await expireIdleBlackjackSeats(env.DB);
   let body: { action?: string; bet?: number; seatNo?: number };
   try { body = await request.json(); } catch { return json({ message: "牌桌資料格式錯誤。" }, 400); }
-  if (body.action !== "leave" && player.action_available_at > Date.now()) return json({ message: actionWaitMessage(player) }, 409);
+  // Work, sleep, and other timed activities continue in the background; casino play stays available during that wait.
   await revealReadyCasinoRound(env.DB);
   const now = Date.now(); const cutoff = now - 5 * 60 * 1000;
   await env.DB.prepare("UPDATE casino_hands SET status='expired', seat_no=NULL, reveal_at=0 WHERE status IN ('waiting','playing','stood') AND updated_at<?").bind(cutoff).run();
@@ -805,7 +805,7 @@ async function pokerAction(request: Request, env: Env) {
   await expireIdlePokerSeats(env.DB);
   let body: { action?: string; bet?: number; seatNo?: number; amount?: number };
   try { body = await request.json(); } catch { return json({ message: "牌桌資料格式錯誤。" }, 400); }
-  if (body.action !== "leave" && player.action_available_at > Date.now()) return json({ message: actionWaitMessage(player) }, 409);
+  // Work, sleep, and other timed activities continue in the background; casino play stays available during that wait.
   const now = Date.now(); let message = "德州撲克牌桌已更新。";
   if (body.action === "join") {
     const seatNo = Number(body.seatNo);

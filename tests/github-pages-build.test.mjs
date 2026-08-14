@@ -107,6 +107,11 @@ test("administrative actions are instant and gameplay waits stay shortened", asy
   assert.match(worker, /急診治療", price: Math\.floor\(2500 \* careDiscount\), minutes: 20/);
   assert.match(page, /換工作立即完成/);
   assert.match(page, /睡眠 8 小時" meta="現實等待 2 分鐘/);
+  assert.match(page, /!action\.startsWith\("casino_"\) && !action\.startsWith\("poker_"\)/);
+  assert.match(page, /期間可前往賭場遊玩/);
+  assert.match(page, /<CasinoTable state=\{casino\} signedIn=\{Boolean\(profile\)\} busy=\{busy\}/);
+  assert.match(page, /<PokerTable state=\{poker\} signedIn=\{Boolean\(profile\)\} busy=\{busy\}/);
+  assert.doesNotMatch(worker, /body\.action !== "leave" && player\.action_available_at > Date\.now\(\)/);
 });
 
 test("story, talents, city memory, events, and hidden mystery are wired", async () => {
