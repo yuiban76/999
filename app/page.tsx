@@ -653,7 +653,7 @@ export default function Home() {
           <span className="brand-mark">人</span>
           <span><strong>人生 ONLINE</strong><small>LIFE, ONE CHOICE AT A TIME.</small></span>
         </a>
-        <div className="world-time"><span>{playClock.day} · 玩家時間</span><strong>{playClock.time}</strong><span>每滿 24:00 結算 · 城市 {gameClock.time}</span></div>
+        <div className="world-time"><span>城市時間</span><strong>{gameClock.time}</strong><span>{playClock.day} · 玩家 {playClock.time} · 每滿 24:00 結算</span></div>
         <div className="account-area">
           <span className={`connection-dot ${profile ? "connected" : ""}`} />
           {profile ? (

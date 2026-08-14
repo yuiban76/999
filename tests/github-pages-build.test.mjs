@@ -35,6 +35,7 @@ test("personal finance time only advances during continuous online heartbeats", 
   assert.doesNotMatch(worker, /next\.elapsed_minutes = worldMinutes\(\)/);
   assert.match(page, /player\.rentedUntil - player\.elapsedMinutes/);
   assert.match(page, /每滿 24:00 結算/);
+  assert.match(page, /<span>城市時間<\/span><strong>\{gameClock\.time\}<\/strong><span>\{playClock\.day\} · 玩家 \{playClock\.time\}/);
   assert.match(page, /僅在線時計時/);
   assert.match(page, /在線時間每滿 24 小時結算/);
 });
