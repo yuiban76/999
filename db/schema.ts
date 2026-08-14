@@ -157,3 +157,21 @@ export const playerTransferRequests = sqliteTable("player_transfer_requests", {
   expiresAt: integer("expires_at").notNull(),
   resolvedAt: integer("resolved_at"),
 }, (table) => [index("idx_transfer_requests_recipient_status").on(table.recipientId, table.status, table.expiresAt)]);
+
+export const casinoBingoState = sqliteTable("casino_bingo_state", {
+  id: text("id").primaryKey(), roundNo: integer("round_no").notNull().default(1), status: text("status").notNull().default("lobby"),
+  drawnNumbers: text("drawn_numbers").notNull().default("[]"), nextDrawAt: integer("next_draw_at").notNull().default(0), updatedAt: integer("updated_at").notNull(),
+});
+
+export const casinoBingoEntries = sqliteTable("casino_bingo_entries", {
+  roundNo: integer("round_no").notNull(), userId: text("user_id").notNull(), playerName: text("player_name").notNull(), card: text("card").notNull(),
+}, (table) => [primaryKey({ columns: [table.roundNo, table.userId] }), index("idx_bingo_entries_round").on(table.roundNo)]);
+
+export const casinoTournamentState = sqliteTable("casino_tournament_state", {
+  id: text("id").primaryKey(), roundNo: integer("round_no").notNull().default(1), currentRound: integer("current_round").notNull().default(0), game: text("game").notNull().default("blackjack"), status: text("status").notNull().default("lobby"),
+  roundLimit: integer("round_limit").notNull().default(3), nextRoundAt: integer("next_round_at").notNull().default(0), latestResult: text("latest_result").notNull().default(""), updatedAt: integer("updated_at").notNull(),
+});
+
+export const casinoTournamentEntries = sqliteTable("casino_tournament_entries", {
+  tournamentNo: integer("tournament_no").notNull(), userId: text("user_id").notNull(), playerName: text("player_name").notNull(), score: integer("score").notNull().default(0), latestHand: text("latest_hand").notNull().default(""),
+}, (table) => [primaryKey({ columns: [table.tournamentNo, table.userId] }), index("idx_tournament_entries_round").on(table.tournamentNo)]);

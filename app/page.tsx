@@ -108,6 +108,9 @@ type PokerState = {
   hand: null | { cards: string[]; bet: number; streetBet?: number; seatNo: number | null; status: string; result: string; isTurn?: boolean };
 };
 
+type BingoState = { entryFee?: number; capacity?: number; status: string; roundNo?: number; drawn: number[]; nextDrawAt?: number; players: Array<{ id: string; displayName: string; card: number[]; isMine: boolean }> };
+type TournamentState = { entryFee?: number; capacity?: number; game?: string; status: string; tournamentNo?: number; currentRound?: number; roundLimit?: number; nextRoundAt?: number; latestResult?: string; players: Array<{ id: string; displayName: string; score: number; latestHand: string; isMine: boolean }> };
+
 type Bootstrap = {
   authenticated: boolean;
   profile: Profile | null;
@@ -117,6 +120,8 @@ type Bootstrap = {
   feed: FeedItem[];
   casino: CasinoState;
   poker: PokerState;
+  bingo?: BingoState;
+  tournament?: TournamentState;
   cityMemory?: CityMemory;
   transferRequests?: TransferRequest[];
 };
@@ -462,7 +467,9 @@ export default function Home() {
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [casino, setCasino] = useState<CasinoState>({ capacity: 5, activeCount: 0, seats: [], hand: null });
   const [poker, setPoker] = useState<PokerState>({ capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 });
-  const [casinoGame, setCasinoGame] = useState<"blackjack" | "poker">("blackjack");
+  const [bingo, setBingo] = useState<BingoState>({ status: "lobby", drawn: [], players: [] });
+  const [tournament, setTournament] = useState<TournamentState>({ status: "lobby", players: [] });
+  const [casinoGame, setCasinoGame] = useState<"blackjack" | "poker" | "bingo" | "tournament">("blackjack");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
@@ -520,6 +527,8 @@ export default function Home() {
       setFeed(data.feed);
       setCasino(data.casino);
       if (data.poker) setPoker(data.poker);
+      if (data.bingo) setBingo(data.bingo);
+      if (data.tournament) setTournament(data.tournament);
       if (data.cityMemory) setCityMemory(data.cityMemory);
       setTransferRequests(data.transferRequests ?? []);
       if (!quiet) {
@@ -555,10 +564,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!profile || ((!casino.phase || casino.phase === "idle") && (!poker.phase || poker.phase === "idle"))) return;
+    if (!profile || ((!casino.phase || casino.phase === "idle") && (!poker.phase || poker.phase === "idle") && bingo.status !== "drawing" && tournament.status !== "playing")) return;
     const timer = window.setInterval(() => { if (document.visibilityState === "visible") void loadWorld(true); }, 1_500);
     return () => window.clearInterval(timer);
-  }, [profile, casino.phase, poker.phase, loadWorld]);
+  }, [profile, casino.phase, poker.phase, bingo.status, tournament.status, loadWorld]);
 
   useEffect(() => {
     if (!enlargedPlayer) return;
@@ -569,7 +578,7 @@ export default function Home() {
 
   async function act(action: string, payload: Record<string, unknown> = {}) {
     if (busy) return;
-    if (actionLocked && !["move", "reset", "city_event"].includes(action) && !action.startsWith("casino_") && !action.startsWith("poker_")) {
+    if (actionLocked && !["move", "reset", "city_event"].includes(action) && !action.startsWith("casino_") && !action.startsWith("poker_") && !action.startsWith("bingo_") && !action.startsWith("tournament_")) {
       setNotice(`${player.actionLabel || "目前的行動"}尚未完成，請等待 ${actionSecondsLeft} 秒；期間可前往賭場遊玩。`);
       return;
     }
@@ -587,18 +596,20 @@ export default function Home() {
       return;
     }
     try {
-      const response = await fetch(`${API_ORIGIN}${action.startsWith("casino_") ? "/api/casino/action" : action.startsWith("poker_") ? "/api/poker/action" : "/api/game/action"}`, {
+      const response = await fetch(`${API_ORIGIN}${action.startsWith("casino_") ? "/api/casino/action" : action.startsWith("poker_") ? "/api/poker/action" : action.startsWith("bingo_") ? "/api/bingo/action" : action.startsWith("tournament_") ? "/api/tournament/action" : "/api/game/action"}`, {
         method: "POST",
         headers: apiHeaders(true),
-        body: JSON.stringify({ action: action.startsWith("casino_") ? action.slice(7) : action.startsWith("poker_") ? action.slice(6) : action, ...payload }),
+        body: JSON.stringify({ action: action.startsWith("casino_") ? action.slice(7) : action.startsWith("poker_") ? action.slice(6) : action.startsWith("bingo_") ? action.slice(6) : action.startsWith("tournament_") ? action.slice(11) : action, ...payload }),
       });
-      const data = await response.json() as { player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; cityMemory?: CityMemory; transferRequests?: TransferRequest[]; scratch?: { price: number; prize: number } | null; message?: string };
+      const data = await response.json() as { player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; bingo?: BingoState; tournament?: TournamentState; cityMemory?: CityMemory; transferRequests?: TransferRequest[]; scratch?: { price: number; prize: number } | null; message?: string };
       if (!response.ok || !data.player) throw new Error(data.message || "行動失敗");
       setPlayer(data.player);
       if (data.online) setOnline(data.online);
       if (data.feed) setFeed(data.feed);
       if (data.casino) setCasino(data.casino);
       if (data.poker) setPoker(data.poker);
+      if (data.bingo) setBingo(data.bingo);
+      if (data.tournament) setTournament(data.tournament);
       if (data.cityMemory) setCityMemory(data.cityMemory);
       if (data.transferRequests) setTransferRequests(data.transferRequests);
       if (data.scratch) setScratchResult(data.scratch);
@@ -743,7 +754,7 @@ export default function Home() {
               {player.location === "business" && <><ActionCard icon="職" title="找工作" meta="第一階工作免能力門檻 · 12 條產業路線 · 換工作立即完成" button="打開產業列表" onClick={() => setJobOpen(true)} featured disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="01" title="短班 1 小時" meta={`現實等待 30 秒 · 收入 NT$${formatMoney(career.hourlyPay)} · EXP +4`} button="開始工作" onClick={() => void act("work", { hours: 1 })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="04" title="標準班 4 小時" meta={`現實等待 2 分鐘 · 收入 NT$${formatMoney(career.hourlyPay * 4)} · EXP +16`} button="開始工作" onClick={() => void act("work", { hours: 4 })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="08" title="長班 8 小時" meta={`現實等待 4 分鐘 · 收入 NT$${formatMoney(career.hourlyPay * 8)} · EXP +32`} button="開始工作" onClick={() => void act("work", { hours: 8 })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /></>}
               {player.location === "shopping" && <><ActionCard icon="刮" title="幸運刮刮樂" meta="每張 NT$100 · 最高獎金 NT$50,000" button="購買並刮開" onClick={() => void act("scratch")} featured disabled={actionBusy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="飯" title="巷口飯糰" meta="NT$45 · 飽足 +20" button="買來吃" onClick={() => void act("eat", { kind: "rice" })} disabled={actionBusy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="餐" title="豐盛便當" meta="NT$100 · 飽足 +45 · 心情 +3" button="享用便當" onClick={() => void act("eat", { kind: "bento" })} disabled={actionBusy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /></>}
               {player.location === "hotel" && <><ActionCard icon="工" title="旅店臨時工 · 1 小時" meta="現實等待 45 秒 · 收入 NT$120 · 無職業經驗" button="開始打工" onClick={() => void act("hotel", { kind: "work" })} featured disabled={actionBusy} /><ActionCard icon="宿" title="旅店住宿一晚" meta="NT$1,200 · 現實等待 2 分鐘 · 體力全滿" button="辦理入住" onClick={() => void act("hotel", { kind: "stay" })} disabled={actionBusy || player.ownsHome || rentalDaysLeft > 0} disabledLabel={player.ownsHome || rentalDaysLeft > 0 ? "已有住所" : undefined} /><ActionCard icon="餐" title="24 小時旅店餐" meta="NT$250 · 飽足 +45 · 立即完成" button="購買旅店餐" onClick={() => void act("hotel", { kind: "meal" })} disabled={actionBusy} /><ActionCard icon="豪" title="24 小時豪華餐" meta="NT$500 · 飽足 +80 · 立即完成" button="購買豪華餐" onClick={() => void act("hotel", { kind: "luxury" })} disabled={actionBusy} /></>}
-                {player.location === "casino" && <div className="casino-games"><div className="casino-game-tabs"><button className={casinoGame === "blackjack" ? "active" : ""} onClick={() => setCasinoGame("blackjack")}>二十一點 · 真實牌靴</button><button className={casinoGame === "poker" ? "active" : ""} onClick={() => setCasinoGame("poker")}>德州撲克 · 完整下注</button></div>{casinoGame === "blackjack" ? <CasinoTable state={casino} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`casino_${action}`, payload)} /> : <PokerTable state={poker} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`poker_${action}`, payload)} />}</div>}
+                {player.location === "casino" && <div className="casino-games"><div className="casino-game-tabs"><button className={casinoGame === "blackjack" ? "active" : ""} onClick={() => setCasinoGame("blackjack")}>二十一點 · 真實牌靴</button><button className={casinoGame === "poker" ? "active" : ""} onClick={() => setCasinoGame("poker")}>德州撲克 · 完整下注</button><button className={casinoGame === "bingo" ? "active" : ""} onClick={() => setCasinoGame("bingo")}>賓果 · 公開開獎</button><button className={casinoGame === "tournament" ? "active" : ""} onClick={() => setCasinoGame("tournament")}>錦標賽 · 積分賽</button></div>{casinoGame === "blackjack" ? <CasinoTable state={casino} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`casino_${action}`, payload)} /> : casinoGame === "poker" ? <PokerTable state={poker} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`poker_${action}`, payload)} /> : casinoGame === "bingo" ? <BingoTable state={bingo} signedIn={Boolean(profile)} busy={busy} onJoin={() => void act("bingo_join")} /> : <TournamentTable state={tournament} signedIn={Boolean(profile)} busy={busy} onJoin={(game) => void act("tournament_join", { game })} />}</div>}
               {player.location === "school" && ACADEMIES.map((academy, index) => <ActionCard key={academy.id} icon={academy.icon} title={academy.name} meta={`NT$500 · 現實等待 1 分鐘 · ${formatRequirements(academy.gains)}`} button="報名上課" onClick={() => void act("study", { academy: academy.id })} featured={index === 0} disabled={actionBusy || !schoolOpen} disabledLabel={!schoolOpen ? "已關門" : undefined} />)}
               {player.location === "hospital" && <><ActionCard icon="急" title="24 小時急診" meta="NT$2,500 · 等待 20 秒 · 健康至少恢復至 70" button="前往急診" onClick={() => void act("hospital", { kind: "emergency" })} featured disabled={actionBusy} /><ActionCard icon="診" title="一般門診" meta="07:00～23:00 · NT$600 · 等待 15 秒 · 健康 +25" button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /><ActionCard icon="療" title="完整治療" meta="07:00～23:00 · NT$1,500 · 等待 30 秒 · 健康至少恢復至 80" button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /></>}
             </div>
@@ -845,6 +856,17 @@ function BankPanel({ player, busy, closed, onAction }: { player: Player; busy: b
     </div>
     <small>{closed ? "銀行目前已關門，營業時間為 07:00～23:00。" : player.loanBalance ? "貸款未清前不能再次借款。" : "單筆貸款上限 NT$50,000。"}</small>
   </section>;
+}
+
+function BingoTable({ state, signedIn, busy, onJoin }: { state: BingoState; signedIn: boolean; busy: boolean; onJoin: () => void }) {
+  const mine = state.players.find((player) => player.isMine);
+  return <section className="casino-table bingo-table"><header><div><span>COMMUNITY BINGO</span><h3>多人共同開獎</h3><p>2～5 人 · 每人 NT${formatMoney(state.entryFee ?? 100)} · 最先連線者平分獎池</p></div><strong>{state.status === "drawing" ? "開獎中" : state.status === "completed" ? "本輪結束" : "等待加入"}</strong></header><div className="bingo-draws"><span>已開出</span><div>{state.drawn.length ? state.drawn.map((number) => <b key={number}>{number}</b>) : <small>尚未開獎</small>}</div></div>{mine ? <div className="bingo-card">{mine.card.map((number) => <span className={state.drawn.includes(number) ? "marked" : ""} key={number}>{number}</span>)}</div> : <button className="casino-primary" disabled={busy || !signedIn || state.status === "drawing" || state.players.length >= 5} onClick={onJoin}>{signedIn ? "加入本輪賓果 · NT$100" : "登入後加入"}</button>}<div className="bingo-players">{state.players.map((player) => <p key={player.id}><strong>{player.displayName}{player.isMine ? "（你）" : ""}</strong><span>{player.card.filter((number) => state.drawn.includes(number)).length}/9 已標記</span></p>)}</div></section>;
+}
+
+function TournamentTable({ state, signedIn, busy, onJoin }: { state: TournamentState; signedIn: boolean; busy: boolean; onJoin: (game: "blackjack" | "poker") => void }) {
+  const joined = state.players.some((player) => player.isMine);
+  const gameName = state.game === "poker" ? "德州撲克" : "二十一點";
+  return <section className="casino-table tournament-table"><header><div><span>CASINO TOURNAMENT</span><h3>{state.status === "lobby" ? "積分錦標賽" : `${gameName}積分賽`}</h3><p>2～5 人 · 報名費 NT${formatMoney(state.entryFee ?? 500)} · 三局積分後按名次分配獎金</p></div><strong>{state.status === "playing" ? `第 ${Math.min((state.currentRound ?? 0) + 1, state.roundLimit ?? 3)} 局` : state.status === "completed" ? "賽事結束" : "報名中"}</strong></header>{state.status === "lobby" && !joined && <div className="tournament-join"><button disabled={busy || !signedIn} onClick={() => onJoin("blackjack")}>二十一點錦標賽 · NT$500</button><button disabled={busy || !signedIn} onClick={() => onJoin("poker")}>德州撲克錦標賽 · NT$500</button></div>}{state.latestResult && <p className="tournament-result">{state.latestResult}</p>}<ol className="tournament-rankings">{state.players.map((player, index) => <li key={player.id}><b>{index + 1}</b><span><strong>{player.displayName}{player.isMine ? "（你）" : ""}</strong><small>{player.latestHand || "等待開賽"}</small></span><em>{player.score} PTS</em></li>)}</ol>{state.status === "lobby" && joined && <p className="casino-message">已報名，等待至少一位玩家加入；玩法已鎖定為{gameName}。</p>}</section>;
 }
 
 function CasinoTable({ state, signedIn, busy, maxBet, onAction }: { state: CasinoState; signedIn: boolean; busy: boolean; maxBet: number; onAction: (action: string, payload?: Record<string, unknown>) => void }) {

@@ -92,6 +92,15 @@ test("multiplayer cash invitations support gifts and protected scam resolution",
   assert.match(schema, /playerTransferRequests = sqliteTable\("player_transfer_requests"/);
   assert.match(migration, /CREATE TABLE `player_transfer_requests`/);
   assert.match(migration, /idx_transfer_requests_recipient_status/);
+  assert.match(page, /賓果 · 公開開獎/);
+  assert.match(page, /錦標賽 · 積分賽/);
+  assert.match(page, /<BingoTable/);
+  assert.match(page, /<TournamentTable/);
+  assert.match(worker, /BINGO_ENTRY_FEE = 100/);
+  assert.match(worker, /TOURNAMENT_ENTRY_FEE = 500/);
+  assert.match(worker, /async function bingoAction/);
+  assert.match(worker, /async function tournamentAction/);
+  assert.match(worker, /bestPokerHand\(cards\)/);
 });
 
 test("administrative actions are instant and gameplay waits stay shortened", async () => {
