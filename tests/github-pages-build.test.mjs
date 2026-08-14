@@ -75,6 +75,7 @@ test("longer opening hours are consistent in rules, interface, and worker respon
 
 test("multiplayer cash invitations support gifts and protected scam resolution", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const css = await readFile(new URL("app/globals.css", root), "utf8");
   const worker = await readFile(new URL("worker/index.ts", root), "utf8");
   const schema = await readFile(new URL("db/schema.ts", root), "utf8");
   const migration = await readFile(new URL("drizzle/0016_eminent_naoko.sql", root), "utf8");
@@ -103,6 +104,13 @@ test("multiplayer cash invitations support gifts and protected scam resolution",
   assert.match(worker, /entry_fee INTEGER NOT NULL DEFAULT 500/);
   assert.match(worker, /async function bingoAction/);
   assert.match(worker, /async function tournamentAction/);
+  assert.match(worker, /\["join", "leave"\]/);
+  assert.match(worker, /JSON\.stringify\(randomBingoCard\(\)\)/);
+  assert.match(page, /離開房間並退還/);
+  assert.match(page, /五局積分錦標賽/);
+  assert.match(page, /建立下一輪賓果/);
+  assert.match(page, /建立下一場並設定報名費/);
+  assert.match(css, /\.social-casino-table/);
   assert.match(worker, /bestPokerHand\(cards\)/);
 });
 

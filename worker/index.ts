@@ -508,8 +508,23 @@ async function bingoAction(request: Request, env: Env) {
   const user = await identity(request, env.DB); if (!user || !env.DB) return json({ message: "請先登入才能參加賓果。" }, 401);
   await ensureSchemaOnce(env.DB); const player = await upsertPlayer(env.DB, user, true);
   if (!player || player.location !== "casino" || player.game_over) return json({ message: "請先前往賭場，並確認人生仍在進行。" }, 400);
-  const body = await request.json() as { action?: string; entryFee?: number }; if (body.action !== "join") return json({ message: "未知的賓果行動。" }, 400);
+  const body = await request.json() as { action?: string; entryFee?: number };
+  if (!body.action || !["join", "leave"].includes(body.action)) return json({ message: "未知的賓果行動。" }, 400);
   let state = await bingoState(env.DB, user.userId);
+  if (body.action === "leave") {
+    if (state.status !== "lobby") return json({ message: "賓果已經開始，現在不能離開座位。" }, 409);
+    if (!state.players.some((entry) => entry.id === user.userId)) return json({ message: "你不在這個賓果房間。" }, 409);
+    const leavingFee = state.entryFee;
+    await env.DB.batch([
+      env.DB.prepare("UPDATE players SET cash=cash+? WHERE user_id=? AND EXISTS (SELECT 1 FROM casino_bingo_state WHERE id='bingo-01' AND status='lobby') AND EXISTS (SELECT 1 FROM casino_bingo_entries WHERE round_no=? AND user_id=?)").bind(leavingFee, user.userId, state.roundNo, user.userId),
+      env.DB.prepare("DELETE FROM casino_bingo_entries WHERE round_no=? AND user_id=? AND EXISTS (SELECT 1 FROM casino_bingo_state WHERE id='bingo-01' AND status='lobby')").bind(state.roundNo, user.userId),
+      env.DB.prepare("UPDATE casino_bingo_state SET host_user_id=COALESCE((SELECT user_id FROM casino_bingo_entries WHERE round_no=? ORDER BY rowid LIMIT 1), ''), entry_fee=CASE WHEN EXISTS (SELECT 1 FROM casino_bingo_entries WHERE round_no=?) THEN entry_fee ELSE ? END, updated_at=? WHERE id='bingo-01' AND status='lobby'").bind(state.roundNo, state.roundNo, BINGO_ENTRY_FEE, Date.now()),
+    ]);
+    state = await bingoState(env.DB, user.userId);
+    if (state.players.some((entry) => entry.id === user.userId)) return json({ message: "賓果已經開始，無法離開座位。" }, 409);
+    const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>(); const progress = await ensureProgress(env.DB, saved!);
+    return json({ player: serializePlayer(saved!, progress), bingo: state, message: `已離開賓果房間，退還 NT$${leavingFee.toLocaleString()}。` });
+  }
   if (state.status === "completed") { await env.DB.prepare("UPDATE casino_bingo_state SET round_no=round_no+1, status='lobby', host_user_id='', entry_fee=?, drawn_numbers='[]', next_draw_at=0, updated_at=? WHERE id='bingo-01'").bind(BINGO_ENTRY_FEE, Date.now()).run(); state = await bingoState(env.DB, user.userId); }
   if (state.status !== "lobby") return json({ message: "本輪賓果已開始，請等待下一輪。" }, 409);
   if (state.players.some((entry) => entry.id === user.userId)) return json({ message: "你已加入本輪賓果。" }, 409);
@@ -522,10 +537,16 @@ async function bingoAction(request: Request, env: Env) {
     const claimed = await bingoState(env.DB, user.userId);
     if (claimed.hostUserId !== user.userId) return json({ message: "已有玩家先開房，請依目前報名費重新加入。" }, 409);
   }
-  await env.DB.batch([env.DB.prepare("UPDATE players SET cash=cash-? WHERE user_id=? AND cash>=?").bind(entryFee, user.userId, entryFee), env.DB.prepare("INSERT INTO casino_bingo_entries (round_no, user_id, player_name, card) VALUES (?, ?, ?, ?)").bind(state.roundNo, user.userId, user.displayName.slice(0, 40))]);
-  if (state.players.length + 1 >= 2) await env.DB.prepare("UPDATE casino_bingo_state SET status='drawing', next_draw_at=?, updated_at=? WHERE id='bingo-01'").bind(Date.now() + 2_000, Date.now()).run();
+  try {
+    await env.DB.batch([env.DB.prepare("UPDATE players SET cash=cash-? WHERE user_id=? AND cash>=?").bind(entryFee, user.userId, entryFee), env.DB.prepare("INSERT INTO casino_bingo_entries (round_no, user_id, player_name, card) VALUES (?, ?, ?, ?)").bind(state.roundNo, user.userId, user.displayName.slice(0, 40), JSON.stringify(randomBingoCard()))]);
+  } catch (error) {
+    if (hosting) await env.DB.prepare("UPDATE casino_bingo_state SET host_user_id=COALESCE((SELECT user_id FROM casino_bingo_entries WHERE round_no=? ORDER BY rowid LIMIT 1), ''), entry_fee=CASE WHEN EXISTS (SELECT 1 FROM casino_bingo_entries WHERE round_no=?) THEN entry_fee ELSE ? END WHERE id='bingo-01' AND host_user_id=?").bind(state.roundNo, state.roundNo, BINGO_ENTRY_FEE, user.userId).run();
+    throw error;
+  }
+  const joinedState = await bingoState(env.DB, user.userId);
+  if (joinedState.status === "lobby" && joinedState.players.length >= 2) await env.DB.prepare("UPDATE casino_bingo_state SET status='drawing', next_draw_at=?, updated_at=? WHERE id='bingo-01' AND status='lobby'").bind(Date.now() + 2_000, Date.now()).run();
   const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>(); const progress = await ensureProgress(env.DB, saved!);
-  return json({ player: serializePlayer(saved!, progress), bingo: await bingoState(env.DB, user.userId), message: state.players.length + 1 >= 2 ? "賓果開獎開始！每 2 秒公開一個號碼。" : "已加入賓果，等待另一位玩家加入。" });
+  return json({ player: serializePlayer(saved!, progress), bingo: await bingoState(env.DB, user.userId), message: joinedState.players.length >= 2 ? "賓果開獎開始！每 2 秒公開一個號碼。" : "已加入賓果，等待另一位玩家加入。" });
 }
 
 async function tournamentState(db: D1Database, userId: string) {
@@ -557,8 +578,24 @@ async function tournamentAction(request: Request, env: Env) {
   const user = await identity(request, env.DB); if (!user || !env.DB) return json({ message: "請先登入才能參加錦標賽。" }, 401);
   await ensureSchemaOnce(env.DB); const player = await upsertPlayer(env.DB, user, true);
   if (!player || player.location !== "casino" || player.game_over) return json({ message: "請先前往賭場，並確認人生仍在進行。" }, 400);
-  const body = await request.json() as { action?: string; game?: string; entryFee?: number }; if (body.action !== "join" || !["blackjack", "poker"].includes(body.game || "")) return json({ message: "請選擇二十一點或德州撲克錦標賽。" }, 400);
+  const body = await request.json() as { action?: string; game?: string; entryFee?: number };
+  if (!body.action || !["join", "leave"].includes(body.action)) return json({ message: "未知的錦標賽行動。" }, 400);
+  if (body.action === "join" && !["blackjack", "poker"].includes(body.game || "")) return json({ message: "請選擇二十一點或德州撲克錦標賽。" }, 400);
   let state = await tournamentState(env.DB, user.userId);
+  if (body.action === "leave") {
+    if (state.status !== "lobby") return json({ message: "錦標賽已經開始，現在不能離開座位。" }, 409);
+    if (!state.players.some((entry) => entry.id === user.userId)) return json({ message: "你不在這個錦標賽房間。" }, 409);
+    const leavingFee = state.entryFee;
+    await env.DB.batch([
+      env.DB.prepare("UPDATE players SET cash=cash+? WHERE user_id=? AND EXISTS (SELECT 1 FROM casino_tournament_state WHERE id='tournament-01' AND status='lobby') AND EXISTS (SELECT 1 FROM casino_tournament_entries WHERE tournament_no=? AND user_id=?)").bind(leavingFee, user.userId, state.tournamentNo, user.userId),
+      env.DB.prepare("DELETE FROM casino_tournament_entries WHERE tournament_no=? AND user_id=? AND EXISTS (SELECT 1 FROM casino_tournament_state WHERE id='tournament-01' AND status='lobby')").bind(state.tournamentNo, user.userId),
+      env.DB.prepare("UPDATE casino_tournament_state SET host_user_id=COALESCE((SELECT user_id FROM casino_tournament_entries WHERE tournament_no=? ORDER BY rowid LIMIT 1), ''), game=CASE WHEN EXISTS (SELECT 1 FROM casino_tournament_entries WHERE tournament_no=?) THEN game ELSE 'blackjack' END, entry_fee=CASE WHEN EXISTS (SELECT 1 FROM casino_tournament_entries WHERE tournament_no=?) THEN entry_fee ELSE ? END, updated_at=? WHERE id='tournament-01' AND status='lobby'").bind(state.tournamentNo, state.tournamentNo, state.tournamentNo, TOURNAMENT_ENTRY_FEE, Date.now()),
+    ]);
+    state = await tournamentState(env.DB, user.userId);
+    if (state.players.some((entry) => entry.id === user.userId)) return json({ message: "錦標賽已經開始，無法離開座位。" }, 409);
+    const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>(); const progress = await ensureProgress(env.DB, saved!);
+    return json({ player: serializePlayer(saved!, progress), tournament: state, message: `已離開錦標賽，退還 NT$${leavingFee.toLocaleString()}。` });
+  }
   if (state.status === "completed") { await env.DB.prepare("UPDATE casino_tournament_state SET round_no=round_no+1, current_round=0, game=?, status='lobby', host_user_id='', entry_fee=?, round_limit=?, next_round_at=0, latest_result='', updated_at=? WHERE id='tournament-01'").bind(body.game, TOURNAMENT_ENTRY_FEE, TOURNAMENT_ROUNDS, Date.now()).run(); state = await tournamentState(env.DB, user.userId); }
   if (state.status !== "lobby") return json({ message: "錦標賽已經開始，請等待下一場。" }, 409);
   if (state.hostUserId && state.game !== body.game) return json({ message: "目前大廳正在等待另一種錦標賽，請選擇相同玩法。" }, 409);
@@ -571,10 +608,16 @@ async function tournamentAction(request: Request, env: Env) {
     const claimed = await tournamentState(env.DB, user.userId);
     if (claimed.hostUserId !== user.userId) return json({ message: "已有玩家先開房，請依目前玩法與報名費重新加入。" }, 409);
   }
-  await env.DB.batch([env.DB.prepare("UPDATE players SET cash=cash-? WHERE user_id=? AND cash>=?").bind(entryFee, user.userId, entryFee), env.DB.prepare("INSERT INTO casino_tournament_entries (tournament_no, user_id, player_name) VALUES (?, ?, ?)").bind(state.tournamentNo, user.userId, user.displayName.slice(0, 40))]);
-  if (state.players.length + 1 >= 2) await env.DB.prepare("UPDATE casino_tournament_state SET status='playing', next_round_at=?, updated_at=? WHERE id='tournament-01'").bind(Date.now() + 5_000, Date.now()).run();
+  try {
+    await env.DB.batch([env.DB.prepare("UPDATE players SET cash=cash-? WHERE user_id=? AND cash>=?").bind(entryFee, user.userId, entryFee), env.DB.prepare("INSERT INTO casino_tournament_entries (tournament_no, user_id, player_name) VALUES (?, ?, ?)").bind(state.tournamentNo, user.userId, user.displayName.slice(0, 40))]);
+  } catch (error) {
+    if (hosting) await env.DB.prepare("UPDATE casino_tournament_state SET host_user_id=COALESCE((SELECT user_id FROM casino_tournament_entries WHERE tournament_no=? ORDER BY rowid LIMIT 1), ''), game=CASE WHEN EXISTS (SELECT 1 FROM casino_tournament_entries WHERE tournament_no=?) THEN game ELSE 'blackjack' END, entry_fee=CASE WHEN EXISTS (SELECT 1 FROM casino_tournament_entries WHERE tournament_no=?) THEN entry_fee ELSE ? END WHERE id='tournament-01' AND host_user_id=?").bind(state.tournamentNo, state.tournamentNo, state.tournamentNo, TOURNAMENT_ENTRY_FEE, user.userId).run();
+    throw error;
+  }
+  const joinedState = await tournamentState(env.DB, user.userId);
+  if (joinedState.status === "lobby" && joinedState.players.length >= 2) await env.DB.prepare("UPDATE casino_tournament_state SET status='playing', next_round_at=?, updated_at=? WHERE id='tournament-01' AND status='lobby'").bind(Date.now() + 5_000, Date.now()).run();
   const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>(); const progress = await ensureProgress(env.DB, saved!);
-  return json({ player: serializePlayer(saved!, progress), tournament: await tournamentState(env.DB, user.userId), message: state.players.length + 1 >= 2 ? "錦標賽開始，五局積分後依名次分配獎金。" : "報名完成，等待至少一位玩家加入。" });
+  return json({ player: serializePlayer(saved!, progress), tournament: await tournamentState(env.DB, user.userId), message: joinedState.players.length >= 2 ? "錦標賽開始，五局積分後依名次分配獎金。" : "報名完成，等待至少一位玩家加入。" });
 }
 
 const ACTIVE_CASINO_STATUSES = "('seated','waiting','playing','stood','settling')";

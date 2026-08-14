@@ -903,24 +903,65 @@ body {
 .casino-seats button,
 .custom-bet > div,
 .table-leave { border-radius: 999px; }
-.bingo-draws { display: grid; gap: 9px; margin: 18px 0; color: #6e6e73; font-size: 11px; }
+.social-casino-table { background: #fff; color: #1d1d1f; box-shadow: 0 18px 50px rgba(12, 27, 51, .16); }
+.social-casino-table > header { padding: 22px 24px; border: 0; background: radial-gradient(circle at 85% 0, rgba(92, 164, 255, .3), transparent 38%), linear-gradient(135deg, #101828, #173a69); }
+.social-casino-table > header h3 { margin: 5px 0 4px; color: #fff; font: 700 22px -apple-system, BlinkMacSystemFont, "PingFang TC", sans-serif; letter-spacing: -.03em; }
+.social-casino-table > header p { margin: 0; color: rgba(255,255,255,.66); font-size: 11px; }
+.social-casino-table > header .room-status { padding: 7px 11px; border-radius: 999px; background: rgba(255,255,255,.13); color: #fff; }
+.social-casino-table > header .room-status.lobby::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #34c759; box-shadow: 0 0 0 4px rgba(52,199,89,.16); }
+.casino-room-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; border-bottom: 1px solid #e8e8ed; background: #e8e8ed; }
+.casino-room-meta > div { display: grid; gap: 5px; padding: 16px 20px; background: #fff; }
+.casino-room-meta small { color: #86868b; font-size: 9px; font-weight: 700; }
+.casino-room-meta strong { font-size: 15px; letter-spacing: -.02em; }
+.room-entry-panel, .joined-room-panel { margin: 18px; padding: 18px; border: 1px solid #dedee3; border-radius: 16px; background: #f7f7f9; }
+.room-entry-panel { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 16px; }
+.room-entry-panel.tournament-entry-panel { grid-template-columns: minmax(190px, .75fr) minmax(0, 1.25fr); }
+.room-fee-field { display: grid; gap: 7px; color: #515154; font-size: 10px; font-weight: 800; }
+.room-fee-field > div { display: flex; align-items: center; max-width: 260px; overflow: hidden; border: 1px solid #c7c7cc; border-radius: 12px; background: #fff; }
+.room-fee-field > div:focus-within { border-color: #0071e3; box-shadow: 0 0 0 3px rgba(0,113,227,.12); }
+.room-fee-field b { padding-left: 12px; color: #86868b; font-size: 12px; }
+.room-fee-field input { width: 100%; min-height: 44px; padding: 0 12px 0 6px; border: 0; outline: 0; background: transparent; color: #1d1d1f; font: 750 18px -apple-system, BlinkMacSystemFont, sans-serif; }
+.room-fee-field small, .room-ready-copy small, .joined-room-copy small { color: #86868b; font-size: 10px; font-weight: 500; line-height: 1.45; }
+.room-ready-copy, .joined-room-copy { display: grid; gap: 5px; }
+.room-ready-copy span, .joined-room-copy span { color: #0071e3; font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.room-ready-copy strong, .joined-room-copy strong { font-size: 16px; letter-spacing: -.02em; }
+.casino-primary { min-height: 44px; padding: 0 20px; border: 0; border-radius: 999px; background: #0071e3; color: #fff; font-weight: 800; white-space: nowrap; }
+.casino-primary:hover:not(:disabled) { background: #0077ed; transform: translateY(-1px); }
+.casino-primary:disabled, .tournament-game-options button:disabled { background: #d2d2d7; color: #86868b; cursor: not-allowed; }
+.joined-room-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 250px); align-items: center; gap: 20px; }
+.joined-room-panel.compact { grid-template-columns: minmax(0, 1fr) auto; }
+.joined-room-panel:not(.compact) .room-leave-button { grid-column: 1 / -1; justify-self: center; }
+.room-leave-button { min-height: 40px; padding: 0 15px; border: 1px solid #d2d2d7; border-radius: 999px; background: #fff; color: #515154; font-weight: 750; }
+.room-leave-button:hover:not(:disabled) { border-color: #ffb1ac; background: #fff4f3; color: #c9342c; }
+.bingo-draws { display: grid; gap: 10px; margin: 18px; padding: 14px 16px; border-radius: 14px; background: #f5f9ff; color: #6e6e73; font-size: 11px; }
 .bingo-draws > div { display: flex; flex-wrap: wrap; gap: 7px; }
-.bingo-draws b { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; background: #eef6ff; color: #0071e3; }
-.bingo-card { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; max-width: 250px; margin: 18px auto; }
-.bingo-card span { display: grid; aspect-ratio: 1; place-items: center; border: 1px solid #d2d2d7; border-radius: 11px; background: #fff; font-weight: 800; }
-.bingo-card span.marked { border-color: #0071e3; background: #0071e3; color: #fff; }
-.casino-primary, .tournament-join button { min-height: 42px; padding: 0 16px; border: 0; border-radius: 999px; background: #0071e3; color: #fff; font-weight: 800; }
-.bingo-players { display: grid; gap: 8px; margin-top: 20px; }
-.bingo-players p, .tournament-rankings li { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0; padding: 10px 12px; border-radius: 12px; background: #f5f5f7; font-size: 11px; }
-.bingo-players span { color: #6e6e73; }
-.tournament-join { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 20px 0; }
-.tournament-result { margin: 17px 0; padding: 11px; border-radius: 12px; background: #edf6ff; color: #0066cc; font-size: 12px; }
-.tournament-rankings { display: grid; gap: 8px; margin: 18px 0 0; padding: 0; list-style: none; }
-.tournament-rankings li { justify-content: flex-start; }
-.tournament-rankings li > b { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: #e8e8ed; }
-.tournament-rankings li span { display: grid; flex: 1; gap: 3px; }
-.tournament-rankings small { color: #6e6e73; }
-.tournament-rankings em { color: #0071e3; font-style: normal; font-weight: 800; }
+.bingo-draws b { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 50%; background: #fff; color: #0071e3; box-shadow: 0 2px 8px rgba(0,113,227,.12); }
+.bingo-card { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 100%; max-width: 230px; margin: 0 auto; }
+.bingo-card span { display: grid; aspect-ratio: 1; place-items: center; border: 1px solid #d2d2d7; border-radius: 13px; background: #fff; font-size: 15px; font-weight: 800; box-shadow: 0 2px 8px rgba(0,0,0,.04); }
+.bingo-card span.marked { border-color: #0071e3; background: linear-gradient(145deg, #1688f8, #0066cc); color: #fff; box-shadow: 0 5px 14px rgba(0,113,227,.25); }
+.casino-player-list { margin: 0 18px 18px; overflow: hidden; border: 1px solid #e1e1e5; border-radius: 15px; }
+.casino-player-list > header { display: flex; justify-content: space-between; padding: 11px 13px; background: #f5f5f7; color: #515154; font-size: 10px; }
+.casino-player-list > header span { color: #86868b; }
+.casino-player-list > div { display: flex; align-items: center; gap: 11px; padding: 11px 13px; border-top: 1px solid #eeeeF0; }
+.casino-player-list > div > b { display: grid; flex: 0 0 27px; height: 27px; place-items: center; border-radius: 50%; background: #eaf4ff; color: #0071e3; font-size: 10px; }
+.casino-player-list > div > span { display: grid; flex: 1; gap: 3px; min-width: 0; }
+.casino-player-list > div > span strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.casino-player-list > div small { color: #86868b; font-size: 9px; }
+.casino-player-list > div em { color: #0071e3; font-size: 10px; font-style: normal; font-weight: 800; }
+.casino-player-list > p { margin: 0; padding: 22px; color: #86868b; text-align: center; font-size: 11px; }
+.prize-split { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin: 16px 18px 0; color: #6e6e73; font-size: 9px; }
+.prize-split > span { font-weight: 800; }
+.prize-split b { padding: 5px 8px; border-radius: 999px; background: #fff5d9; color: #8a6200; }
+.prize-split small { margin-left: auto; }
+.tournament-game-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.tournament-game-options button { display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 10px 12px; border: 1px solid #d5d5da; border-radius: 14px; background: #fff; color: #1d1d1f; text-align: left; }
+.tournament-game-options button:hover:not(:disabled) { border-color: #78b9f6; background: #f2f8ff; }
+.tournament-game-options button > b { display: grid; flex: 0 0 34px; height: 34px; place-items: center; border-radius: 10px; background: #eaf4ff; color: #0071e3; font-size: 14px; }
+.tournament-game-options button span { display: grid; gap: 3px; }
+.tournament-game-options button small { color: #86868b; font-size: 8px; line-height: 1.35; }
+.tournament-game-options .join-existing-room { grid-column: 1 / -1; border-color: #8fc4f7; }
+.tournament-result { margin: 16px 18px; padding: 12px 14px; border-radius: 12px; background: #edf6ff; color: #0066cc; font-size: 11px; }
+.tournament-rankings { display: block; }
 
 button:focus-visible,
 a:focus-visible,
@@ -1029,6 +1070,23 @@ input:focus-visible { outline: 3px solid rgba(0, 113, 227, .38); outline-offset:
   .shared-player-hands { min-width: 0; max-width: 100%; }
   .casino-table > header { flex-wrap: wrap; }
   .casino-table > header > strong { white-space: normal; }
+  .social-casino-table > header { padding: 19px 17px; }
+  .social-casino-table > header h3 { font-size: 20px; }
+  .casino-room-meta > div { padding: 13px 11px; }
+  .casino-room-meta strong { font-size: 13px; }
+  .room-entry-panel,
+  .room-entry-panel.tournament-entry-panel,
+  .joined-room-panel,
+  .joined-room-panel.compact { grid-template-columns: 1fr; margin: 14px; padding: 15px; }
+  .room-fee-field > div { max-width: none; }
+  .casino-primary,
+  .room-leave-button { width: 100%; min-height: 46px; }
+  .bingo-card { max-width: 210px; }
+  .casino-player-list { margin: 0 14px 14px; }
+  .prize-split { margin-inline: 14px; }
+  .prize-split small { width: 100%; margin-left: 0; }
+  .tournament-game-options { grid-template-columns: 1fr; }
+  .tournament-game-options .join-existing-room { grid-column: auto; }
   .casino-seats {
     width: 100%;
     grid-template-columns: repeat(5, minmax(80px, 1fr));
