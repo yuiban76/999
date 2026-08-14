@@ -56,6 +56,23 @@ test("idle clients do not create unnecessary Cloudflare reads and writes", async
   assert.match(page, /setInterval\(refreshWhileActive, 10_000\)/);
 });
 
+test("longer opening hours are consistent in rules, interface, and worker responses", async () => {
+  const world = await readFile(new URL("shared/world.ts", root), "utf8");
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+  const source = [world, page, worker].join("\n");
+
+  assert.match(world, /realtor: \{ open: 7 \* 60, close: 23 \* 60, label: "07:00～23:00" \}/);
+  assert.match(world, /bank: \{ open: 7 \* 60, close: 23 \* 60, label: "07:00～23:00" \}/);
+  assert.match(world, /business: \{ open: 6 \* 60, close: 24 \* 60, label: "06:00～24:00" \}/);
+  assert.match(world, /shopping: \{ open: 6 \* 60, close: 24 \* 60, label: "06:00～24:00" \}/);
+  assert.match(world, /school: \{ open: 7 \* 60, close: 23 \* 60, label: "07:00～23:00" \}/);
+  assert.match(world, /return current >= 7 \* 60 && current < 23 \* 60/);
+  assert.match(page, /meta="07:00～23:00 · NT\$600/);
+  assert.match(worker, /一般門診與完整治療時間為 07:00～23:00/);
+  assert.doesNotMatch(source, /09:00～18:00|09:00～17:00|08:00～18:00|10:00～22:00|08:00～21:00|08:00～20:00/);
+});
+
 test("administrative actions are instant and gameplay waits stay shortened", async () => {
   const worker = await readFile(new URL("worker/index.ts", root), "utf8");
   const page = await readFile(new URL("app/page.tsx", root), "utf8");

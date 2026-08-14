@@ -2,11 +2,11 @@ export const WORLD_EPOCH_MS = 1_786_533_617_376;
 export const WORLD_START_MINUTES = 2_858;
 
 export const OPENING_HOURS: Partial<Record<string, { open: number; close: number; label: string }>> = {
-  realtor: { open: 9 * 60, close: 18 * 60, label: "09:00～18:00" },
-  bank: { open: 9 * 60, close: 17 * 60, label: "09:00～17:00" },
-  business: { open: 8 * 60, close: 18 * 60, label: "08:00～18:00" },
-  shopping: { open: 10 * 60, close: 22 * 60, label: "10:00～22:00" },
-  school: { open: 8 * 60, close: 21 * 60, label: "08:00～21:00" },
+  realtor: { open: 7 * 60, close: 23 * 60, label: "07:00～23:00" },
+  bank: { open: 7 * 60, close: 23 * 60, label: "07:00～23:00" },
+  business: { open: 6 * 60, close: 24 * 60, label: "06:00～24:00" },
+  shopping: { open: 6 * 60, close: 24 * 60, label: "06:00～24:00" },
+  school: { open: 7 * 60, close: 23 * 60, label: "07:00～23:00" },
 };
 
 export const worldMinutes = (now = Date.now()) => WORLD_START_MINUTES + Math.max(0, Math.floor((now - WORLD_EPOCH_MS) / 1_000));
@@ -21,5 +21,5 @@ export function isLocationOpen(location: string, minutes = worldMinutes()) {
 
 export function isHospitalRegularOpen(minutes = worldMinutes()) {
   const current = minuteOfDay(minutes);
-  return current >= 8 * 60 && current < 20 * 60;
+  return current >= 7 * 60 && current < 23 * 60;
 }

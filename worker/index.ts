@@ -1160,7 +1160,7 @@ async function takeAction(request: Request, env: Env) {
       title = "好好睡了一覺"; message = "體力完全恢復，健康 +5、心情 +10。"; break;
     case "hospital": {
       if (next.location !== "hospital") return json({ message: "請先前往市立醫院。" }, 400);
-      if (body.kind !== "emergency" && !isHospitalRegularOpen(sharedMinutes)) return json({ message: "一般門診與完整治療時間為 08:00～20:00；急診 24 小時開放。" }, 400);
+      if (body.kind !== "emergency" && !isHospitalRegularOpen(sharedMinutes)) return json({ message: "一般門診與完整治療時間為 07:00～23:00；急診 24 小時開放。" }, 400);
       const careDiscount = memoryBefore.state.name === "健康警報" ? .8 : 1;
       const energyMax = talents.has("strong_body") ? 120 : 100;
       const care = body.kind === "clinic"
