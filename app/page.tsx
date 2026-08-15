@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ABILITY_LABELS, ACADEMIES, careerForCategory, careerRequirements, careerThresholdForCategory, categoryInfo, JOB_CATEGORIES, jobInfo, meetsCareerRequirements, nextCareerForCategory, type Abilities } from "../shared/jobs";
 import { CITY_EVENTS, STORY_CHAPTERS, TALENTS } from "../shared/progression";
 import { isHospitalRegularOpen, isLocationOpen, worldMinutes } from "../shared/world";
+import { CAREER_PREVIEW_ROUTES } from "../shared/careerPreview";
 
 type LocationId = "home" | "realtor" | "bank" | "business" | "shopping" | "hotel" | "casino" | "school" | "hospital";
 type StatKey = "energy" | "health" | "hunger";
@@ -475,6 +476,40 @@ function guestAction(current: Player, action: string, payload: Record<string, un
 }
 
 export default function Home() {
+  const [previewMode] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("preview") === "careers");
+  return previewMode ? <CareerPreviewPage /> : <GameHome />;
+}
+
+function CareerPreviewPage() {
+  const [selectedId, setSelectedId] = useState(CAREER_PREVIEW_ROUTES[0].id);
+  const selected = CAREER_PREVIEW_ROUTES.find((route) => route.id === selectedId) ?? CAREER_PREVIEW_ROUTES[0];
+  return <main className="career-preview-shell">
+    <header className="career-preview-topbar">
+      <a href="./" aria-label="返回人生 Online">人生 ONLINE <small>LIFE, ONE CHOICE AT A TIME.</small></a>
+      <span>CAREER SYSTEM · TEST BUILD</span>
+    </header>
+    <section className="career-preview-hero">
+      <div><span className="career-preview-kicker">PROTOTYPE / READ ONLY</span><h1>四條新職業路線</h1><p>先看升遷、能力與玩法方向。這一頁只展示設計，不會改變正式遊戲的職業、金錢或存檔。</p><div className="career-preview-note"><strong>測試版</strong><span>數值與解鎖條件仍可依你的意見調整</span></div></div>
+      <div className="career-preview-count"><strong>04</strong><span>試作路線</span><small>每條路線 4 個階級</small></div>
+    </section>
+    <section className="career-preview-layout">
+      <nav className="career-preview-route-list" aria-label="測試職業路線">
+        <span className="career-preview-section-label">SELECT A PATH</span>
+        {CAREER_PREVIEW_ROUTES.map((route) => <button type="button" className={selected.id === route.id ? "active" : ""} key={route.id} onClick={() => setSelectedId(route.id)}><b>{route.icon}</b><span><strong>{route.name}</strong><small>{route.subtitle}</small></span><i>→</i></button>)}
+      </nav>
+      <section className="career-preview-detail" aria-live="polite">
+        <header><div className="career-preview-detail-title"><span>{selected.icon}</span><div><span className="career-preview-kicker">CAREER PATH / 0{CAREER_PREVIEW_ROUTES.indexOf(selected) + 1}</span><h2>{selected.name}</h2><p>{selected.summary}</p></div></div><div className="career-preview-abilities"><span>核心能力</span>{selected.abilities.map((ability) => <b key={ability}>{ABILITY_LABELS[ability]}</b>)}</div></header>
+        <div className="career-preview-main">
+          <section><div className="career-preview-section-heading"><span>RANK LADDER</span><small>升遷路線</small></div><div className="career-preview-ranks">{selected.ranks.map((rank, index) => <article key={rank.title} className={index === 0 ? "entry" : ""}><span>0{index + 1}</span><div><strong>{rank.title}</strong><small>{rank.requirements}</small><p>{rank.unlock}</p></div><em>{rank.income}</em></article>)}</div></section>
+          <aside className="career-preview-side"><div className="career-preview-section-heading"><span>CORE LOOP</span><small>核心行動</small></div><ul>{selected.actions.map((action) => <li key={action}>{action}</li>)}</ul><div className="career-preview-balance"><span>平衡原則</span><p>{selected.balance}</p></div></aside>
+        </div>
+      </section>
+    </section>
+    <footer className="career-preview-footer"><span>職業系統測試版 · 尚未寫入正式遊戲</span><a href="./">返回正式遊戲</a></footer>
+  </main>;
+}
+
+function GameHome() {
   const [player, setPlayer] = useState<Player>(INITIAL_PLAYER);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [online, setOnline] = useState<OnlinePlayer[]>([]);
