@@ -1383,7 +1383,7 @@ async function takeAction(request: Request, env: Env) {
   try { body = await request.json(); } catch { return json({ message: "行動資料格式錯誤。" }, 400); }
   if (current.game_over && body.action !== "reset") return json({ message: "這段人生已經結束，請重新開始。" }, 409);
   if (current.main_story === "unselected" && body.action !== "choose_story") return json({ message: "請先選擇人生主線。" }, 409);
-  if (!["move", "choose_story", "reset", "city_event", "transfer_request", "transfer_response"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
+  if (!["move", "choose_story", "reset", "city_event", "bank", "transfer_request", "transfer_response"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
   const next = { ...current };
   const sharedMinutes = worldMinutes();
   const memoryBefore = await cityMemory(env.DB);

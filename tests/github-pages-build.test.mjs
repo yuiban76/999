@@ -150,8 +150,10 @@ test("administrative actions are instant and gameplay waits stay shortened", asy
   assert.match(page, /睡眠 8 小時" meta="現實等待 2 分鐘/);
   assert.match(page, /旅店臨時工 · 30 秒/);
   assert.match(page, /不扣體力、飽足、健康/);
-  assert.match(page, /!action\.startsWith\("casino_"\) && !action\.startsWith\("poker_"\)/);
-  assert.match(page, /期間可前往賭場遊玩/);
+  assert.match(page, /const canActDuringWait = \["move", "reset", "city_event", "bank", "transfer_request", "transfer_response"\]/);
+  assert.match(worker, /\["move", "choose_story", "reset", "city_event", "bank", "transfer_request", "transfer_response"\]/);
+  assert.match(page, /期間可移動、使用銀行、處理贈送／詐騙邀請，或前往賭場遊玩/);
+  assert.match(page, /BankPanel player=\{player\} busy=\{busy \|\| !bankOpen\}/);
   assert.match(page, /<CasinoTable state=\{casino\} signedIn=\{Boolean\(profile\)\} busy=\{busy\}/);
   assert.match(page, /<PokerTable state=\{poker\} signedIn=\{Boolean\(profile\)\} busy=\{busy\}/);
   assert.doesNotMatch(worker, /body\.action !== "leave" && player\.action_available_at > Date\.now\(\)/);
