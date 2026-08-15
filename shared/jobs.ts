@@ -1,5 +1,5 @@
 export const JOB_CATEGORIES = [
-  { id: "office", label: "一般職場", jobs: ["行政人員", "業務", "客服", "會計", "人資", "專案經理", "公務員"] },
+  { id: "office", label: "一般職場", jobs: ["行政助理", "行政專員", "資深行政專員", "行政主管"] },
   { id: "medical", label: "醫療照護", jobs: ["醫師", "護理師", "藥師", "心理師", "獸醫", "長照人員"] },
   { id: "finance", label: "商業金融", jobs: ["銀行員", "投資人", "保險顧問", "房仲", "企業家", "創投合夥人"] },
   { id: "creative", label: "創意娛樂", jobs: ["作家", "畫家", "設計師", "演員", "歌手", "導演", "實況主", "網紅"] },
@@ -43,6 +43,18 @@ const CAREER_ABILITY_PROFILE: Record<string, readonly [AbilityKey, AbilityKey]> 
 const PRIMARY_REQUIREMENTS = [10, 40, 80, 140, 220, 320, 440, 580] as const;
 const SECONDARY_REQUIREMENTS = [5, 20, 40, 70, 110, 160, 220, 300] as const;
 export const ALL_JOBS = JOB_CATEGORIES.flatMap((category) => category.jobs.map((job) => ({ job, categoryId: category.id, categoryLabel: category.label })));
+
+export const CAREER_WORK_SPECIALS = {
+  "行政助理": { name: "超長班", hours: 10, minutes: 5 },
+  "行政專員": { name: "爆肝", hours: 11, minutes: 5 },
+  "資深行政專員": { name: "摸魚", hours: 8, minutes: 3 },
+  "行政主管": { name: "準時下班", hours: 8, minutes: 2 },
+} as const;
+
+export function careerWorkSpecialFor(job: string, hours?: number) {
+  const special = CAREER_WORK_SPECIALS[job as keyof typeof CAREER_WORK_SPECIALS];
+  return special && (hours === undefined || special.hours === hours) ? special : null;
+}
 
 export function categoryInfo(categoryId: string) {
   return JOB_CATEGORIES.find((category) => category.id === categoryId) ?? null;

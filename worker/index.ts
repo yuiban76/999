@@ -1,4 +1,4 @@
-import { ABILITY_LABELS, ACADEMIES, careerForCategory, careerRequirements, categoryInfo, jobInfo, meetsCareerRequirements, type Abilities } from "../shared/jobs";
+import { ABILITY_LABELS, ACADEMIES, careerForCategory, careerRequirements, careerWorkSpecialFor, categoryInfo, jobInfo, meetsCareerRequirements, type Abilities } from "../shared/jobs";
 import { CITY_EVENTS, STORY_CHAPTERS, storyChapterForDebt, talentInfo } from "../shared/progression";
 import { isHospitalRegularOpen, isLocationOpen, minuteOfDay, OPENING_HOURS, worldMinutes } from "../shared/world";
 
@@ -1611,7 +1611,8 @@ async function takeAction(request: Request, env: Env) {
       if (next.illness) return json({ message: `目前罹患${next.illness}，請先前往醫院治療。` }, 400);
       if (next.job_category === "unfixed") return json({ message: `目前是${next.current_job === "流浪者" ? "流浪者" : "待業者"}，請先選擇一條產業路線。` }, 400);
       const hours = Number(body.hours);
-      if (![1, 4, 8].includes(hours)) return json({ message: "工時選擇不正確。" }, 400);
+      const workSpecial = careerWorkSpecialFor(next.current_job, hours);
+      if (![1, 4, 8].includes(hours) && !workSpecial) return json({ message: "工時選擇不正確。" }, 400);
       if (next.energy < hours * 5) return json({ message: "體力不足，先回家休息吧。" }, 400);
       const previousCareer = careerForCategory(next.job_category, next.job_exp, next.current_job, abilitiesFor(next));
       const incomeMultiplier = 1 + (talents.has("workaholic_1") ? .05 : 0) + (talents.has("workaholic_2") ? .05 : 0) + (memoryBefore.state.name === "就業熱潮" ? .05 : 0);
@@ -1619,12 +1620,13 @@ async function takeAction(request: Request, env: Env) {
       const energyCost = Math.ceil(hours * 5 * (talents.has("endurance") ? .85 : 1));
       const jobGain = Math.ceil(hours * 4 * (talents.has("skilled") ? 1.15 : 1));
       next.cash += income; next.energy = Math.max(0, next.energy - energyCost); next.health = clamp(next.health - Math.ceil(hours / 2)); next.mood = clamp(next.mood - Math.ceil(hours * .9)); next.hunger = clamp(next.hunger - hours * 2); next.job_exp += jobGain; minutes = hours === 1 ? 30 : hours === 4 ? 120 : 240;
+      if (workSpecial) minutes = workSpecial.minutes;
       if (talents.has("workaholic_2")) minutes = Math.ceil(minutes * .9);
       const newCareer = careerForCategory(next.job_category, next.job_exp, next.current_job, abilitiesFor(next));
       next.current_job = newCareer.title;
       if (newCareer.title !== previousCareer.title) talentExpGain += 10;
-      title = newCareer.title !== previousCareer.title ? `升遷為${newCareer.title}` : `工作 ${hours} 小時`;
-      message = `以${previousCareer.title}完成工作，收入 +NT$${income}，職業經驗 +${jobGain}。${newCareer.title !== previousCareer.title ? ` 恭喜升遷為${newCareer.title}！` : ""}`; break;
+      title = newCareer.title !== previousCareer.title ? `升遷為${newCareer.title}` : workSpecial ? `${workSpecial.name} ${hours} 小時` : `工作 ${hours} 小時`;
+      message = `以${previousCareer.title}完成${workSpecial ? `「${workSpecial.name}」` : "工作"}，收入 +NT$${income}，職業經驗 +${jobGain}。${newCareer.title !== previousCareer.title ? ` 恭喜升遷為${newCareer.title}！` : ""}`; break;
     }
     case "study": {
       if (next.location !== "school") return json({ message: "請先前往未來學院。" }, 400);

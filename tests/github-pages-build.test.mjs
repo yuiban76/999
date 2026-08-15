@@ -159,6 +159,21 @@ test("administrative actions are instant and gameplay waits stay shortened", asy
   assert.doesNotMatch(worker, /body\.action !== "leave" && player\.action_available_at > Date\.now\(\)/);
 });
 
+test("general office career has four ranks and role-specific work specials", async () => {
+  const jobs = await readFile(new URL("shared/jobs.ts", root), "utf8");
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+
+  assert.match(jobs, /jobs: \["行政助理", "行政專員", "資深行政專員", "行政主管"\]/);
+  assert.match(jobs, /行政助理.*超長班/s);
+  assert.match(jobs, /行政專員.*爆肝/s);
+  assert.match(jobs, /資深行政專員.*摸魚/s);
+  assert.match(jobs, /行政主管.*準時下班/s);
+  assert.match(worker, /careerWorkSpecialFor\(next\.current_job, hours\)/);
+  assert.match(page, /title=\{longWorkTitle\}/);
+  assert.match(page, /workSpecial && workSpecial\.hours !== 8/);
+});
+
 test("story, talents, city memory, events, and hidden mystery are wired", async () => {
   const worker = await readFile(new URL("worker/index.ts", root), "utf8");
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
