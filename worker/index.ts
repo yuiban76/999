@@ -1301,7 +1301,7 @@ async function takeAction(request: Request, env: Env) {
       const target = body.location as LocationId;
       if (!isLocationOpen(target, sharedMinutes)) return json({ message: `${OPENING_HOURS[target]?.label} 營業，現在已關門。` }, 400);
       next.location = body.location as LocationId;
-      const placeName = ({ home: "我的住所", realtor: "安心房仲", bank: "城市銀行", business: "商業區", shopping: "購物街", hotel: "不夜旅店", casino: "幸運賭場", school: "未來學院", hospital: "市立醫院" } as Record<LocationId, string>)[next.location as LocationId];
+      const placeName = ({ home: "我的住所", realtor: "安心房仲", bank: "城市銀行", business: "工作地", shopping: "購物街", hotel: "不夜旅店", casino: "幸運賭場", school: "未來學院", hospital: "市立醫院" } as Record<LocationId, string>)[next.location as LocationId];
       title = "移動完成"; message = `已抵達${placeName}。`; tone = "neutral"; break;
     }
     case "housing": {
@@ -1376,8 +1376,8 @@ async function takeAction(request: Request, env: Env) {
       title = `享用${meal.name}`; message = `${meal.name}讓飽足 +${meal.hunger}。`; break;
     }
     case "job": {
-      if (next.location !== "business") return json({ message: "請先前往商業區的就業服務處。" }, 400);
-      if (!isLocationOpen("business", sharedMinutes)) return json({ message: `商業區營業時間為 ${OPENING_HOURS.business?.label}。` }, 400);
+      if (next.location !== "business") return json({ message: "請先前往工作地的就業服務處。" }, 400);
+      if (!isLocationOpen("business", sharedMinutes)) return json({ message: `工作地營業時間為 ${OPENING_HOURS.business?.label}。` }, 400);
       const selected = jobInfo(body.job || "");
       if (!selected) return json({ message: "這個職業不存在。" }, 400);
       if (next.current_job === selected.job) return json({ message: `你目前已經是${selected.job}。` }, 400);
@@ -1391,8 +1391,8 @@ async function takeAction(request: Request, env: Env) {
       message = category.id === "unfixed" ? `目前狀態已改為${selected.job}。` : `成功進入「${selected.categoryLabel}」，從${selected.job}開始發展；產業升遷經驗從 0 開始。`; break;
     }
     case "work": {
-      if (next.location !== "business") return json({ message: "請先前往商業區。" }, 400);
-      if (!isLocationOpen("business", sharedMinutes)) return json({ message: `商業區營業時間為 ${OPENING_HOURS.business?.label}。` }, 400);
+      if (next.location !== "business") return json({ message: "請先前往工作地。" }, 400);
+      if (!isLocationOpen("business", sharedMinutes)) return json({ message: `工作地營業時間為 ${OPENING_HOURS.business?.label}。` }, 400);
       if (next.illness) return json({ message: `目前罹患${next.illness}，請先前往醫院治療。` }, 400);
       if (next.job_category === "unfixed") return json({ message: `目前是${next.current_job === "流浪者" ? "流浪者" : "待業者"}，請先選擇一條產業路線。` }, 400);
       const hours = Number(body.hours);

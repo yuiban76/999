@@ -226,7 +226,7 @@ const locations: Array<{ id: LocationId; emoji: string; image?: string; name: st
   { id: "home", emoji: "⌂", name: "我的住所", caption: "有有效租約或自有住宅後，才能在這裡休息", hours: "24 小時" },
   { id: "realtor", emoji: "鑰", name: "安心房仲", caption: "城市小宅 NT$50,000，也可按天租屋", hours: "07:00～23:00" },
   { id: "bank", emoji: "銀", name: "城市銀行", caption: "存款每日 0.1%｜一般貸款 0.5%｜《浪子回頭》債務 0.2%", hours: "07:00～23:00" },
-  { id: "business", emoji: "▦", name: "商業區", caption: "用時間換取收入，累積職涯經驗", hours: "06:00～24:00" },
+  { id: "business", emoji: "▦", name: "工作地", caption: "用時間換取收入，累積職涯經驗", hours: "06:00～24:00" },
   { id: "shopping", emoji: "◇", name: "購物街", caption: "補充飽足，偶爾也犒賞一下自己", hours: "06:00～24:00" },
   { id: "hotel", emoji: "旅", name: "不夜旅店", caption: "沒有住所也能住宿，餐點較貴但全天供應", hours: "24 小時" },
   { id: "casino", emoji: "♠", image: "./casino-icon.png", name: "幸運賭場", caption: "最多五位玩家同桌，各自挑戰二十一點莊家", hours: "24 小時" },
@@ -358,8 +358,8 @@ function guestAction(current: Player, action: string, payload: Record<string, un
       next.cash -= meal.price; next.hunger = Math.min(100, next.hunger + meal.hunger); title = `享用${meal.name}`; message = `${meal.name}讓飽足 +${meal.hunger}。`;
     }
   } else if (action === "job") {
-    if (next.location !== "business") return fail("請先前往商業區的就業服務處。");
-    if (!isLocationOpen("business", sharedMinutes)) return fail("商業區營業時間為 06:00～24:00。");
+    if (next.location !== "business") return fail("請先前往工作地的就業服務處。");
+    if (!isLocationOpen("business", sharedMinutes)) return fail("工作地營業時間為 06:00～24:00。");
     const selected = jobInfo(String(payload.job || ""));
     if (!selected) return fail("這個職業不存在。");
     if (next.currentJob === selected.job) return fail(`你目前已經是${selected.job}。`);
@@ -373,8 +373,8 @@ function guestAction(current: Player, action: string, payload: Record<string, un
     message = category.id === "unfixed" ? `目前狀態已改為${selected.job}。` : `成功進入「${selected.categoryLabel}」，從${selected.job}開始發展。`;
   } else if (action === "work") {
     const hours = Number(payload.hours);
-    if (next.location !== "business" || ![1, 4, 8].includes(hours)) return fail("請先前往商業區。");
-    if (!isLocationOpen("business", sharedMinutes)) return fail("商業區營業時間為 06:00～24:00。");
+    if (next.location !== "business" || ![1, 4, 8].includes(hours)) return fail("請先前往工作地。");
+    if (!isLocationOpen("business", sharedMinutes)) return fail("工作地營業時間為 06:00～24:00。");
     if (next.illness) return fail(`目前罹患${next.illness}，請先前往醫院治療。`);
     if (next.jobCategory === "unfixed") return fail(`目前是${next.currentJob}，請先選擇一條產業路線。`);
     if (next.energy < hours * 5) return fail("體力不足，先回家休息吧。");
@@ -765,7 +765,7 @@ export default function Home() {
           <div className="career-card">
             <div><span>目前職業</span><strong>{career.title}</strong></div><small>時薪 NT${formatMoney(career.hourlyPay)}</small>
             <div className="career-track"><i style={{ width: `${careerProgress}%` }} /></div>
-            <p>{nextCareer && player.jobCategory !== "unfixed" ? `升遷為${nextCareerTitle}：${Math.max(0, nextCareer.threshold - player.jobExp)} EXP，${formatRequirements(nextCareer.requirements)}` : player.jobCategory === "unfixed" ? "前往商業區選擇產業路線" : "已達此產業最高職位"}</p>
+            <p>{nextCareer && player.jobCategory !== "unfixed" ? `升遷為${nextCareerTitle}：${Math.max(0, nextCareer.threshold - player.jobExp)} EXP，${formatRequirements(nextCareer.requirements)}` : player.jobCategory === "unfixed" ? "前往工作地選擇產業路線" : "已達此產業最高職位"}</p>
           </div>
           <button className="talent-summary" type="button" onClick={() => setTalentOpen(true)} disabled={!profile}><span>天賦等級 {player.talentLevel}</span><strong>{player.talentPoints} 點可配置</strong><small>{player.talentExp % 100} / 100 天賦經驗 · 查看天賦樹</small></button>
           {player.illness && <div className="illness-alert"><strong>目前生病：{player.illness}</strong><span>工作與上課暫停，請前往市立醫院。</span></div>}
