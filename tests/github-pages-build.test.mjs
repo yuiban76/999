@@ -126,11 +126,16 @@ test("administrative actions are instant and gameplay waits stay shortened", asy
   assert.doesNotMatch(worker, /next\.current_job = selected\.job;[^\n]*minutes =/);
   assert.doesNotMatch(worker, /next\.cash = next\.cash - 100 \+ prize; minutes =/);
   assert.match(worker, /minutes = hours === 1 \? 30 : hours === 4 \? 120 : 240/);
+  assert.match(worker, /next\.cash \+= 100; minutes = 30/);
+  assert.match(worker, /next\.location = body\.location as LocationId;/);
+  assert.doesNotMatch(worker, /next\.location = body\.location as LocationId; next\.energy/);
   assert.match(worker, /一般門診", price: Math\.floor\(600 \* careDiscount\), minutes: 15/);
   assert.match(worker, /完整治療", price: Math\.floor\(1500 \* careDiscount\), minutes: 30/);
   assert.match(worker, /急診治療", price: Math\.floor\(2500 \* careDiscount\), minutes: 20/);
   assert.match(page, /換工作立即完成/);
   assert.match(page, /睡眠 8 小時" meta="現實等待 2 分鐘/);
+  assert.match(page, /旅店臨時工 · 30 秒/);
+  assert.match(page, /不扣體力、飽足、健康/);
   assert.match(page, /!action\.startsWith\("casino_"\) && !action\.startsWith\("poker_"\)/);
   assert.match(page, /期間可前往賭場遊玩/);
   assert.match(page, /<CasinoTable state=\{casino\} signedIn=\{Boolean\(profile\)\} busy=\{busy\}/);

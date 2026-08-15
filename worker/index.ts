@@ -1269,7 +1269,7 @@ async function takeAction(request: Request, env: Env) {
       if (body.location === "home" && !next.owns_home && next.rented_until <= next.elapsed_minutes) return json({ message: "你目前沒有住所，請先到房仲租屋或買房。" }, 400);
       const target = body.location as LocationId;
       if (!isLocationOpen(target, sharedMinutes)) return json({ message: `${OPENING_HOURS[target]?.label} 營業，現在已關門。` }, 400);
-      next.location = body.location as LocationId; next.energy = clampEnergy(next.energy - 1); next.hunger = clamp(next.hunger - 1);
+      next.location = body.location as LocationId;
       const placeName = ({ home: "我的住所", realtor: "安心房仲", bank: "城市銀行", business: "商業區", shopping: "購物街", hotel: "不夜旅店", casino: "幸運賭場", school: "未來學院", hospital: "市立醫院" } as Record<LocationId, string>)[next.location as LocationId];
       title = "移動完成"; message = `已抵達${placeName}。`; tone = "neutral"; break;
     }
@@ -1334,9 +1334,8 @@ async function takeAction(request: Request, env: Env) {
       }
       if (body.kind === "work") {
         if (next.illness) return json({ message: `目前罹患${next.illness}，請先前往醫院治療。` }, 400);
-        if (next.energy < 5) return json({ message: "體力不足，先休息後再打工吧。" }, 400);
-        next.cash += 120; next.energy = clampEnergy(next.energy - 5); next.hunger = clamp(next.hunger - 2); minutes = 45;
-        title = "完成旅店臨時工"; message = "收入 +NT$120；這份臨時工作不增加職業經驗或能力。"; break;
+        next.cash += 100; minutes = 30;
+        title = "完成旅店臨時工"; message = "收入 +NT$100；不扣除體力、飽足或健康，也不增加職業經驗或能力。"; break;
       }
       const mealDiscount = talents.has("frugal") ? .9 : 1;
       const meal = body.kind === "meal" ? { name: "旅店餐", price: Math.floor(250 * mealDiscount), hunger: 45 } : body.kind === "luxury" ? { name: "豪華餐", price: Math.floor(500 * mealDiscount), hunger: 80 } : null;
