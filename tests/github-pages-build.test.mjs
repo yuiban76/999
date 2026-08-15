@@ -32,12 +32,16 @@ test("personal finance time only advances during continuous online heartbeats", 
   assert.match(worker, /heartbeatGap <= ONLINE_HEARTBEAT_GRACE_MS/);
   assert.match(worker, /elapsedMinutes: row\.elapsed_minutes/);
   assert.match(worker, /Math\.floor\(row\.elapsed_minutes \/ 1440\) \+ 1/);
+  assert.match(worker, /let cashBalance = row\.cash/);
+  assert.match(worker, /const automaticPayment = Math\.min\(paymentShortfall, cashBalance \+ bankBalance\)/);
+  assert.match(worker, /UPDATE players SET cash=\?, bank_balance=\?/);
   assert.doesNotMatch(worker, /next\.elapsed_minutes = worldMinutes\(\)/);
   assert.match(page, /player\.rentedUntil - player\.elapsedMinutes/);
   assert.match(page, /每滿 24:00 結算/);
   assert.match(page, /<span>城市時間<\/span><strong>\{gameClock\.time\}<\/strong><span>\{playClock\.day\} · 玩家 \{playClock\.time\}/);
   assert.match(page, /僅在線時計時/);
   assert.match(page, /在線時間每滿 24 小時結算/);
+  assert.match(page, /先從手上現金、再從銀行存款自動扣除最低繳款/);
 });
 
 test("idle clients do not create unnecessary Cloudflare reads and writes", async () => {

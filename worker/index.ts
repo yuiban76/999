@@ -336,6 +336,7 @@ async function upsertPlayer(db: D1Database, user: AuthUser, forceHeartbeat = fal
   } else if (today > row.finance_day) {
     const progress = await ensureProgress(db, row);
     const elapsedDays = today - row.finance_day;
+    let cashBalance = row.cash;
     let bankBalance = row.bank_balance;
     let loanBalance = row.loan_balance;
     let minimumPayment = row.daily_minimum_payment || (row.main_story === "prodigal_return" ? prodigalMinimumPayment(loanBalance) : 0);
@@ -345,12 +346,15 @@ async function upsertPlayer(db: D1Database, user: AuthUser, forceHeartbeat = fal
     for (let day = 0; day < elapsedDays; day += 1) {
       if (row.main_story === "prodigal_return" && loanBalance > 0 && !gameOver) {
         const paymentShortfall = Math.min(loanBalance, Math.max(0, minimumPayment - paymentMade));
-        if (paymentShortfall > 0 && bankBalance >= paymentShortfall) {
-          bankBalance -= paymentShortfall;
-          loanBalance -= paymentShortfall;
-          paymentMade += paymentShortfall;
+        if (paymentShortfall > 0) {
+          const automaticPayment = Math.min(paymentShortfall, cashBalance + bankBalance);
+          const cashPayment = Math.min(cashBalance, automaticPayment);
+          cashBalance -= cashPayment;
+          bankBalance -= automaticPayment - cashPayment;
+          loanBalance -= automaticPayment;
+          paymentMade += automaticPayment;
         }
-        missedPaymentDays = paymentMade < minimumPayment ? missedPaymentDays + 1 : 0;
+        missedPaymentDays = loanBalance > 0 && paymentMade < minimumPayment ? missedPaymentDays + 1 : 0;
         if (missedPaymentDays >= 2) gameOver = PRODIGAL_FAILURE_ENDING;
       } else if (loanBalance <= 0) missedPaymentDays = 0;
       bankBalance = Math.min(9_000_000_000_000_000, Math.floor(bankBalance * 1.001));
@@ -359,9 +363,9 @@ async function upsertPlayer(db: D1Database, user: AuthUser, forceHeartbeat = fal
       paymentMade = 0;
       minimumPayment = row.main_story === "prodigal_return" && !gameOver ? prodigalMinimumPayment(loanBalance) : 0;
     }
-    await db.prepare("UPDATE players SET bank_balance=?, loan_balance=?, finance_day=?, daily_minimum_payment=?, daily_payment_made=?, missed_payment_days=?, game_over=?, updated_at=? WHERE user_id=?")
-      .bind(bankBalance, loanBalance, today, minimumPayment, paymentMade, missedPaymentDays, gameOver, now, user.userId).run();
-    row.bank_balance = bankBalance; row.loan_balance = loanBalance; row.finance_day = today; row.daily_minimum_payment = minimumPayment; row.daily_payment_made = paymentMade; row.missed_payment_days = missedPaymentDays; row.game_over = gameOver;
+    await db.prepare("UPDATE players SET cash=?, bank_balance=?, loan_balance=?, finance_day=?, daily_minimum_payment=?, daily_payment_made=?, missed_payment_days=?, game_over=?, updated_at=? WHERE user_id=?")
+      .bind(cashBalance, bankBalance, loanBalance, today, minimumPayment, paymentMade, missedPaymentDays, gameOver, now, user.userId).run();
+    row.cash = cashBalance; row.bank_balance = bankBalance; row.loan_balance = loanBalance; row.finance_day = today; row.daily_minimum_payment = minimumPayment; row.daily_payment_made = paymentMade; row.missed_payment_days = missedPaymentDays; row.game_over = gameOver;
   }
   return row;
 }

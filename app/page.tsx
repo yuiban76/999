@@ -845,8 +845,8 @@ function BankPanel({ player, busy, closed, onAction }: { player: Player; busy: b
   const valid = Number.isSafeInteger(value) && value > 0;
   return <section className="bank-panel">
     <header><div><span>BANK ACCOUNT</span><strong>存款 NT${formatMoney(player.bankBalance)}</strong></div><div><span>LOAN BALANCE</span><strong className={player.loanBalance ? "debt" : ""}>貸款 NT${formatMoney(player.loanBalance)}</strong></div></header>
-    <p>存款每個遊戲日複利 0.1%；一般貸款每日增加 0.5%，《浪子回頭》主線債務每日增加 0.2%。遊戲日結束時若手動還款不足，會從銀行存款自動扣除差額；銀行存款不足才記為欠繳。每個遊戲日等於上線遊玩 24 分鐘，離線期間不結算。</p>
-    {player.mainStory === "prodigal_return" && player.loanBalance > 0 && <div className={`bank-payment-status ${player.missedPaymentDays ? "warning" : ""}`}><strong>本日最低繳款 NT${formatMoney(player.dailyMinimumPayment)}</strong><span>已繳 NT${formatMoney(player.dailyPaymentMade)} · 尚欠 NT${formatMoney(Math.max(0, player.dailyMinimumPayment - player.dailyPaymentMade))}</span><small>玩家在線時間每滿 24 小時結算，優先從銀行存款自動補足；存款不足才記欠繳。連續欠繳 {player.missedPaymentDays}/2 天。</small></div>}
+    <p>存款每個遊戲日複利 0.1%；一般貸款每日增加 0.5%，《浪子回頭》主線債務每日增加 0.2%。遊戲日結束時若未主動還款，系統會先從手上現金、再從銀行存款自動扣除最低繳款；兩者都不足才記為欠繳。每個遊戲日等於上線遊玩 24 分鐘，離線期間不結算。</p>
+    {player.mainStory === "prodigal_return" && player.loanBalance > 0 && <div className={`bank-payment-status ${player.missedPaymentDays ? "warning" : ""}`}><strong>本日最低繳款 NT${formatMoney(player.dailyMinimumPayment)}</strong><span>已繳 NT${formatMoney(player.dailyPaymentMade)} · 尚欠 NT${formatMoney(Math.max(0, player.dailyMinimumPayment - player.dailyPaymentMade))}</span><small>玩家在線時間每滿 24 小時結算，先扣手上現金，再扣銀行存款；兩者不足才記欠繳。連續欠繳 {player.missedPaymentDays}/2 天。</small></div>}
     <label>輸入金額<div><span>NT$</span><input type="number" inputMode="numeric" min="1" step="1" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={busy} /></div></label>
     <div className="bank-actions">
       <button onClick={() => onAction("deposit", value)} disabled={busy || !valid}>存款</button>
