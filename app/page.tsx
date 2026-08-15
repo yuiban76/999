@@ -484,6 +484,9 @@ export default function Home() {
   const [jobCategory, setJobCategory] = useState<string>(JOB_CATEGORIES[0].id);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authError, setAuthError] = useState("");
+  const [nameOpen, setNameOpen] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [nameError, setNameError] = useState("");
   const [notice, setNotice] = useState("正在連接人生世界……");
   const [sharedMinutes, setSharedMinutes] = useState(worldMinutes());
   const gameClock = useMemo(() => clock(sharedMinutes), [sharedMinutes]);
@@ -659,10 +662,43 @@ export default function Home() {
     finally { setBusy(false); }
   }
 
+  function openNameEditor() {
+    if (!profile) return;
+    setNameDraft(profile.displayName);
+    setNameError("");
+    setNameOpen(true);
+  }
+
+  async function submitName(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!profile) return;
+    const displayName = nameDraft.trim().replace(/\s+/g, " ");
+    if (displayName.length < 2 || displayName.length > 24 || /[\u0000-\u001f\u007f]/.test(displayName)) {
+      setNameError("玩家名字需為 2～24 個字元，不能是空白或控制字元。");
+      return;
+    }
+    setBusy(true); setNameError("");
+    try {
+      const response = await fetch(`${API_ORIGIN}/api/profile/name`, { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ displayName }) });
+      const data = await response.json() as { profile?: Profile; player?: Player; message?: string };
+      if (!response.ok || !data.profile || !data.player) throw new Error(data.message || "玩家名字更新失敗。");
+      setProfile(data.profile);
+      setPlayer(data.player);
+      setOnline((items) => items.map((item) => item.id === data.profile!.id ? { ...item, displayName } : item));
+      setNameOpen(false);
+      setNotice(data.message || "玩家名字已更新。");
+      await loadWorld(true);
+    } catch (error) {
+      setNameError(error instanceof Error ? error.message : "玩家名字更新失敗，請稍後再試。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function logout() {
     try { await fetch(`${API_ORIGIN}/api/auth/logout`, { method: "POST", headers: apiHeaders() }); } catch { /* local logout still works */ }
     window.localStorage.removeItem(TOKEN_KEY);
-    setProfile(null); setOnline([]); setFeed([]); setTransferRequests([]); setTransferTarget(null); setCasino({ capacity: 5, activeCount: 0, seats: [], hand: null }); setPlayer(INITIAL_PLAYER);
+    setProfile(null); setNameOpen(false); setOnline([]); setFeed([]); setTransferRequests([]); setTransferTarget(null); setCasino({ capacity: 5, activeCount: 0, seats: [], hand: null }); setPlayer(INITIAL_PLAYER);
     setNotice("已登出；目前為訪客試玩模式。");
   }
 
@@ -702,7 +738,7 @@ export default function Home() {
         <div className="account-area">
           <span className={`connection-dot ${profile ? "connected" : ""}`} />
           {profile ? (
-            <><div><strong>{profile.displayName}</strong><small>進度已儲存 · 大廳 01</small></div><button className="account-button" onClick={() => void logout()}>登出</button></>
+            <><div><strong>{profile.displayName}</strong><small>進度已儲存 · 大廳 01</small></div><button className="account-button" type="button" onClick={openNameEditor} disabled={busy}>改名</button><button className="account-button" type="button" onClick={() => void logout()} disabled={busy}>登出</button></>
           ) : (
             <><div><strong>訪客試玩</strong><small>進度不會儲存</small></div><button className="account-button login-link" onClick={() => { setAuthMode("login"); setAuthOpen(true); }}>登入帳號</button></>
           )}
@@ -825,6 +861,17 @@ export default function Home() {
           {authError && <p className="auth-error" role="alert">{authError}</p>}
           <button className="auth-submit" disabled={busy}>{busy ? "連線中…" : authMode === "login" ? "登入並繼續" : "註冊並開始"}</button>
           <button className="auth-switch" type="button" onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setAuthError(""); }}>{authMode === "login" ? "還沒有帳號？免費註冊" : "已經有帳號？回到登入"}</button>
+        </form>
+      </div>}
+      {nameOpen && profile && <div className="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="name-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setNameOpen(false); }}>
+        <form className="auth-card" onSubmit={submitName}>
+          <button className="auth-close" type="button" aria-label="關閉改名視窗" onClick={() => setNameOpen(false)}>×</button>
+          <span className="panel-kicker">PLAYER PROFILE</span>
+          <h2 id="name-title">更改玩家名字</h2>
+          <p>新名字會立即套用到多人世界、牌桌名單與之後的城市動態。</p>
+          <label>玩家名字<input value={nameDraft} onChange={(event) => setNameDraft(event.target.value)} minLength={2} maxLength={24} autoComplete="nickname" autoFocus required /></label>
+          {nameError && <p className="auth-error" role="alert">{nameError}</p>}
+          <button className="auth-submit" disabled={busy}>{busy ? "儲存中…" : "儲存新名字"}</button>
         </form>
       </div>}
     </main>

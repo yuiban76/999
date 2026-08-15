@@ -116,6 +116,11 @@ test("multiplayer cash invitations support gifts and protected scam resolution",
   assert.match(page, /建立下一場並設定報名費/);
   assert.match(css, /\.social-casino-table/);
   assert.match(worker, /bestPokerHand\(cards\)/);
+  assert.match(page, /更改玩家名字/);
+  assert.match(page, /api\/profile\/name/);
+  assert.match(worker, /async function updateDisplayName/);
+  assert.match(worker, /UPDATE accounts SET display_name=\?/);
+  assert.match(worker, /UPDATE players SET display_name=\?/);
 });
 
 test("administrative actions are instant and gameplay waits stay shortened", async () => {

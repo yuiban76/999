@@ -1087,6 +1087,37 @@ async function uploadAvatar(request: Request, env: Env) {
   return json({ avatarUrl: `/api/avatar/${user.userId}?v=${now}`, message: "大頭貼已更新。" });
 }
 
+async function updateDisplayName(request: Request, env: Env) {
+  const user = await identity(request, env.DB);
+  if (!user) return json({ message: "請先登入後再更改玩家名字。" }, 401);
+  if (!env.DB) return json({ message: "遊戲資料庫尚未連接。" }, 503);
+  await ensureSchemaOnce(env.DB);
+  let body: { displayName?: string };
+  try { body = await request.json(); } catch { return json({ message: "資料格式錯誤。" }, 400); }
+  const displayName = typeof body.displayName === "string" ? body.displayName.trim().replace(/\s+/g, " ") : "";
+  if (displayName.length < 2 || displayName.length > 24 || /[\u0000-\u001f\u007f]/.test(displayName)) {
+    return json({ message: "玩家名字需為 2～24 個字元，不能是空白或控制字元。" }, 400);
+  }
+  const current = await upsertPlayer(env.DB, user, true);
+  if (!current) return json({ message: "找不到玩家資料。" }, 404);
+  const now = Date.now();
+  await env.DB.batch([
+    env.DB.prepare("UPDATE accounts SET display_name=? WHERE id=?").bind(displayName, user.userId),
+    env.DB.prepare("UPDATE players SET display_name=?, updated_at=?, last_seen_at=? WHERE user_id=?").bind(displayName, now, now, user.userId),
+    env.DB.prepare("UPDATE game_events SET player_name=? WHERE user_id=?").bind(displayName, user.userId),
+    env.DB.prepare("UPDATE casino_hands SET player_name=? WHERE user_id=?").bind(displayName, user.userId),
+    env.DB.prepare("UPDATE poker_hands SET player_name=? WHERE user_id=?").bind(displayName, user.userId),
+    env.DB.prepare("UPDATE casino_bingo_entries SET player_name=? WHERE user_id=?").bind(displayName, user.userId),
+    env.DB.prepare("UPDATE casino_tournament_entries SET player_name=? WHERE user_id=?").bind(displayName, user.userId),
+    env.DB.prepare("UPDATE player_transfer_requests SET sender_name=? WHERE sender_id=?").bind(displayName, user.userId),
+  ]);
+  const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
+  if (!saved) return json({ message: "玩家資料更新後無法載入。" }, 500);
+  const progress = await ensureProgress(env.DB, saved);
+  const updatedUser = { ...user, displayName };
+  return json({ profile: profileFor(updatedUser), player: serializePlayer(saved, progress), message: `玩家名字已更新為「${displayName}」。` });
+}
+
 async function getAvatar(userId: string, env: Env) {
   if (!env.DB) return new Response("Not found", { status: 404 });
   const account = await env.DB.prepare("SELECT avatar_data, avatar_content_type, avatar_updated_at FROM accounts WHERE id = ?")
@@ -1527,6 +1558,7 @@ export default {
     else if (url.pathname === "/api/auth/login" && request.method === "POST") response = await auth(request, env, "login");
     else if (url.pathname === "/api/auth/logout" && request.method === "POST") response = await logout(request, env);
     else if (url.pathname === "/api/profile/avatar" && request.method === "POST") response = await uploadAvatar(request, env);
+    else if (url.pathname === "/api/profile/name" && request.method === "POST") response = await updateDisplayName(request, env);
     else if (url.pathname.startsWith("/api/avatar/") && request.method === "GET") response = await getAvatar(url.pathname.slice("/api/avatar/".length), env);
     else if (url.pathname === "/api/game" && request.method === "GET") response = await bootstrap(request, env);
     else if (url.pathname === "/api/game/action" && request.method === "POST") response = await takeAction(request, env);
