@@ -1003,7 +1003,7 @@ async function casinoAction(request: Request, env: Env) {
   return json({ player: serializePlayer(saved!, progress), casino: await casinoState(env.DB, user.userId), message, cityMemory: await cityMemory(env.DB) });
 }
 
-const POKER_ACTIVE_STATUSES = "('seated','ready','playing','folded','settling')";
+const POKER_ACTIVE_STATUSES = "('seated','ready','playing','all_in','folded','settling')";
 const POKER_HAND_NAMES = ["高牌", "一對", "兩對", "三條", "順子", "同花", "葫蘆", "四條", "同花順"];
 type PokerEvaluation = { score: number[]; name: string };
 
@@ -1077,21 +1077,50 @@ const nextPokerSeat = (players: PokerRow[], after: number) => players.filter((ro
   ?? players.filter((row) => row.status === "playing" && row.seat_no !== null).sort((a, b) => a.seat_no! - b.seat_no!)[0]?.seat_no ?? 0;
 
 async function settlePoker(db: D1Database, players: PokerRow[], table: PokerTableRow) {
-  const active = players.filter((row) => row.status === "playing");
+  const active = players.filter((row) => row.status === "playing" || row.status === "all_in");
   const community = parseCards(table.community_cards);
-  const winners = active.length === 1 ? active : (() => {
-    const evaluated = active.map((row) => ({ row, hand: bestPokerHand([...parseCards(row.hole_cards), ...community]) }));
-    let best = evaluated[0].hand.score;
-    evaluated.forEach((item) => { if (comparePokerScores(item.hand.score, best) > 0) best = item.hand.score; });
-    return evaluated.filter((item) => comparePokerScores(item.hand.score, best) === 0).map((item) => item.row);
-  })();
-  const share = Math.floor(table.pot / winners.length); const remainder = table.pot % winners.length; const now = Date.now();
+  const evaluations = new Map<string, PokerEvaluation>();
+  const payouts = new Map<string, number>();
+  const handNames = new Map<string, string>();
+  const evaluate = (row: PokerRow) => {
+    const existing = evaluations.get(row.user_id);
+    if (existing) return existing;
+    const hand = bestPokerHand([...parseCards(row.hole_cards), ...community]);
+    evaluations.set(row.user_id, hand);
+    return hand;
+  };
+  const levels = [...new Set(players.map((row) => row.bet).filter((bet) => bet > 0))].sort((left, right) => left - right);
+  let previousLevel = 0;
+  for (const level of levels) {
+    const contributors = players.filter((row) => row.bet >= level);
+    const potAmount = (level - previousLevel) * contributors.length;
+    const eligible = contributors.filter((row) => row.status === "playing" || row.status === "all_in");
+    if (potAmount > 0 && eligible.length > 0) {
+      let winners: PokerRow[];
+      if (eligible.length === 1) winners = eligible;
+      else {
+        const evaluated = eligible.map((row) => ({ row, hand: evaluate(row) }));
+        let best = evaluated[0].hand.score;
+        evaluated.forEach((item) => { if (comparePokerScores(item.hand.score, best) > 0) best = item.hand.score; });
+        winners = evaluated.filter((item) => comparePokerScores(item.hand.score, best) === 0).map((item) => item.row);
+      }
+      winners.sort((left, right) => (left.seat_no ?? 99) - (right.seat_no ?? 99));
+      const share = Math.floor(potAmount / winners.length);
+      const remainder = potAmount % winners.length;
+      winners.forEach((winner, index) => {
+        payouts.set(winner.user_id, (payouts.get(winner.user_id) ?? 0) + share + (index < remainder ? 1 : 0));
+        const hand = evaluate(winner);
+        if (hand.name) handNames.set(winner.user_id, hand.name);
+      });
+    }
+    previousLevel = level;
+  }
+  const now = Date.now();
   const statements: D1PreparedStatement[] = [];
   players.forEach((row) => {
-    const winnerIndex = winners.findIndex((winner) => winner.user_id === row.user_id);
-    const payout = winnerIndex >= 0 ? share + (winnerIndex < remainder ? 1 : 0) : 0;
-    const handName = active.length > 1 && row.status === "playing" ? bestPokerHand([...parseCards(row.hole_cards), ...community]).name : "";
-    const result = payout ? `${handName || "其他玩家棄牌"}獲勝，獲得 NT$${payout}。` : row.status === "folded" ? "本局已棄牌。" : `${handName}未贏得獎池。`;
+    const payout = payouts.get(row.user_id) ?? 0;
+    const handName = handNames.get(row.user_id) ?? (active.length > 1 && (row.status === "playing" || row.status === "all_in") ? evaluate(row).name : "");
+    const result = payout ? `${handName || "其他玩家棄牌"}獲勝，獲得 NT$${payout}。` : row.status === "folded" ? "本局已棄牌。" : `${handName || "本局"}未贏得獎池。`;
     statements.push(db.prepare("UPDATE poker_hands SET status='seated', result=?, street_bet=0, acted=0, updated_at=? WHERE user_id=?").bind(result, now, row.user_id));
     if (payout) statements.push(db.prepare("UPDATE players SET cash=cash+?, updated_at=?, last_seen_at=? WHERE user_id=?").bind(payout, now, now, row.user_id));
   });
@@ -1100,9 +1129,10 @@ async function settlePoker(db: D1Database, players: PokerRow[], table: PokerTabl
 }
 
 async function advancePoker(db: D1Database, players: PokerRow[], table: PokerTableRow) {
-  const active = players.filter((row) => row.status === "playing");
+  const active = players.filter((row) => row.status === "playing" || row.status === "all_in");
+  const actors = players.filter((row) => row.status === "playing");
   if (active.length <= 1) return settlePoker(db, players, table);
-  const roundDone = active.every((row) => row.acted && row.street_bet === table.current_bet);
+  const roundDone = actors.length === 0 || actors.every((row) => row.acted && row.street_bet === table.current_bet);
   if (!roundDone) {
     await db.prepare("UPDATE poker_table_state SET turn_seat=?, updated_at=? WHERE id='table-01'").bind(nextPokerSeat(players, table.turn_seat), Date.now()).run();
     return;
@@ -1112,11 +1142,12 @@ async function advancePoker(db: D1Database, players: PokerRow[], table: PokerTab
   const nextStreet = table.street === "preflop" ? "flop" : table.street === "flop" ? "turn" : "river";
   const cardsToDeal = nextStreet === "flop" ? 3 : 1;
   for (let index = 0; index < cardsToDeal; index += 1) community.push(deck.pop()!);
-  const firstSeat = active.sort((a, b) => a.seat_no! - b.seat_no!)[0].seat_no!; const now = Date.now();
+  const firstSeat = (actors.length ? actors : active).sort((a, b) => a.seat_no! - b.seat_no!)[0].seat_no!; const now = Date.now();
   await db.batch([
-    db.prepare("UPDATE poker_hands SET street_bet=0, acted=0, community_cards=?, updated_at=? WHERE status='playing'").bind(JSON.stringify(community), now),
+    db.prepare("UPDATE poker_hands SET street_bet=0, acted=CASE WHEN status='all_in' THEN 1 ELSE 0 END, community_cards=?, updated_at=? WHERE status IN ('playing','all_in')").bind(JSON.stringify(community), now),
     db.prepare("UPDATE poker_table_state SET deck=?, community_cards=?, street=?, current_bet=0, turn_seat=?, updated_at=? WHERE id='table-01'").bind(JSON.stringify(deck), JSON.stringify(community), nextStreet, firstSeat, now),
   ]);
+  if (actors.length === 0) return advancePoker(db, players, { ...table, deck: JSON.stringify(deck), community_cards: JSON.stringify(community), street: nextStreet, current_bet: 0, turn_seat: firstSeat, updated_at: now });
 }
 
 async function pokerState(db: D1Database, userId: string) {
@@ -1133,7 +1164,7 @@ async function pokerState(db: D1Database, userId: string) {
   }
   const state = table ?? { street: "idle", current_bet: 0, turn_seat: 0, pot: 0, status: "idle", community_cards: "[]" };
   return { capacity: 5, activeCount: seats.results.length, phase: state.status === "playing" ? "playing" : "idle", communityCards: parseCards(state.community_cards), pot: state.pot, street: state.street, currentBet: state.current_bet, turnSeat: state.turn_seat,
-    seats: seats.results.map((seat) => ({ id: seat.user_id, displayName: seat.player_name, seatNo: seat.seat_no, status: seat.status, bet: seat.bet, streetBet: seat.street_bet, cards: seat.user_id === userId || state.status !== "playing" ? parseCards(seat.hole_cards) : seat.status === "playing" ? ["🂠", "🂠"] : [], result: seat.result, isMine: seat.user_id === userId })),
+    seats: seats.results.map((seat) => ({ id: seat.user_id, displayName: seat.player_name, seatNo: seat.seat_no, status: seat.status, bet: seat.bet, streetBet: seat.street_bet, cards: seat.user_id === userId || state.status !== "playing" ? parseCards(seat.hole_cards) : ["playing", "all_in"].includes(seat.status) ? ["🂠", "🂠"] : [], result: seat.result, isMine: seat.user_id === userId })),
     hand: own ? { cards: parseCards(own.hole_cards), bet: own.bet, streetBet: own.street_bet, seatNo: own.seat_no, status: own.status, result: own.result, isTurn: state.status === "playing" && own.status === "playing" && own.seat_no === state.turn_seat } : null };
 }
 
@@ -1158,7 +1189,7 @@ async function pokerAction(request: Request, env: Env) {
       const joined = await env.DB.prepare(`INSERT INTO poker_hands (user_id, player_name, hole_cards, community_cards, bet, status, result, seat_no, reveal_at, updated_at)
         VALUES (?, ?, '[]', '[]', 0, 'seated', '', ?, 0, ?)
         ON CONFLICT(user_id) DO UPDATE SET player_name=excluded.player_name, hole_cards='[]', community_cards='[]', bet=0, street_bet=0, acted=0, status='seated', result='', seat_no=excluded.seat_no, reveal_at=0, updated_at=excluded.updated_at
-        WHERE poker_hands.status NOT IN ('seated','ready','playing','folded','settling') RETURNING user_id`).bind(user.userId, user.displayName.slice(0, 40), seatNo, now).run();
+        WHERE poker_hands.status NOT IN ('seated','ready','playing','all_in','folded','settling') RETURNING user_id`).bind(user.userId, user.displayName.slice(0, 40), seatNo, now).run();
       if (joined.results.length !== 1) return json({ message: "無法加入這個座位，請重新整理後再試。" }, 409);
     } catch { return json({ message: `${seatNo} 號座位已有人，請選擇其他空位。` }, 409); }
     message = `已加入德州撲克 ${seatNo} 號座位，請輸入下注金額。`;
@@ -1169,39 +1200,48 @@ async function pokerAction(request: Request, env: Env) {
   } else if (body.action === "start") {
     const blind = Number(body.bet);
     if (!Number.isSafeInteger(blind) || blind < 10 || blind > 100_000) return json({ message: "大盲請設定為 NT$10～100,000。" }, 400);
-    const starter = await env.DB.prepare("SELECT 1 AS seated FROM poker_hands WHERE user_id=? AND status='ready' AND seat_no IS NOT NULL").bind(user.userId).first<{ seated: number }>();
-    if (!starter) return json({ message: "請先選擇空位加入牌桌，才能開始牌局。" }, 409);
     const table = await pokerTable(env.DB); if (table?.status === "playing") return json({ message: "牌局已在進行中。" }, 409);
-    const joined = await env.DB.prepare("SELECT h.*, p.cash FROM poker_hands h JOIN players p ON p.user_id=h.user_id WHERE h.status='ready' AND h.seat_no IS NOT NULL AND p.cash>=? ORDER BY h.seat_no").bind(blind).all<PokerRow & { cash: number }>();
-    if (joined.results.length < 2) return json({ message: "至少需要兩位已準備且現金足夠的玩家才能開局。" }, 409);
+    const joined = await env.DB.prepare("SELECT h.*, p.cash FROM poker_hands h JOIN players p ON p.user_id=h.user_id WHERE h.status='ready' AND h.seat_no IS NOT NULL ORDER BY h.seat_no").all<PokerRow & { cash: number }>();
+    if (joined.results.length < 2) return json({ message: "至少需要兩位已準備玩家才能開局。" }, 409);
+    const sb = joined.results[0];
+    if (sb.user_id !== user.userId) return json({ message: `只有小盲 ${sb.seat_no} 號玩家可以開始牌局。` }, 409);
+    if (joined.results.some((row) => row.cash < blind)) return json({ message: `有玩家現金少於開局起始資金 NT$${blind}，目前無法開局。` }, 409);
     const deck = shuffledDeck(); const hands = new Map<string, string[]>(); joined.results.forEach((row) => hands.set(row.user_id, [deck.pop()!, deck.pop()!]));
-    const smallBlind = Math.max(1, Math.floor(blind / 2)); const sb = joined.results[0]; const bb = joined.results[1]; const firstTurn = joined.results[2]?.seat_no ?? sb.seat_no!;
+    const smallBlind = Math.max(1, Math.floor(blind / 2)); const bb = joined.results[1]; const firstTurn = joined.results[2]?.seat_no ?? sb.seat_no!;
     const statements: D1PreparedStatement[] = [];
-    joined.results.forEach((row) => { const forced = row.user_id === sb.user_id ? smallBlind : row.user_id === bb.user_id ? blind : 0;
+    joined.results.forEach((row) => { const forced = row.user_id === sb.user_id ? smallBlind : row.user_id === bb.user_id ? blind : 0; const status = forced > 0 && row.cash === forced ? "all_in" : "playing"; const acted = status === "all_in" ? 1 : 0;
       statements.push(env.DB!.prepare("UPDATE players SET cash=cash-? WHERE user_id=? AND cash>=?").bind(forced, row.user_id, forced));
-      statements.push(env.DB!.prepare("UPDATE poker_hands SET hole_cards=?, community_cards='[]', bet=?, street_bet=?, acted=0, status='playing', result='', updated_at=? WHERE user_id=?").bind(JSON.stringify(hands.get(row.user_id)), forced, forced, now, row.user_id)); });
+      statements.push(env.DB!.prepare("UPDATE poker_hands SET hole_cards=?, community_cards='[]', bet=?, street_bet=?, acted=?, status=?, result='', updated_at=? WHERE user_id=?").bind(JSON.stringify(hands.get(row.user_id)), forced, forced, acted, status, now, row.user_id)); });
     statements.push(env.DB.prepare("INSERT INTO poker_table_state (id,deck,community_cards,street,current_bet,turn_seat,pot,status,updated_at) VALUES ('table-01',?,'[]','preflop',?,?,?,'playing',?) ON CONFLICT(id) DO UPDATE SET deck=excluded.deck,community_cards='[]',street='preflop',current_bet=excluded.current_bet,turn_seat=excluded.turn_seat,pot=excluded.pot,status='playing',updated_at=excluded.updated_at").bind(JSON.stringify(deck), blind, firstTurn, smallBlind + blind, now));
-    await env.DB.batch(statements); message = `牌局開始：小盲 NT$${smallBlind}、大盲 NT$${blind}。`;
-  } else if (["check", "call", "raise", "fold"].includes(body.action || "")) {
-    const [table, row, players] = await Promise.all([pokerTable(env.DB), env.DB.prepare("SELECT * FROM poker_hands WHERE user_id=?").bind(user.userId).first<PokerRow>(), env.DB.prepare("SELECT * FROM poker_hands WHERE status IN ('playing','folded') ORDER BY seat_no").all<PokerRow>()]);
+    await env.DB.batch(statements); message = `牌局開始：小盲 ${sb.seat_no} 號 NT$${smallBlind}、大盲 ${bb.seat_no} 號 NT$${blind}。`;
+  } else if (["check", "call", "raise", "fold", "all_in"].includes(body.action || "")) {
+    const [table, row] = await Promise.all([pokerTable(env.DB), env.DB.prepare("SELECT * FROM poker_hands WHERE user_id=?").bind(user.userId).first<PokerRow>()]);
     if (!table || table.status !== "playing" || !row || row.status !== "playing") return json({ message: "你目前不在進行中的牌局。" }, 409);
     if (row.seat_no !== table.turn_seat) return json({ message: `目前輪到 ${table.turn_seat} 號座位。` }, 409);
     let added = 0; let nextBet = table.current_bet;
     if (body.action === "fold") { await env.DB.prepare("UPDATE poker_hands SET status='folded', acted=1, result='本局已棄牌。', updated_at=? WHERE user_id=?").bind(now, user.userId).run(); message = "你已棄牌。"; }
     else if (body.action === "check") { if (row.street_bet !== table.current_bet) return json({ message: "目前有人下注，不能過牌；請跟注、加注或棄牌。" }, 409); await env.DB.prepare("UPDATE poker_hands SET acted=1, updated_at=? WHERE user_id=?").bind(now, user.userId).run(); message = "你選擇過牌。"; }
-    else { const callAmount = table.current_bet - row.street_bet; const raiseBy = body.action === "raise" ? Number(body.amount) : 0; if (!Number.isSafeInteger(raiseBy) || raiseBy < 0 || (body.action === "raise" && raiseBy < 10)) return json({ message: "加注金額至少為 NT$10。" }, 400); added = callAmount + raiseBy; if (player.cash < added) return json({ message: "現金不足，無法完成這次下注。" }, 409); nextBet = table.current_bet + raiseBy;
+    else if (body.action === "all_in") {
+      added = Math.max(0, player.cash);
+      if (!added) return json({ message: "你已沒有可全押的現金。" }, 409);
+      const callAmount = Math.max(0, table.current_bet - row.street_bet);
+      const raiseBy = Math.max(0, added - callAmount);
+      nextBet = table.current_bet + raiseBy;
+      await env.DB.batch([env.DB.prepare("UPDATE players SET cash=0 WHERE user_id=? AND cash>=?").bind(user.userId, added), env.DB.prepare("UPDATE poker_hands SET bet=bet+?, street_bet=street_bet+?, acted=1, status='all_in', result='已全押，等待攤牌。', updated_at=? WHERE user_id=?").bind(added, added, now, user.userId), ...(raiseBy ? [env.DB.prepare("UPDATE poker_hands SET acted=0 WHERE status='playing' AND user_id<>?").bind(user.userId)] : [])]);
+      message = `你已全押 NT$${added}，將保留到最後攤牌。`;
+    } else { const callAmount = Math.max(0, table.current_bet - row.street_bet); const raiseBy = body.action === "raise" ? Number(body.amount) : 0; if (!Number.isSafeInteger(raiseBy) || raiseBy < 0 || (body.action === "raise" && raiseBy < 10)) return json({ message: "加注金額至少為 NT$10。" }, 400); added = callAmount + raiseBy; if (player.cash < added) return json({ message: "現金不足，無法完成這次下注；可選擇全押。" }, 409); nextBet = table.current_bet + raiseBy;
       await env.DB.batch([env.DB.prepare("UPDATE players SET cash=cash-? WHERE user_id=? AND cash>=?").bind(added, user.userId, added), env.DB.prepare("UPDATE poker_hands SET bet=bet+?, street_bet=street_bet+?, acted=1, updated_at=? WHERE user_id=?").bind(added, added, now, user.userId), ...(raiseBy ? [env.DB.prepare("UPDATE poker_hands SET acted=0 WHERE status='playing' AND user_id<>?").bind(user.userId)] : [])]); message = body.action === "raise" ? `你跟注並加注 NT$${raiseBy}。` : `你跟注 NT$${callAmount}。`; }
     await env.DB.prepare("UPDATE poker_table_state SET current_bet=?, pot=pot+?, updated_at=? WHERE id='table-01'").bind(nextBet, added, now).run();
-    const refreshedPlayers = await env.DB.prepare("SELECT * FROM poker_hands WHERE status IN ('playing','folded') ORDER BY seat_no").all<PokerRow>(); const refreshedTable = await pokerTable(env.DB); await advancePoker(env.DB, refreshedPlayers.results, refreshedTable!);
+    const refreshedPlayers = await env.DB.prepare("SELECT * FROM poker_hands WHERE status IN ('playing','all_in','folded') ORDER BY seat_no").all<PokerRow>(); const refreshedTable = await pokerTable(env.DB); await advancePoker(env.DB, refreshedPlayers.results, refreshedTable!);
   } else if (body.action === "leave") {
     const active = await env.DB.prepare(`SELECT * FROM poker_hands WHERE user_id=? AND status IN ${POKER_ACTIVE_STATUSES}`).bind(user.userId).first<PokerRow>();
     if (!active) return json({ message: "你目前沒有加入德州撲克牌桌。" }, 400);
-    if (active.status === "playing") return json({ message: "牌局進行中，請先棄牌再離場。" }, 409);
+    if (active.status === "playing" || active.status === "all_in") return json({ message: "牌局進行中，請先完成本局才能離場。" }, 409);
     await env.DB.prepare("UPDATE poker_hands SET status='left', seat_no=NULL, reveal_at=0, updated_at=? WHERE user_id=?").bind(now, user.userId).run();
     message = "已離開德州撲克牌桌。";
   } else return json({ message: "未知的德州撲克牌桌行動。" }, 400);
   const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
-  if (["bet", "call", "raise"].includes(body.action || "")) await recordCityMemory(env.DB, user.userId, "casino");
+  if (["bet", "call", "raise", "all_in"].includes(body.action || "")) await recordCityMemory(env.DB, user.userId, "casino");
   const progress = await ensureProgress(env.DB, saved!);
   return json({ player: serializePlayer(saved!, progress), poker: await pokerState(env.DB, user.userId), message, cityMemory: await cityMemory(env.DB) });
 }

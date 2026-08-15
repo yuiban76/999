@@ -304,6 +304,8 @@ button { color: inherit; }
 .casino-controls, .bet-buttons > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .casino-controls button, .bet-buttons button { min-width: 92px; padding: 10px 14px; border: 1px solid #f5d77f; background: #f5d77f; color: #173427; cursor: pointer; font-size: 10px; font-weight: 800; }
 .casino-controls button:hover, .bet-buttons button:hover { background: #fff1bd; }
+.casino-controls button.all-in { border-color: #ffb89c; background: #f09b76; color: #351814; }
+.casino-controls button.all-in:hover { background: #ffc2a9; }
 .casino-controls button.leave { border-color: rgba(255,255,255,.45); background: transparent; color: white; }
 .casino-controls button:disabled, .bet-buttons button:disabled { cursor: not-allowed; opacity: .48; }
 .custom-bet { padding: 22px 18px; }
