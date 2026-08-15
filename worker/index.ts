@@ -47,6 +47,9 @@ type PlayerRow = {
 type CasinoRow = { user_id: string; player_name: string; player_cards: string; dealer_cards: string; bet: number; status: string; result: string; seat_no: number | null; reveal_at: number; updated_at: number };
 type PokerRow = { user_id: string; player_name: string; hole_cards: string; community_cards: string; bet: number; status: string; result: string; seat_no: number | null; reveal_at: number; street_bet: number; acted: number; updated_at: number };
 type PokerTableRow = { id: string; deck: string; community_cards: string; street: string; current_bet: number; turn_seat: number; pot: number; status: string; updated_at: number };
+type TournamentRoundRow = { tournament_no: number; round_no: number; game: "blackjack" | "poker"; status: string; deck: string; dealer_cards: string; community_cards: string; street: string; current_bet: number; turn_seat: number; pot: number; next_action_at: number; updated_at: number };
+type TournamentHandRow = { tournament_no: number; round_no: number; user_id: string; player_name: string; seat_no: number; player_cards: string; hole_cards: string; bet: number; street_bet: number; stack: number; status: string; acted: number; result: string; updated_at: number };
+type TournamentStateRow = { round_no: number; current_round: number; game: "blackjack" | "poker"; status: string; host_user_id: string; entry_fee: number; round_limit: number; next_round_at: number; latest_result: string };
 type ProgressRow = { user_id: string; talent_exp: number; talents: string; story_chapter: number; last_event_day: number; pending_event: string; updated_at: number };
 type MemoryRow = { cycle_day: number; work_count: number; hospital_count: number; housing_count: number; casino_count: number; study_count: number; event_count: number };
 type TransferRequestRow = { id: string; sender_id: string; sender_name: string; recipient_id: string; kind: "gift" | "scam"; amount: number; status: string; outcome: string; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
@@ -274,6 +277,22 @@ async function ensureSchema(db: D1Database) {
       tournament_no INTEGER NOT NULL, user_id TEXT NOT NULL, player_name TEXT NOT NULL, score INTEGER NOT NULL DEFAULT 0, latest_hand TEXT NOT NULL DEFAULT '',
       PRIMARY KEY (tournament_no, user_id)
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS casino_tournament_rounds (
+      tournament_no INTEGER NOT NULL, round_no INTEGER NOT NULL, game TEXT NOT NULL DEFAULT 'blackjack', status TEXT NOT NULL DEFAULT 'playing',
+      deck TEXT NOT NULL DEFAULT '[]', dealer_cards TEXT NOT NULL DEFAULT '[]', community_cards TEXT NOT NULL DEFAULT '[]',
+      street TEXT NOT NULL DEFAULT 'idle', current_bet INTEGER NOT NULL DEFAULT 0, turn_seat INTEGER NOT NULL DEFAULT 0,
+      pot INTEGER NOT NULL DEFAULT 0, next_action_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tournament_no, round_no)
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS casino_tournament_hands (
+      tournament_no INTEGER NOT NULL, round_no INTEGER NOT NULL, user_id TEXT NOT NULL, player_name TEXT NOT NULL, seat_no INTEGER NOT NULL,
+      player_cards TEXT NOT NULL DEFAULT '[]', hole_cards TEXT NOT NULL DEFAULT '[]', bet INTEGER NOT NULL DEFAULT 0,
+      street_bet INTEGER NOT NULL DEFAULT 0, stack INTEGER NOT NULL DEFAULT 100, status TEXT NOT NULL DEFAULT 'playing',
+      acted INTEGER NOT NULL DEFAULT 0, result TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tournament_no, round_no, user_id)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_tournament_round_status ON casino_tournament_rounds(tournament_no, status)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_tournament_hands_round ON casino_tournament_hands(tournament_no, round_no, seat_no)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_players_last_seen ON players(last_seen_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_events_room_created ON game_events(room_id, created_at DESC)"),
     db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_email ON accounts(email)"),
@@ -484,6 +503,11 @@ const MAX_CASINO_ENTRY_FEE = 10_000;
 const BINGO_ENTRY_FEE = 100;
 const TOURNAMENT_ENTRY_FEE = 500;
 const TOURNAMENT_ROUNDS = 5;
+const TOURNAMENT_START_DELAY_MS = 5_000;
+const TOURNAMENT_ACTION_TIMEOUT_MS = 90_000;
+const TOURNAMENT_STARTING_STACK = 100;
+const TOURNAMENT_SMALL_BLIND = 5;
+const TOURNAMENT_BIG_BLIND = 10;
 const BINGO_LINES = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
 const randomIndex = (size: number) => Math.floor((crypto.getRandomValues(new Uint32Array(1))[0] / 4_294_967_296) * size);
 const randomBingoCard = () => { const pool = Array.from({ length: 25 }, (_, index) => index + 1); const card: number[] = []; while (card.length < 9) card.push(pool.splice(randomIndex(pool.length), 1)[0]); return card; };
@@ -553,37 +577,152 @@ async function bingoAction(request: Request, env: Env) {
   return json({ player: serializePlayer(saved!, progress), bingo: await bingoState(env.DB, user.userId), message: joinedState.players.length >= 2 ? "賓果開獎開始！每 2 秒公開一個號碼。" : "已加入賓果，等待另一位玩家加入。" });
 }
 
-async function tournamentState(db: D1Database, userId: string) {
-  let state = await db.prepare("SELECT * FROM casino_tournament_state WHERE id='tournament-01'").first<{ round_no: number; current_round: number; game: string; status: string; host_user_id: string; entry_fee: number; round_limit: number; next_round_at: number; latest_result: string }>();
-  if (!state) { await db.prepare("INSERT INTO casino_tournament_state (id, updated_at) VALUES ('tournament-01', ?)").bind(Date.now()).run(); state = { round_no: 1, current_round: 0, game: "blackjack", status: "lobby", host_user_id: "", entry_fee: TOURNAMENT_ENTRY_FEE, round_limit: TOURNAMENT_ROUNDS, next_round_at: 0, latest_result: "" }; }
-  if (state.status === "playing" && state.next_round_at <= Date.now()) {
-    const entries = await db.prepare("SELECT * FROM casino_tournament_entries WHERE tournament_no=?").bind(state.round_no).all<{ user_id: string; player_name: string; score: number; latest_hand: string }>();
-    const deck = shuffledDeck();
-    const results = entries.results.map((entry) => {
-      if (state!.game === "blackjack") { const cards = [deck.pop()!, deck.pop()!]; while (handScore(cards) < 17) cards.push(deck.pop()!); const score = handScore(cards); return { ...entry, value: score > 21 ? 0 : score, hand: `${cards.join(" ")} · ${score > 21 ? "爆牌" : `${score} 點`}` }; }
-      const cards = [deck.pop()!, deck.pop()!, deck.pop()!, deck.pop()!, deck.pop()!, deck.pop()!, deck.pop()!]; const hand = bestPokerHand(cards); return { ...entry, value: hand.score, hand: `${hand.name} · ${cards.slice(0, 2).join(" ")}` };
+async function startTournamentRound(db: D1Database, state: TournamentStateRow) {
+  const entries = await db.prepare("SELECT user_id, player_name FROM casino_tournament_entries WHERE tournament_no=? ORDER BY rowid").bind(state.round_no).all<{ user_id: string; player_name: string }>();
+  if (entries.results.length < 2) return;
+  const now = Date.now();
+  const roundNo = state.current_round + 1;
+  const deck = shuffledDeck();
+  const dealerCards = state.game === "blackjack" ? [deck.pop()!, deck.pop()!] : [];
+  const hands = entries.results.map((entry, index) => {
+    const cards = [deck.pop()!, deck.pop()!];
+    const smallBlind = state.game === "poker" && index === 0 ? TOURNAMENT_SMALL_BLIND : 0;
+    const bigBlind = state.game === "poker" && index === 1 ? TOURNAMENT_BIG_BLIND : 0;
+    return { ...entry, seatNo: index + 1, cards, bet: smallBlind + bigBlind, stack: TOURNAMENT_STARTING_STACK - smallBlind - bigBlind };
+  });
+  const firstTurn = state.game === "poker" ? (hands[2]?.seatNo ?? hands[0].seatNo) : 0;
+  const round = db.prepare(`INSERT OR IGNORE INTO casino_tournament_rounds
+    (tournament_no, round_no, game, status, deck, dealer_cards, community_cards, street, current_bet, turn_seat, pot, next_action_at, updated_at)
+    VALUES (?, ?, ?, 'playing', ?, ?, '[]', ?, ?, ?, ?, ?, ?)`)
+    .bind(state.round_no, roundNo, state.game, JSON.stringify(deck), JSON.stringify(dealerCards), state.game === "poker" ? "preflop" : "blackjack", state.game === "poker" ? TOURNAMENT_BIG_BLIND : 0, firstTurn, state.game === "poker" ? TOURNAMENT_SMALL_BLIND + TOURNAMENT_BIG_BLIND : 0, now + TOURNAMENT_ACTION_TIMEOUT_MS, now);
+  const handStatements = hands.map((hand) => db.prepare(`INSERT OR IGNORE INTO casino_tournament_hands
+    (tournament_no, round_no, user_id, player_name, seat_no, player_cards, hole_cards, bet, street_bet, stack, status, acted, result, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'playing', 0, '', ?)`)
+    .bind(state.round_no, roundNo, hand.user_id, hand.player_name, hand.seatNo, state.game === "blackjack" ? JSON.stringify(hand.cards) : "[]", state.game === "poker" ? JSON.stringify(hand.cards) : "[]", hand.bet, hand.bet, hand.stack, now));
+  await db.batch([round, ...handStatements, db.prepare("UPDATE casino_tournament_state SET next_round_at=0, updated_at=? WHERE id='tournament-01' AND round_no=? AND current_round=? AND status='playing'").bind(now, state.round_no, state.current_round)]);
+}
+
+async function settleTournamentRound(db: D1Database, state: TournamentStateRow, round: TournamentRoundRow, hands: TournamentHandRow[]) {
+  const claimed = await db.prepare("UPDATE casino_tournament_rounds SET status='settling', updated_at=? WHERE tournament_no=? AND round_no=? AND status='playing' RETURNING round_no").bind(Date.now(), state.round_no, round.round_no).first<{ round_no: number }>();
+  if (!claimed) return;
+  const entries = await db.prepare("SELECT user_id, player_name, score FROM casino_tournament_entries WHERE tournament_no=?").bind(state.round_no).all<{ user_id: string; player_name: string; score: number }>();
+  const now = Date.now();
+  const points = new Map<string, number>();
+  const handResults = new Map<string, string>();
+  let dealerCards = parseCards(round.dealer_cards);
+  let deck = parseCards(round.deck);
+  let ranked: Array<{ user_id: string; player_name: string; score: number; points: number }> = [];
+  if (round.game === "blackjack") {
+    while (handScore(dealerCards) < 17 && deck.length) dealerCards.push(deck.pop()!);
+    const dealerScore = handScore(dealerCards);
+    const evaluated = hands.map((hand) => {
+      const cards = parseCards(hand.player_cards); const score = handScore(cards); const blackjack = score === 21 && cards.length === 2;
+      const outcome = score > 21 ? 0 : dealerScore > 21 || blackjack || score > dealerScore ? 3 : score === dealerScore ? 1 : 0;
+      const label = score > 21 ? "爆牌" : outcome === 3 ? "獲勝" : outcome === 1 ? "平手" : "落敗";
+      return { hand, score, rank: outcome * 100 + Math.min(score, 21), result: `${cards.join(" ")} · ${score > 21 ? "爆牌" : `${score} 點`} · ${label}` };
+    }).sort((left, right) => right.rank - left.rank || right.score - left.score);
+    evaluated.forEach((item, index) => { points.set(item.hand.user_id, Math.max(1, evaluated.length - index)); handResults.set(item.hand.user_id, `莊家 ${dealerScore > 21 ? "爆牌" : `${dealerScore} 點`} · ${item.result}`); });
+    ranked = entries.results.map((entry) => ({ ...entry, points: points.get(entry.user_id) ?? 0 })).sort((left, right) => right.points - left.points || right.score - left.score);
+  } else {
+    const community = parseCards(round.community_cards);
+    const evaluated = hands.map((hand) => { const cards = [...parseCards(hand.hole_cards), ...community]; return { hand, evaluation: hand.status === "folded" ? null : bestPokerHand(cards) }; });
+    evaluated.sort((left, right) => {
+      if (!left.evaluation && !right.evaluation) return 0;
+      if (!left.evaluation) return 1;
+      if (!right.evaluation) return -1;
+      return comparePokerScores(right.evaluation.score, left.evaluation.score);
     });
-    results.sort((left, right) => state!.game === "blackjack" ? Number(right.value) - Number(left.value) : comparePokerScores(right.value as number[], left.value as number[]));
-    const updates = results.map((result, index) => db.prepare("UPDATE casino_tournament_entries SET score=score+?, latest_hand=? WHERE tournament_no=? AND user_id=?").bind(results.length - index, result.hand, state!.round_no, result.user_id));
-    const summary = results.map((result, index) => `${index + 1}.${result.player_name}`).join(" · ");
-    const resolvedRound = state.current_round + 1;
-    if (resolvedRound >= state.round_limit) {
-      const finalScores = results.map((entry, index) => ({ ...entry, score: entry.score + results.length - index })).sort((left, right) => right.score - left.score);
-      const pool = entries.results.length * state.entry_fee; const shares = finalScores.length === 2 ? [.7, .3] : [.6, .3, .1];
-      await db.batch([...updates, ...finalScores.slice(0, shares.length).map((entry, index) => db.prepare("UPDATE players SET cash=cash+? WHERE user_id=?").bind(Math.floor(pool * shares[index]), entry.user_id)), db.prepare("UPDATE casino_tournament_state SET status='completed', latest_result=?, next_round_at=0, updated_at=? WHERE id='tournament-01'").bind(`賽事結束：${finalScores.map((entry, index) => `${index + 1}.${entry.player_name}`).join(" · ")}`, Date.now())]);
-    } else await db.batch([...updates, db.prepare("UPDATE casino_tournament_state SET current_round=?, latest_result=?, next_round_at=?, updated_at=? WHERE id='tournament-01'").bind(resolvedRound, `第 ${resolvedRound} 局結果：${summary}`, Date.now() + 5_000, Date.now())]);
-    state = await db.prepare("SELECT * FROM casino_tournament_state WHERE id='tournament-01'").first<{ round_no: number; current_round: number; game: string; status: string; host_user_id: string; entry_fee: number; round_limit: number; next_round_at: number; latest_result: string }>();
+    evaluated.forEach((item, index) => { const earned = item.evaluation ? Math.max(1, evaluated.length - index) : 0; points.set(item.hand.user_id, earned); handResults.set(item.hand.user_id, item.evaluation ? `${item.evaluation.name} · ${item.evaluation.score.join("-")}` : "本局已棄牌。"); });
+    ranked = entries.results.map((entry) => ({ ...entry, points: points.get(entry.user_id) ?? 0 })).sort((left, right) => right.points - left.points || right.score - left.score);
   }
-  const entries = await db.prepare("SELECT user_id, player_name, score, latest_hand FROM casino_tournament_entries WHERE tournament_no=? ORDER BY score DESC, player_name").bind(state!.round_no).all<{ user_id: string; player_name: string; score: number; latest_hand: string }>();
-  return { hostUserId: state!.host_user_id, entryFee: state!.entry_fee, capacity: 5, game: state!.game, status: state!.status, tournamentNo: state!.round_no, currentRound: state!.current_round, roundLimit: state!.round_limit, nextRoundAt: state!.next_round_at, latestResult: state!.latest_result, players: entries.results.map((entry) => ({ id: entry.user_id, displayName: entry.player_name, score: entry.score, latestHand: entry.latest_hand, isMine: entry.user_id === userId })) };
+  const updates = entries.results.flatMap((entry) => [
+    db.prepare("UPDATE casino_tournament_entries SET score=score+?, latest_hand=? WHERE tournament_no=? AND user_id=?").bind(points.get(entry.user_id) ?? 0, handResults.get(entry.user_id) ?? "未完成本局", state.round_no, entry.user_id),
+    db.prepare("UPDATE casino_tournament_hands SET status='complete', result=?, updated_at=? WHERE tournament_no=? AND round_no=? AND user_id=?").bind(handResults.get(entry.user_id) ?? "未完成本局", now, state.round_no, round.round_no, entry.user_id),
+  ]);
+  const finalScores = ranked.map((entry) => ({ ...entry, score: entry.score + entry.points }));
+  const resolvedRound = state.current_round + 1;
+  const summary = ranked.map((entry, index) => `${index + 1}.${entry.player_name} +${entry.points}分`).join(" · ");
+  const roundUpdate = db.prepare("UPDATE casino_tournament_rounds SET status='completed', deck=?, dealer_cards=?, updated_at=?, next_action_at=0 WHERE tournament_no=? AND round_no=?").bind(JSON.stringify(deck), JSON.stringify(dealerCards), now, state.round_no, round.round_no);
+  if (resolvedRound >= state.round_limit) {
+    const pool = entries.results.length * state.entry_fee; const shares = finalScores.length === 2 ? [.7, .3] : [.6, .3, .1];
+    await db.batch([...updates, roundUpdate, ...finalScores.slice(0, shares.length).map((entry, index) => db.prepare("UPDATE players SET cash=cash+? WHERE user_id=?").bind(Math.floor(pool * shares[index]), entry.user_id)), db.prepare("UPDATE casino_tournament_state SET current_round=?, status='completed', latest_result=?, next_round_at=0, updated_at=? WHERE id='tournament-01' AND round_no=?").bind(resolvedRound, `賽事結束：${finalScores.map((entry, index) => `${index + 1}.${entry.player_name}（${entry.score}分）`).join(" · ")}`, now, state.round_no)]);
+  } else await db.batch([...updates, roundUpdate, db.prepare("UPDATE casino_tournament_state SET current_round=?, status='playing', latest_result=?, next_round_at=?, updated_at=? WHERE id='tournament-01' AND round_no=?").bind(resolvedRound, `第 ${resolvedRound} 局完成：${summary}`, now + TOURNAMENT_START_DELAY_MS, now, state.round_no)]);
+}
+
+async function advanceTournamentRound(db: D1Database, state: TournamentStateRow) {
+  if (state.status !== "playing") return;
+  const now = Date.now();
+  let round = await db.prepare("SELECT * FROM casino_tournament_rounds WHERE tournament_no=? AND round_no=?").bind(state.round_no, state.current_round + 1).first<TournamentRoundRow>();
+  if (!round) { if (state.next_round_at <= now) await startTournamentRound(db, state); return; }
+  if (round.status !== "playing") return;
+  let hands = (await db.prepare("SELECT * FROM casino_tournament_hands WHERE tournament_no=? AND round_no=? ORDER BY seat_no").bind(state.round_no, round.round_no).all<TournamentHandRow>()).results;
+  if (round.game === "blackjack") {
+    if (hands.some((hand) => hand.status === "playing") && round.next_action_at <= now) {
+      await db.prepare("UPDATE casino_tournament_hands SET status='stood', result='逾時自動停牌。', updated_at=? WHERE tournament_no=? AND round_no=? AND status='playing'").bind(now, state.round_no, round.round_no).run();
+      hands = (await db.prepare("SELECT * FROM casino_tournament_hands WHERE tournament_no=? AND round_no=? ORDER BY seat_no").bind(state.round_no, round.round_no).all<TournamentHandRow>()).results;
+    }
+    if (hands.every((hand) => ["stood", "bust"].includes(hand.status))) await settleTournamentRound(db, state, round, hands);
+    return;
+  }
+  let active = hands.filter((hand) => hand.status === "playing");
+  if (active.length <= 1) { await settleTournamentRound(db, state, round, hands); return; }
+  const current = active.find((hand) => hand.seat_no === round!.turn_seat);
+  if (!current) {
+    const next = active.sort((left, right) => left.seat_no - right.seat_no)[0];
+    await db.prepare("UPDATE casino_tournament_rounds SET turn_seat=?, next_action_at=?, updated_at=? WHERE tournament_no=? AND round_no=?").bind(next.seat_no, now + TOURNAMENT_ACTION_TIMEOUT_MS, now, state.round_no, round.round_no).run();
+    return;
+  }
+  if (round.next_action_at <= now) {
+    await db.prepare("UPDATE casino_tournament_hands SET status='folded', acted=1, result='逾時自動棄牌。', updated_at=? WHERE tournament_no=? AND round_no=? AND user_id=? AND status='playing'").bind(now, state.round_no, round.round_no, current.user_id).run();
+    return advanceTournamentRound(db, state);
+  }
+  if (!active.every((hand) => hand.acted && hand.street_bet === round!.current_bet)) {
+    if (current.acted) {
+      const ordered = [...active].sort((left, right) => left.seat_no - right.seat_no);
+      const next = ordered.find((hand) => hand.seat_no > current.seat_no) ?? ordered[0];
+      await db.prepare("UPDATE casino_tournament_rounds SET turn_seat=?, next_action_at=?, updated_at=? WHERE tournament_no=? AND round_no=?").bind(next.seat_no, now + TOURNAMENT_ACTION_TIMEOUT_MS, now, state.round_no, round.round_no).run();
+    }
+    return;
+  }
+  if (round.street === "river") { await settleTournamentRound(db, state, round, hands); return; }
+  const deck = parseCards(round.deck); const community = parseCards(round.community_cards);
+  const nextStreet = round.street === "preflop" ? "flop" : round.street === "flop" ? "turn" : "river";
+  const cardsToDeal = nextStreet === "flop" ? 3 : 1;
+  for (let index = 0; index < cardsToDeal; index += 1) community.push(deck.pop()!);
+  active = hands.filter((hand) => hand.status === "playing").sort((left, right) => left.seat_no - right.seat_no);
+  await db.batch([
+    db.prepare("UPDATE casino_tournament_hands SET street_bet=0, acted=0, updated_at=? WHERE tournament_no=? AND round_no=? AND status='playing'").bind(now, state.round_no, round.round_no),
+    db.prepare("UPDATE casino_tournament_rounds SET deck=?, community_cards=?, street=?, current_bet=0, turn_seat=?, next_action_at=?, updated_at=? WHERE tournament_no=? AND round_no=?").bind(JSON.stringify(deck), JSON.stringify(community), nextStreet, active[0].seat_no, now + TOURNAMENT_ACTION_TIMEOUT_MS, now, state.round_no, round.round_no),
+  ]);
+}
+
+async function tournamentState(db: D1Database, userId: string) {
+  let state = await db.prepare("SELECT * FROM casino_tournament_state WHERE id='tournament-01'").first<TournamentStateRow>();
+  if (!state) { await db.prepare("INSERT INTO casino_tournament_state (id, updated_at) VALUES ('tournament-01', ?)").bind(Date.now()).run(); state = { round_no: 1, current_round: 0, game: "blackjack", status: "lobby", host_user_id: "", entry_fee: TOURNAMENT_ENTRY_FEE, round_limit: TOURNAMENT_ROUNDS, next_round_at: 0, latest_result: "" }; }
+  await advanceTournamentRound(db, state);
+  state = await db.prepare("SELECT * FROM casino_tournament_state WHERE id='tournament-01'").first<TournamentStateRow>() ?? state;
+  const entries = await db.prepare("SELECT user_id, player_name, score, latest_hand FROM casino_tournament_entries WHERE tournament_no=? ORDER BY score DESC, player_name").bind(state.round_no).all<{ user_id: string; player_name: string; score: number; latest_hand: string }>();
+  const targetRound = state.status === "completed" ? Math.max(1, state.current_round) : state.current_round + 1;
+  const round = await db.prepare("SELECT * FROM casino_tournament_rounds WHERE tournament_no=? AND round_no=?").bind(state.round_no, targetRound).first<TournamentRoundRow>();
+  const hands = round ? (await db.prepare("SELECT * FROM casino_tournament_hands WHERE tournament_no=? AND round_no=? ORDER BY seat_no").bind(state.round_no, round.round_no).all<TournamentHandRow>()).results : [];
+  const own = hands.find((hand) => hand.user_id === userId);
+  const dealerCards = round ? parseCards(round.dealer_cards) : [];
+  const visibleDealerCards = round?.game === "blackjack" && round.status === "playing" && dealerCards.length > 1 ? [dealerCards[0], "🂠"] : dealerCards;
+  const viewRound = round ? { roundNo: round.round_no, game: round.game, status: round.status, dealerCards: visibleDealerCards, dealerScore: round.status === "completed" ? handScore(dealerCards) : null, communityCards: parseCards(round.community_cards), street: round.street, currentBet: round.current_bet, turnSeat: round.turn_seat, pot: round.pot, nextActionAt: round.next_action_at } : null;
+  return {
+    hostUserId: state.host_user_id, entryFee: state.entry_fee, capacity: 5, game: state.game, status: state.status, tournamentNo: state.round_no, currentRound: state.current_round, roundLimit: state.round_limit, nextRoundAt: state.next_round_at, latestResult: state.latest_result, round: viewRound,
+    hand: own ? { playerCards: parseCards(own.player_cards), holeCards: parseCards(own.hole_cards), bet: own.bet, streetBet: own.street_bet, stack: own.stack, status: own.status, result: own.result, isTurn: Boolean(round?.game === "poker" && round.status === "playing" && own.status === "playing" && own.seat_no === round.turn_seat) } : null,
+    players: entries.results.map((entry) => { const hand = hands.find((item) => item.user_id === entry.user_id); const cards = round?.game === "poker" && round.status === "playing" && entry.user_id !== userId ? (hand ? ["🂠", "🂠"] : []) : hand ? parseCards(round?.game === "poker" ? hand.hole_cards : hand.player_cards) : []; return { id: entry.user_id, displayName: entry.player_name, score: entry.score, latestHand: entry.latest_hand, cards, status: hand?.status ?? "waiting", bet: hand?.bet ?? 0, streetBet: hand?.street_bet ?? 0, stack: hand?.stack ?? 0, seatNo: hand?.seat_no ?? 0, isTurn: Boolean(round?.game === "poker" && round.status === "playing" && hand?.status === "playing" && hand.seat_no === round.turn_seat), result: hand?.result ?? "", isMine: entry.user_id === userId }; }),
+  };
 }
 
 async function tournamentAction(request: Request, env: Env) {
   const user = await identity(request, env.DB); if (!user || !env.DB) return json({ message: "請先登入才能參加錦標賽。" }, 401);
   await ensureSchemaOnce(env.DB); const player = await upsertPlayer(env.DB, user, true);
   if (!player || player.location !== "casino" || player.game_over) return json({ message: "請先前往賭場，並確認人生仍在進行。" }, 400);
-  const body = await request.json() as { action?: string; game?: string; entryFee?: number };
-  if (!body.action || !["join", "leave"].includes(body.action)) return json({ message: "未知的錦標賽行動。" }, 400);
+  const body = await request.json() as { action?: string; game?: string; entryFee?: number; amount?: number };
+  const gameplayActions = ["hit", "stand", "check", "call", "raise", "fold"];
+  if (!body.action || (!["join", "leave", ...gameplayActions].includes(body.action))) return json({ message: "未知的錦標賽行動。" }, 400);
   if (body.action === "join" && !["blackjack", "poker"].includes(body.game || "")) return json({ message: "請選擇二十一點或德州撲克錦標賽。" }, 400);
   let state = await tournamentState(env.DB, user.userId);
   if (body.action === "leave") {
@@ -600,28 +739,64 @@ async function tournamentAction(request: Request, env: Env) {
     const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>(); const progress = await ensureProgress(env.DB, saved!);
     return json({ player: serializePlayer(saved!, progress), tournament: state, message: `已離開錦標賽，退還 NT$${leavingFee.toLocaleString()}。` });
   }
-  if (state.status === "completed") { await env.DB.prepare("UPDATE casino_tournament_state SET round_no=round_no+1, current_round=0, game=?, status='lobby', host_user_id='', entry_fee=?, round_limit=?, next_round_at=0, latest_result='', updated_at=? WHERE id='tournament-01'").bind(body.game, TOURNAMENT_ENTRY_FEE, TOURNAMENT_ROUNDS, Date.now()).run(); state = await tournamentState(env.DB, user.userId); }
-  if (state.status !== "lobby") return json({ message: "錦標賽已經開始，請等待下一場。" }, 409);
-  if (state.hostUserId && state.game !== body.game) return json({ message: "目前大廳正在等待另一種錦標賽，請選擇相同玩法。" }, 409);
-  const hosting = !state.hostUserId;
-  const entryFee = hosting ? Math.floor(Number(body.entryFee)) : state.entryFee;
-  if (!Number.isInteger(entryFee) || entryFee < MIN_CASINO_ENTRY_FEE || entryFee > MAX_CASINO_ENTRY_FEE) return json({ message: `報名費需介於 NT$${MIN_CASINO_ENTRY_FEE}～${MAX_CASINO_ENTRY_FEE.toLocaleString()}。` }, 400);
-  if (state.players.some((entry) => entry.id === user.userId) || state.players.length >= 5 || player.cash < entryFee) return json({ message: state.players.some((entry) => entry.id === user.userId) ? "你已報名這場錦標賽。" : state.players.length >= 5 ? "本場錦標賽已滿 5 人。" : `現金不足 NT$${entryFee.toLocaleString()}。` }, 409);
-  if (hosting) {
-    await env.DB.prepare("UPDATE casino_tournament_state SET host_user_id=?, game=?, entry_fee=?, round_limit=?, updated_at=? WHERE id='tournament-01' AND host_user_id=''").bind(user.userId, body.game, entryFee, TOURNAMENT_ROUNDS, Date.now()).run();
-    const claimed = await tournamentState(env.DB, user.userId);
-    if (claimed.hostUserId !== user.userId) return json({ message: "已有玩家先開房，請依目前玩法與報名費重新加入。" }, 409);
+  if (body.action === "join") {
+    if (state.status === "completed") { await env.DB.prepare("UPDATE casino_tournament_state SET round_no=round_no+1, current_round=0, game=?, status='lobby', host_user_id='', entry_fee=?, round_limit=?, next_round_at=0, latest_result='', updated_at=? WHERE id='tournament-01'").bind(body.game, TOURNAMENT_ENTRY_FEE, TOURNAMENT_ROUNDS, Date.now()).run(); state = await tournamentState(env.DB, user.userId); }
+    if (state.status !== "lobby") return json({ message: "錦標賽已經開始，請等待下一場。" }, 409);
+    if (state.hostUserId && state.game !== body.game) return json({ message: "目前大廳正在等待另一種錦標賽，請選擇相同玩法。" }, 409);
+    const hosting = !state.hostUserId;
+    const entryFee = hosting ? Math.floor(Number(body.entryFee)) : state.entryFee;
+    if (!Number.isInteger(entryFee) || entryFee < MIN_CASINO_ENTRY_FEE || entryFee > MAX_CASINO_ENTRY_FEE) return json({ message: `報名費需介於 NT$${MIN_CASINO_ENTRY_FEE}～${MAX_CASINO_ENTRY_FEE.toLocaleString()}。` }, 400);
+    if (state.players.some((entry) => entry.id === user.userId) || state.players.length >= 5 || player.cash < entryFee) return json({ message: state.players.some((entry) => entry.id === user.userId) ? "你已報名這場錦標賽。" : state.players.length >= 5 ? "本場錦標賽已滿 5 人。" : `現金不足 NT$${entryFee.toLocaleString()}。` }, 409);
+    if (hosting) {
+      await env.DB.prepare("UPDATE casino_tournament_state SET host_user_id=?, game=?, entry_fee=?, round_limit=?, updated_at=? WHERE id='tournament-01' AND host_user_id=''").bind(user.userId, body.game, entryFee, TOURNAMENT_ROUNDS, Date.now()).run();
+      const claimed = await tournamentState(env.DB, user.userId);
+      if (claimed.hostUserId !== user.userId) return json({ message: "已有玩家先開房，請依目前玩法與報名費重新加入。" }, 409);
+    }
+    try {
+      await env.DB.batch([env.DB.prepare("UPDATE players SET cash=cash-? WHERE user_id=? AND cash>=?").bind(entryFee, user.userId, entryFee), env.DB.prepare("INSERT INTO casino_tournament_entries (tournament_no, user_id, player_name) VALUES (?, ?, ?)").bind(state.tournamentNo, user.userId, user.displayName.slice(0, 40))]);
+    } catch (error) {
+      if (hosting) await env.DB.prepare("UPDATE casino_tournament_state SET host_user_id=COALESCE((SELECT user_id FROM casino_tournament_entries WHERE tournament_no=? ORDER BY rowid LIMIT 1), ''), game=CASE WHEN EXISTS (SELECT 1 FROM casino_tournament_entries WHERE tournament_no=?) THEN game ELSE 'blackjack' END, entry_fee=CASE WHEN EXISTS (SELECT 1 FROM casino_tournament_entries WHERE tournament_no=?) THEN entry_fee ELSE ? END WHERE id='tournament-01' AND host_user_id=?").bind(state.tournamentNo, state.tournamentNo, state.tournamentNo, TOURNAMENT_ENTRY_FEE, user.userId).run();
+      throw error;
+    }
+    const joinedState = await tournamentState(env.DB, user.userId);
+    if (joinedState.status === "lobby" && joinedState.players.length >= 2) await env.DB.prepare("UPDATE casino_tournament_state SET status='playing', next_round_at=?, updated_at=? WHERE id='tournament-01' AND status='lobby'").bind(Date.now() + TOURNAMENT_START_DELAY_MS, Date.now()).run();
+    const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>(); const progress = await ensureProgress(env.DB, saved!);
+    return json({ player: serializePlayer(saved!, progress), tournament: await tournamentState(env.DB, user.userId), message: joinedState.players.length >= 2 ? "錦標賽即將開始：每局都要實際操作牌局，五局後依名次分配獎金。" : "報名完成，等待至少一位玩家加入。" });
   }
-  try {
-    await env.DB.batch([env.DB.prepare("UPDATE players SET cash=cash-? WHERE user_id=? AND cash>=?").bind(entryFee, user.userId, entryFee), env.DB.prepare("INSERT INTO casino_tournament_entries (tournament_no, user_id, player_name) VALUES (?, ?, ?)").bind(state.tournamentNo, user.userId, user.displayName.slice(0, 40))]);
-  } catch (error) {
-    if (hosting) await env.DB.prepare("UPDATE casino_tournament_state SET host_user_id=COALESCE((SELECT user_id FROM casino_tournament_entries WHERE tournament_no=? ORDER BY rowid LIMIT 1), ''), game=CASE WHEN EXISTS (SELECT 1 FROM casino_tournament_entries WHERE tournament_no=?) THEN game ELSE 'blackjack' END, entry_fee=CASE WHEN EXISTS (SELECT 1 FROM casino_tournament_entries WHERE tournament_no=?) THEN entry_fee ELSE ? END WHERE id='tournament-01' AND host_user_id=?").bind(state.tournamentNo, state.tournamentNo, state.tournamentNo, TOURNAMENT_ENTRY_FEE, user.userId).run();
-    throw error;
+  const dbState = await env.DB.prepare("SELECT * FROM casino_tournament_state WHERE id='tournament-01'").first<TournamentStateRow>();
+  if (!dbState || dbState.status !== "playing") return json({ message: "目前沒有進行中的錦標賽牌局。" }, 409);
+  const round = await env.DB.prepare("SELECT * FROM casino_tournament_rounds WHERE tournament_no=? AND round_no=?").bind(dbState.round_no, dbState.current_round + 1).first<TournamentRoundRow>();
+  const hand = round ? await env.DB.prepare("SELECT * FROM casino_tournament_hands WHERE tournament_no=? AND round_no=? AND user_id=?").bind(dbState.round_no, round.round_no, user.userId).first<TournamentHandRow>() : null;
+  if (!round || !hand || round.status !== "playing") return json({ message: "下一局牌局尚未開桌，請稍候。" }, 409);
+  const now = Date.now();
+  if (round.game === "blackjack") {
+    if (!(body.action === "hit" || body.action === "stand")) return json({ message: "二十一點只能選擇要牌或停牌。" }, 400);
+    if (hand.status !== "playing") return json({ message: "你已完成這局，等待其他玩家。" }, 409);
+    if (body.action === "hit") {
+      const deck = parseCards(round.deck); const cards = parseCards(hand.player_cards); const nextCard = deck.pop();
+      if (!nextCard) return json({ message: "牌堆已用盡，請等待結算。" }, 409);
+      cards.push(nextCard); const score = handScore(cards); const status = score > 21 ? "bust" : score === 21 ? "stood" : "playing"; const result = score > 21 ? "要牌後爆牌。" : score === 21 ? "21 點，自動停牌。" : "";
+      await env.DB.batch([env.DB.prepare("UPDATE casino_tournament_hands SET player_cards=?, status=?, result=?, updated_at=? WHERE tournament_no=? AND round_no=? AND user_id=? AND status='playing'").bind(JSON.stringify(cards), status, result, now, dbState.round_no, round.round_no, user.userId), env.DB.prepare("UPDATE casino_tournament_rounds SET deck=?, next_action_at=?, updated_at=? WHERE tournament_no=? AND round_no=?").bind(JSON.stringify(deck), now + TOURNAMENT_ACTION_TIMEOUT_MS, now, dbState.round_no, round.round_no)]);
+    } else await env.DB.prepare("UPDATE casino_tournament_hands SET status='stood', result='主動停牌。', updated_at=? WHERE tournament_no=? AND round_no=? AND user_id=? AND status='playing'").bind(now, dbState.round_no, round.round_no, user.userId).run();
+  } else {
+    if (!(body.action === "check" || body.action === "call" || body.action === "raise" || body.action === "fold")) return json({ message: "德州撲克請選擇過牌、跟注、加注或棄牌。" }, 400);
+    if (hand.status !== "playing" || hand.seat_no !== round.turn_seat) return json({ message: hand.status !== "playing" ? "你已完成這局，等待其他玩家。" : `目前輪到 ${round.turn_seat} 號玩家。` }, 409);
+    const callAmount = Math.max(0, round.current_bet - hand.street_bet);
+    if (body.action === "check" && callAmount > 0) return json({ message: "目前有人下注，請跟注、加注或棄牌。" }, 409);
+    if (body.action === "call" && callAmount === 0) return json({ message: "目前沒有需要跟注的金額，請選擇過牌。" }, 409);
+    if (body.action === "fold") await env.DB.prepare("UPDATE casino_tournament_hands SET status='folded', acted=1, result='本局已棄牌。', updated_at=? WHERE tournament_no=? AND round_no=? AND user_id=?").bind(now, dbState.round_no, round.round_no, user.userId).run();
+    else {
+      const raiseBy = body.action === "raise" ? Number(body.amount) : 0;
+      if (body.action === "raise" && (!Number.isSafeInteger(raiseBy) || raiseBy < 10)) return json({ message: "加注至少 10 籌碼。" }, 400);
+      const added = callAmount + (body.action === "raise" ? raiseBy : 0);
+      if (hand.stack < added) return json({ message: "籌碼不足以完成這個動作，請選擇較小的加注或棄牌。" }, 409);
+      const nextBet = round.current_bet + (body.action === "raise" ? raiseBy : 0);
+      await env.DB.batch([env.DB.prepare("UPDATE casino_tournament_hands SET stack=stack-?, bet=bet+?, street_bet=street_bet+?, acted=1, updated_at=? WHERE tournament_no=? AND round_no=? AND user_id=?").bind(added, added, added, now, dbState.round_no, round.round_no, user.userId), ...(body.action === "raise" ? [env.DB.prepare("UPDATE casino_tournament_hands SET acted=0 WHERE tournament_no=? AND round_no=? AND status='playing' AND user_id<>?").bind(dbState.round_no, round.round_no, user.userId)] : []), env.DB.prepare("UPDATE casino_tournament_rounds SET current_bet=?, pot=pot+?, next_action_at=?, updated_at=? WHERE tournament_no=? AND round_no=?").bind(nextBet, round.pot + added, now + TOURNAMENT_ACTION_TIMEOUT_MS, now, dbState.round_no, round.round_no)]);
+    }
   }
-  const joinedState = await tournamentState(env.DB, user.userId);
-  if (joinedState.status === "lobby" && joinedState.players.length >= 2) await env.DB.prepare("UPDATE casino_tournament_state SET status='playing', next_round_at=?, updated_at=? WHERE id='tournament-01' AND status='lobby'").bind(Date.now() + 5_000, Date.now()).run();
+  await advanceTournamentRound(env.DB, dbState);
   const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>(); const progress = await ensureProgress(env.DB, saved!);
-  return json({ player: serializePlayer(saved!, progress), tournament: await tournamentState(env.DB, user.userId), message: joinedState.players.length >= 2 ? "錦標賽開始，五局積分後依名次分配獎金。" : "報名完成，等待至少一位玩家加入。" });
+  return json({ player: serializePlayer(saved!, progress), tournament: await tournamentState(env.DB, user.userId), message: body.action === "hit" ? "已要牌。" : body.action === "stand" ? "已停牌，等待其他玩家完成。" : "牌局操作已完成。" });
 }
 
 const ACTIVE_CASINO_STATUSES = "('seated','waiting','playing','stood','settling')";

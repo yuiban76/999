@@ -101,6 +101,9 @@ test("multiplayer cash invitations support gifts and protected scam resolution",
   assert.match(page, /錦標賽 · 積分賽/);
   assert.match(page, /<BingoTable/);
   assert.match(page, /<TournamentTable/);
+  assert.match(page, /要牌/);
+  assert.match(page, /跟注/);
+  assert.match(page, /onAction\("hit"\)/);
   assert.match(worker, /MIN_CASINO_ENTRY_FEE = 100/);
   assert.match(worker, /MAX_CASINO_ENTRY_FEE = 10_000/);
   assert.match(worker, /TOURNAMENT_ROUNDS = 5/);
@@ -108,6 +111,10 @@ test("multiplayer cash invitations support gifts and protected scam resolution",
   assert.match(worker, /entry_fee INTEGER NOT NULL DEFAULT 500/);
   assert.match(worker, /async function bingoAction/);
   assert.match(worker, /async function tournamentAction/);
+  assert.match(worker, /async function startTournamentRound/);
+  assert.match(worker, /casino_tournament_hands/);
+  assert.match(worker, /body\.action === "hit"/);
+  assert.match(worker, /body\.action === "call"/);
   assert.match(worker, /\["join", "leave"\]/);
   assert.match(worker, /JSON\.stringify\(randomBingoCard\(\)\)/);
   assert.match(page, /離開房間並退還/);
