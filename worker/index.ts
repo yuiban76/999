@@ -1459,7 +1459,8 @@ async function takeAction(request: Request, env: Env) {
     progress = { ...progress, talent_exp: Math.min(1099, progress.talent_exp + talentExpGain) };
   }
 
-  if (body.action !== "hospital" && body.action !== "reset") {
+  const bypassVitalityEffects = body.action === "move" || (body.action === "hotel" && body.kind === "work");
+  if (body.action !== "hospital" && body.action !== "reset" && !bypassVitalityEffects) {
     if (next.hunger <= 15) next.health = clamp(next.health - 6);
     if (next.energy <= 5) next.health = clamp(next.health - 4);
     if (!next.illness && next.health < 50) {

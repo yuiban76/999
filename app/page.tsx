@@ -436,7 +436,8 @@ function guestAction(current: Player, action: string, payload: Record<string, un
   } else if (action === "reset") {
     return { player: { ...INITIAL_PLAYER }, title: "重新開始人生", message: "新的人生已開始，所有試玩進度回到起點。" };
   } else return fail("未知的行動。");
-  if (action !== "hospital") {
+  const bypassVitalityEffects = action === "move" || (action === "hotel" && payload.kind === "work");
+  if (action !== "hospital" && !bypassVitalityEffects) {
     if (next.hunger <= 15) next.health = Math.max(0, next.health - 6);
     if (next.energy <= 5) next.health = Math.max(0, next.health - 4);
     if (!next.illness && next.health < 50) {

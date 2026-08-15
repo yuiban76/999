@@ -128,6 +128,8 @@ test("administrative actions are instant and gameplay waits stay shortened", asy
   assert.match(worker, /minutes = hours === 1 \? 30 : hours === 4 \? 120 : 240/);
   assert.match(worker, /next\.cash \+= 100; minutes = 30/);
   assert.match(worker, /next\.location = body\.location as LocationId;/);
+  assert.match(worker, /bypassVitalityEffects = body\.action === "move"/);
+  assert.match(page, /bypassVitalityEffects = action === "move"/);
   assert.doesNotMatch(worker, /next\.location = body\.location as LocationId; next\.energy/);
   assert.match(worker, /一般門診", price: Math\.floor\(600 \* careDiscount\), minutes: 15/);
   assert.match(worker, /完整治療", price: Math\.floor\(1500 \* careDiscount\), minutes: 30/);
