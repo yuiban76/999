@@ -616,6 +616,7 @@ async function multiplayer(db: D1Database) {
     db.prepare("SELECT id, player_name, title, detail, tone, game_time FROM game_events WHERE room_id = 'lobby-01' AND title NOT IN ('前往新地點', '移動完成') ORDER BY created_at DESC LIMIT 12").all<{ id: string; player_name: string; title: string; detail: string; tone: "good" | "neutral" | "warn"; game_time: string }>(),
   ]);
   return {
+    serverNow: Date.now(),
     online: players.results.map((row) => ({ id: row.user_id, displayName: row.display_name, location: row.location, cash: row.cash, loanBalance: row.loan_balance, currentJob: row.current_job, jobCategory: row.job_category, prisonUntil: row.prison_until, prisonCrime: row.prison_crime, updatedAt: row.last_seen_at, avatarUrl: row.has_avatar ? `/api/avatar/${row.user_id}?v=${row.avatar_updated_at ?? 0}` : null })),
     feed: events.results.map((row) => ({ id: row.id, playerName: row.player_name, title: row.title, detail: row.detail, tone: row.tone, time: row.game_time })),
   };
@@ -913,21 +914,35 @@ async function advanceTournamentRound(db: D1Database, state: TournamentStateRow)
     if (hands.every((hand) => ["stood", "bust"].includes(hand.status))) await settleTournamentRound(db, state, round, hands);
     return;
   }
-  let active = hands.filter((hand) => hand.status === "playing");
+  let active = hands.filter((hand) => ["playing", "all_in"].includes(hand.status));
   if (active.length <= 1) { await settleTournamentRound(db, state, round, hands); return; }
-  const current = active.find((hand) => hand.seat_no === round!.turn_seat);
-  if (!current) {
-    const next = active.sort((left, right) => left.seat_no - right.seat_no)[0];
+  const actionable = active.filter((hand) => hand.status === "playing").sort((left, right) => left.seat_no - right.seat_no);
+  const current = actionable.find((hand) => hand.seat_no === round!.turn_seat);
+  if (!current && actionable.length) {
+    const next = actionable[0];
     await db.prepare("UPDATE casino_tournament_rounds SET turn_seat=?, next_action_at=?, updated_at=? WHERE tournament_no=? AND round_no=?").bind(next.seat_no, now + TOURNAMENT_ACTION_TIMEOUT_MS, now, state.round_no, round.round_no).run();
     return;
   }
+  if (!actionable.length) {
+    if (round.street === "river") { await settleTournamentRound(db, state, round, hands); return; }
+    const deck = parseCards(round.deck); const community = parseCards(round.community_cards);
+    const nextStreet = round.street === "preflop" ? "flop" : round.street === "flop" ? "turn" : "river";
+    const cardsToDeal = nextStreet === "flop" ? 3 : 1;
+    for (let index = 0; index < cardsToDeal; index += 1) community.push(deck.pop()!);
+    await db.batch([
+      db.prepare("UPDATE casino_tournament_hands SET street_bet=0, acted=0, updated_at=? WHERE tournament_no=? AND round_no=? AND status IN ('playing','all_in')").bind(now, state.round_no, round.round_no),
+      db.prepare("UPDATE casino_tournament_rounds SET deck=?, community_cards=?, street=?, current_bet=0, turn_seat=0, next_action_at=?, updated_at=? WHERE tournament_no=? AND round_no=?").bind(JSON.stringify(deck), JSON.stringify(community), nextStreet, now + TOURNAMENT_ACTION_TIMEOUT_MS, now, state.round_no, round.round_no),
+    ]);
+    return advanceTournamentRound(db, state);
+  }
+  if (!current) return;
   if (round.next_action_at <= now) {
     await db.prepare("UPDATE casino_tournament_hands SET status='folded', acted=1, result='逾時自動棄牌。', updated_at=? WHERE tournament_no=? AND round_no=? AND user_id=? AND status='playing'").bind(now, state.round_no, round.round_no, current.user_id).run();
     return advanceTournamentRound(db, state);
   }
-  if (!active.every((hand) => hand.acted && hand.street_bet === round!.current_bet)) {
+  if (!actionable.every((hand) => hand.acted && hand.street_bet === round!.current_bet)) {
     if (current.acted) {
-      const ordered = [...active].sort((left, right) => left.seat_no - right.seat_no);
+      const ordered = actionable;
       const next = ordered.find((hand) => hand.seat_no > current.seat_no) ?? ordered[0];
       await db.prepare("UPDATE casino_tournament_rounds SET turn_seat=?, next_action_at=?, updated_at=? WHERE tournament_no=? AND round_no=?").bind(next.seat_no, now + TOURNAMENT_ACTION_TIMEOUT_MS, now, state.round_no, round.round_no).run();
     }
@@ -938,10 +953,11 @@ async function advanceTournamentRound(db: D1Database, state: TournamentStateRow)
   const nextStreet = round.street === "preflop" ? "flop" : round.street === "flop" ? "turn" : "river";
   const cardsToDeal = nextStreet === "flop" ? 3 : 1;
   for (let index = 0; index < cardsToDeal; index += 1) community.push(deck.pop()!);
-  active = hands.filter((hand) => hand.status === "playing").sort((left, right) => left.seat_no - right.seat_no);
+  active = hands.filter((hand) => ["playing", "all_in"].includes(hand.status)).sort((left, right) => left.seat_no - right.seat_no);
+  const nextActionable = active.find((hand) => hand.status === "playing");
   await db.batch([
-    db.prepare("UPDATE casino_tournament_hands SET street_bet=0, acted=0, updated_at=? WHERE tournament_no=? AND round_no=? AND status='playing'").bind(now, state.round_no, round.round_no),
-    db.prepare("UPDATE casino_tournament_rounds SET deck=?, community_cards=?, street=?, current_bet=0, turn_seat=?, next_action_at=?, updated_at=? WHERE tournament_no=? AND round_no=?").bind(JSON.stringify(deck), JSON.stringify(community), nextStreet, active[0].seat_no, now + TOURNAMENT_ACTION_TIMEOUT_MS, now, state.round_no, round.round_no),
+    db.prepare("UPDATE casino_tournament_hands SET street_bet=0, acted=0, updated_at=? WHERE tournament_no=? AND round_no=? AND status IN ('playing','all_in')").bind(now, state.round_no, round.round_no),
+    db.prepare("UPDATE casino_tournament_rounds SET deck=?, community_cards=?, street=?, current_bet=0, turn_seat=?, next_action_at=?, updated_at=? WHERE tournament_no=? AND round_no=?").bind(JSON.stringify(deck), JSON.stringify(community), nextStreet, nextActionable?.seat_no ?? 0, now + TOURNAMENT_ACTION_TIMEOUT_MS, now, state.round_no, round.round_no),
   ]);
 }
 
@@ -970,7 +986,7 @@ async function tournamentAction(request: Request, env: Env) {
   await ensureSchemaOnce(env.DB); const player = await upsertPlayer(env.DB, user, true);
   if (!player || player.location !== "casino" || player.game_over) return json({ message: "請先前往賭場，並確認人生仍在進行。" }, 400);
   const body = await request.json() as { action?: string; game?: string; entryFee?: number; amount?: number };
-  const gameplayActions = ["hit", "stand", "check", "call", "raise", "fold"];
+  const gameplayActions = ["hit", "stand", "check", "call", "raise", "all_in", "fold"];
   if (!body.action || (!["join", "leave", ...gameplayActions].includes(body.action))) return json({ message: "未知的錦標賽行動。" }, 400);
   if (body.action === "join" && !["blackjack", "poker"].includes(body.game || "")) return json({ message: "請選擇二十一點或德州撲克錦標賽。" }, 400);
   let state = await tournamentState(env.DB, user.userId);
@@ -1028,13 +1044,24 @@ async function tournamentAction(request: Request, env: Env) {
       await env.DB.batch([env.DB.prepare("UPDATE casino_tournament_hands SET player_cards=?, status=?, result=?, updated_at=? WHERE tournament_no=? AND round_no=? AND user_id=? AND status='playing'").bind(JSON.stringify(cards), status, result, now, dbState.round_no, round.round_no, user.userId), env.DB.prepare("UPDATE casino_tournament_rounds SET deck=?, next_action_at=?, updated_at=? WHERE tournament_no=? AND round_no=?").bind(JSON.stringify(deck), now + TOURNAMENT_ACTION_TIMEOUT_MS, now, dbState.round_no, round.round_no)]);
     } else await env.DB.prepare("UPDATE casino_tournament_hands SET status='stood', result='主動停牌。', updated_at=? WHERE tournament_no=? AND round_no=? AND user_id=? AND status='playing'").bind(now, dbState.round_no, round.round_no, user.userId).run();
   } else {
-    if (!(body.action === "check" || body.action === "call" || body.action === "raise" || body.action === "fold")) return json({ message: "德州撲克請選擇過牌、跟注、加注或棄牌。" }, 400);
+    if (!(body.action === "check" || body.action === "call" || body.action === "raise" || body.action === "all_in" || body.action === "fold")) return json({ message: "德州撲克請選擇過牌、跟注、加注、全押或棄牌。" }, 400);
     if (hand.status !== "playing" || hand.seat_no !== round.turn_seat) return json({ message: hand.status !== "playing" ? "你已完成這局，等待其他玩家。" : `目前輪到 ${round.turn_seat} 號玩家。` }, 409);
     const callAmount = Math.max(0, round.current_bet - hand.street_bet);
     if (body.action === "check" && callAmount > 0) return json({ message: "目前有人下注，請跟注、加注或棄牌。" }, 409);
     if (body.action === "call" && callAmount === 0) return json({ message: "目前沒有需要跟注的金額，請選擇過牌。" }, 409);
     if (body.action === "fold") await env.DB.prepare("UPDATE casino_tournament_hands SET status='folded', acted=1, result='本局已棄牌。', updated_at=? WHERE tournament_no=? AND round_no=? AND user_id=?").bind(now, dbState.round_no, round.round_no, user.userId).run();
-    else {
+    else if (body.action === "all_in") {
+      if (hand.stack <= 0) return json({ message: "你的籌碼已經全押。" }, 409);
+      const added = hand.stack;
+      const nextStreetBet = hand.street_bet + added;
+      const nextBet = Math.max(round.current_bet, nextStreetBet);
+      const raised = nextStreetBet > round.current_bet;
+      await env.DB.batch([
+        env.DB.prepare("UPDATE casino_tournament_hands SET stack=0, bet=bet+?, street_bet=street_bet+?, status='all_in', acted=1, result='已全押，等待攤牌。', updated_at=? WHERE tournament_no=? AND round_no=? AND user_id=? AND status='playing'").bind(added, added, now, dbState.round_no, round.round_no, user.userId),
+        ...(raised ? [env.DB.prepare("UPDATE casino_tournament_hands SET acted=0 WHERE tournament_no=? AND round_no=? AND status='playing' AND user_id<>?").bind(dbState.round_no, round.round_no, user.userId)] : []),
+        env.DB.prepare("UPDATE casino_tournament_rounds SET current_bet=?, pot=pot+?, next_action_at=?, updated_at=? WHERE tournament_no=? AND round_no=?").bind(nextBet, round.pot + added, now + TOURNAMENT_ACTION_TIMEOUT_MS, now, dbState.round_no, round.round_no),
+      ]);
+    } else {
       const raiseBy = body.action === "raise" ? Number(body.amount) : 0;
       if (body.action === "raise" && (!Number.isSafeInteger(raiseBy) || raiseBy < 10)) return json({ message: "加注至少 10 籌碼。" }, 400);
       const added = callAmount + (body.action === "raise" ? raiseBy : 0);
@@ -1605,7 +1632,7 @@ async function getAvatar(userId: string, env: Env) {
 
 async function bootstrap(request: Request, env: Env) {
   const user = await identity(request, env.DB);
-  if (!user || !env.DB) return json({ authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [], casino: { capacity: 5, activeCount: 0, seats: [], hand: null }, poker: { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 }, bingo: { status: "lobby", players: [], drawn: [] }, tournament: { status: "lobby", players: [] }, medicalRequests: [], loanRequests: [], bookStore: { books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK } });
+  if (!user || !env.DB) return json({ serverNow: Date.now(), authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [], casino: { capacity: 5, activeCount: 0, seats: [], hand: null }, poker: { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 }, bingo: { status: "lobby", players: [], drawn: [] }, tournament: { status: "lobby", players: [] }, medicalRequests: [], loanRequests: [], bookStore: { books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK } });
   await ensureSchemaOnce(env.DB);
   const row = await upsertPlayer(env.DB, user);
   if (!row) return json({ message: "無法載入玩家資料" }, 500);
@@ -1644,7 +1671,7 @@ async function takeAction(request: Request, env: Env) {
   if (current.game_over && body.action !== "reset") return json({ message: "這段人生已經結束，請重新開始。" }, 409);
   if (current.main_story === "unselected" && body.action !== "choose_story") return json({ message: "請先選擇人生主線。" }, 409);
   if (current.prison_until > current.elapsed_minutes && body.action !== "reset") return json({ message: `你目前因「${current.prison_crime || "違法行為"}」在監獄服刑，還需在線遊玩 ${Math.ceil((current.prison_until - current.elapsed_minutes) / 60)} 小時。` }, 409);
-  if (!["move", "choose_story", "reset", "city_event", "bank", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
+  if (!["move", "choose_story", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
   const next = { ...current };
   const sharedMinutes = worldMinutes();
   const memoryBefore = await cityMemory(env.DB);
@@ -2190,7 +2217,9 @@ async function takeAction(request: Request, env: Env) {
       const jobGain = Math.ceil(hours * 4 * (talents.has("skilled") ? 1.15 : 1));
       const hungerGain = workSpecial && next.job_category === "hospitality" ? hospitalitySpecialHungerFor(next.current_job) : 0;
       next.cash += income; next.energy = Math.max(0, next.energy - energyCost); next.health = clamp(next.health - Math.ceil(hours / 2) + medicalWorkHealthBonusFor(next.current_job)); next.hunger = clamp(next.hunger - hours * 2 + hungerGain); next.job_exp += jobGain; minutes = hours === 1 ? 30 : hours === 4 ? 120 : 240;
-      if (workSpecial) minutes = workSpecial.minutes;
+      // Special shifts are defined in real minutes (the UI shows the same unit),
+      // while ordinary actions use seconds. Convert them before writing the wait.
+      if (workSpecial) minutes = workSpecial.minutes * 60;
       if (talents.has("workaholic_2")) minutes = Math.ceil(minutes * .9);
       const newCareer = careerForCategory(next.job_category, next.job_exp, next.current_job, abilitiesFor(next));
       next.current_job = newCareer.title;
@@ -2308,8 +2337,10 @@ async function takeAction(request: Request, env: Env) {
 
   const bypassVitalityEffects = body.action === "move" || body.action === "restaurant" || (body.action === "hotel" && body.kind === "work") || ["book_publish", "book_toggle", "book_buy"].includes(body.action || "");
   if (body.action !== "hospital" && body.action !== "reset" && !bypassVitalityEffects) {
-    if (next.hunger <= 15) next.health = clamp(next.health - 6);
-    if (next.energy <= 5) next.health = clamp(next.health - 4);
+    // Rest is the recovery action: low hunger/energy penalties must not erase
+    // the promised health recovery in the same action.
+    if (body.action !== "sleep" && next.hunger <= 15) next.health = clamp(next.health - 6);
+    if (body.action !== "sleep" && next.energy <= 5) next.health = clamp(next.health - 4);
     if (!next.illness && next.health < 50) {
       const chance = next.health < 20 ? 0.35 : next.health < 35 ? 0.22 : 0.12;
       if (Math.random() < chance * (talents.has("resistance") ? .75 : 1)) {

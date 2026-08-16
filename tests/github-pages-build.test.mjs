@@ -157,17 +157,35 @@ test("administrative actions are instant and gameplay waits stay shortened", asy
   assert.match(worker, /一般門診", price: Math\.floor\(600 \* careDiscount\), minutes: 15/);
   assert.match(worker, /完整治療", price: Math\.floor\(1500 \* careDiscount\), minutes: 30/);
   assert.match(worker, /急診治療", price: Math\.floor\(2500 \* careDiscount\), minutes: 20/);
-  assert.match(page, /換工作立即完成/);
+  assert.match(page, /任何職位都能換職/);
   assert.match(page, /睡眠 8 小時" meta="現實等待 2 分鐘/);
   assert.match(page, /旅店臨時工 · 30 秒/);
   assert.match(page, /不扣體力、飽足、健康/);
-  assert.match(page, /const canActDuringWait = \["move", "reset", "city_event", "bank", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy"\]/);
-  assert.match(worker, /\["move", "choose_story", "reset", "city_event", "bank", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy"\]/);
-  assert.match(page, /期間可移動、使用銀行、處理贈送／詐騙／治療／貸款請求，或前往賭場遊玩/);
+  assert.match(page, /const canActDuringWait = \["move", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy"\]/);
+  assert.match(worker, /\["move", "choose_story", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy"\]/);
+  assert.match(page, /期間可移動、換職、使用銀行、處理贈送／詐騙／治療／貸款請求，或前往賭場遊玩/);
   assert.match(page, /BankPanel player=\{player\} busy=\{busy \|\| !bankOpen\}/);
   assert.match(page, /<CasinoTable state=\{casino\} signedIn=\{Boolean\(profile\)\} busy=\{busy\}/);
   assert.match(page, /<PokerTable state=\{poker\} signedIn=\{Boolean\(profile\)\} busy=\{busy\}/);
   assert.doesNotMatch(worker, /body\.action !== "leave" && player\.action_available_at > Date\.now\(\)/);
+});
+
+test("recovery, special-shift waits, synchronized time, and tournament all-in are wired", async () => {
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+
+  assert.match(worker, /if \(workSpecial\) minutes = workSpecial\.minutes \* 60/);
+  assert.match(page, /if \(workSpecial\) minutes = workSpecial\.minutes \* 60/);
+  assert.match(worker, /body\.action !== "sleep" && next\.hunger <= 15/);
+  assert.match(worker, /body\.action !== "sleep" && next\.energy <= 5/);
+  assert.match(page, /action !== "sleep" && next\.hunger <= 15/);
+  assert.match(page, /action !== "sleep" && next\.energy <= 5/);
+  assert.match(worker, /serverNow: Date\.now\(\)/);
+  assert.match(page, /setServerTimeOffsetMs\(data\.serverNow - currentWallClockMs\(\)\)/);
+  assert.match(worker, /const gameplayActions = \["hit", "stand", "check", "call", "raise", "all_in", "fold"\]/);
+  assert.match(worker, /status='all_in'/);
+  assert.match(page, /onAction\("all_in"\)/);
+  assert.match(page, /任何職位都能換職/);
 });
 
 test("general office career has four ranks and role-specific work specials", async () => {
