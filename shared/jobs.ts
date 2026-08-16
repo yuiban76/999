@@ -1,7 +1,7 @@
 export const JOB_CATEGORIES = [
   { id: "office", label: "一般職場", jobs: ["行政助理", "行政專員", "資深行政專員", "行政主管"] },
   { id: "medical", label: "醫療照護", jobs: ["診所助理", "護理師", "資深護理師", "護理長"] },
-  { id: "finance", label: "商業金融", jobs: ["銀行員", "投資人", "保險顧問", "房仲", "企業家", "創投合夥人"] },
+  { id: "finance", label: "商業金融", jobs: ["銀行員", "理財專員", "投資顧問", "分行經理"] },
   { id: "creative", label: "創意娛樂", jobs: ["作家", "畫家", "設計師", "演員", "歌手", "導演", "實況主", "網紅"] },
   { id: "hospitality", label: "餐飲服務", jobs: ["廚師", "咖啡師", "調酒師", "餐廳老闆", "旅館經理", "導遊"] },
   { id: "sports", label: "運動競技", jobs: ["職業球員", "賽車手", "格鬥選手", "教練", "裁判", "健身教練"] },
@@ -49,6 +49,10 @@ export const CAREER_WORK_SPECIALS = {
   "行政專員": { name: "爆肝", hours: 11, minutes: 5 },
   "資深行政專員": { name: "摸魚", hours: 8, minutes: 3 },
   "行政主管": { name: "準時下班", hours: 8, minutes: 2 },
+  "銀行員": { name: "櫃檯加班", hours: 9, minutes: 3 },
+  "理財專員": { name: "客戶開發", hours: 10, minutes: 4 },
+  "投資顧問": { name: "市場研判", hours: 8, minutes: 3 },
+  "分行經理": { name: "準時關帳", hours: 8, minutes: 2 },
   "診所助理": { name: "基本照護", hours: 8, minutes: 2 },
   "護理師": { name: "輪班津貼", hours: 9, minutes: 3 },
   "資深護理師": { name: "臨床專注", hours: 8, minutes: 3 },
@@ -70,6 +74,23 @@ export const MEDICAL_TREATMENT_SERVICES = {
 
 export const MEDICAL_WORK_HEALTH_BONUS = 6;
 
+export const FINANCE_DEPOSIT_RATES_BP = {
+  "銀行員": 12,
+  "理財專員": 14,
+  "投資顧問": 16,
+  "分行經理": 18,
+} as const;
+
+export const FINANCE_LOAN_TERMS = {
+  "銀行員": { rateBp: 48, spreadBp: 2 },
+  "理財專員": { rateBp: 45, spreadBp: 5 },
+  "投資顧問": { rateBp: 42, spreadBp: 8 },
+  "分行經理": { rateBp: 40, spreadBp: 10 },
+} as const;
+
+export const BANK_DEPOSIT_RATE_BP = 10;
+export const BANK_LOAN_RATE_BP = 50;
+
 export function medicalHospitalDiscountFor(job: string) {
   return MEDICAL_HOSPITAL_DISCOUNTS[job as keyof typeof MEDICAL_HOSPITAL_DISCOUNTS] ?? 0;
 }
@@ -80,6 +101,14 @@ export function medicalTreatmentFor(job: string) {
 
 export function medicalWorkHealthBonusFor(job: string) {
   return jobInfo(job)?.categoryId === "medical" ? MEDICAL_WORK_HEALTH_BONUS : 0;
+}
+
+export function financeDepositRateFor(job: string) {
+  return FINANCE_DEPOSIT_RATES_BP[job as keyof typeof FINANCE_DEPOSIT_RATES_BP] ?? BANK_DEPOSIT_RATE_BP;
+}
+
+export function financeLoanTermsFor(job: string) {
+  return FINANCE_LOAN_TERMS[job as keyof typeof FINANCE_LOAN_TERMS] ?? null;
 }
 
 export function careerWorkSpecialFor(job: string, hours?: number) {
@@ -99,7 +128,7 @@ export function careerRequirements(categoryId: string, index: number): Partial<A
   const profile = CAREER_ABILITY_PROFILE[categoryId];
   if (!profile) return {};
   if (index === 0) return { [profile[0]]: 0, [profile[1]]: 0 };
-  if (categoryId === "medical") {
+  if (categoryId === "medical" || categoryId === "finance") {
     const requirements: Partial<Abilities>[] = [
       { intelligence: 0, social: 0 },
       { intelligence: 40, social: 20 },
@@ -122,7 +151,7 @@ function normalizedCareerTier(categoryId: string, index: number) {
 }
 
 export function careerThresholdForCategory(categoryId: string, index: number) {
-  if (categoryId === "medical") return [0, 100, 250, 500][index] ?? 500;
+  if (categoryId === "medical" || categoryId === "finance") return [0, 100, 250, 500][index] ?? 500;
   return CAREER_THRESHOLDS[normalizedCareerTier(categoryId, index)] ?? CAREER_THRESHOLDS.at(-1)!;
 }
 

@@ -175,6 +175,40 @@ export const playerMedicalRequests = sqliteTable("player_medical_requests", {
   resolvedAt: integer("resolved_at"),
 }, (table) => [index("idx_medical_requests_provider_status").on(table.providerId, table.status, table.expiresAt)]);
 
+export const playerLoanRequests = sqliteTable("player_loan_requests", {
+  id: text("id").primaryKey(),
+  borrowerId: text("borrower_id").notNull(),
+  borrowerName: text("borrower_name").notNull(),
+  providerId: text("provider_id").notNull(),
+  providerName: text("provider_name").notNull(),
+  providerJob: text("provider_job").notNull(),
+  amount: integer("amount").notNull(),
+  interestRateBp: integer("interest_rate_bp").notNull(),
+  spreadBp: integer("spread_bp").notNull(),
+  status: text("status").notNull().default("pending"),
+  outcome: text("outcome").notNull().default(""),
+  resolutionToken: text("resolution_token").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+  resolvedAt: integer("resolved_at"),
+}, (table) => [index("idx_loan_requests_provider_status").on(table.providerId, table.status, table.expiresAt), index("idx_loan_requests_borrower_status").on(table.borrowerId, table.status, table.expiresAt)]);
+
+export const playerLoanContracts = sqliteTable("player_loan_contracts", {
+  id: text("id").primaryKey(),
+  borrowerId: text("borrower_id").notNull(),
+  borrowerName: text("borrower_name").notNull(),
+  providerId: text("provider_id").notNull(),
+  providerName: text("provider_name").notNull(),
+  providerJob: text("provider_job").notNull(),
+  principalAmount: integer("principal_amount").notNull(),
+  outstandingBalance: integer("outstanding_balance").notNull(),
+  interestRateBp: integer("interest_rate_bp").notNull(),
+  spreadBp: integer("spread_bp").notNull(),
+  status: text("status").notNull().default("active"),
+  openedAt: integer("opened_at").notNull(),
+  closedAt: integer("closed_at"),
+}, (table) => [index("idx_loan_contracts_borrower_status").on(table.borrowerId, table.status), index("idx_loan_contracts_provider_status").on(table.providerId, table.status)]);
+
 export const casinoBingoState = sqliteTable("casino_bingo_state", {
   id: text("id").primaryKey(), roundNo: integer("round_no").notNull().default(1), status: text("status").notNull().default("lobby"),
   hostUserId: text("host_user_id").notNull().default(""), entryFee: integer("entry_fee").notNull().default(100), drawnNumbers: text("drawn_numbers").notNull().default("[]"), nextDrawAt: integer("next_draw_at").notNull().default(0), updatedAt: integer("updated_at").notNull(),

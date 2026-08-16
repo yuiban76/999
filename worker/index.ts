@@ -1,4 +1,4 @@
-import { ABILITY_LABELS, ACADEMIES, careerForCategory, careerRequirements, careerWorkSpecialFor, categoryInfo, jobInfo, medicalHospitalDiscountFor, medicalTreatmentFor, medicalWorkHealthBonusFor, meetsCareerRequirements, type Abilities } from "../shared/jobs";
+import { ABILITY_LABELS, ACADEMIES, BANK_LOAN_RATE_BP, careerForCategory, careerRequirements, careerWorkSpecialFor, categoryInfo, financeDepositRateFor, financeLoanTermsFor, jobInfo, medicalHospitalDiscountFor, medicalTreatmentFor, medicalWorkHealthBonusFor, meetsCareerRequirements, type Abilities } from "../shared/jobs";
 import { CITY_EVENTS, STORY_CHAPTERS, storyChapterForDebt, talentInfo } from "../shared/progression";
 import { isHospitalRegularOpen, isLocationOpen, minuteOfDay, OPENING_HOURS, worldMinutes } from "../shared/world";
 
@@ -54,6 +54,8 @@ type ProgressRow = { user_id: string; talent_exp: number; talents: string; story
 type MemoryRow = { cycle_day: number; work_count: number; hospital_count: number; housing_count: number; casino_count: number; study_count: number; event_count: number };
 type TransferRequestRow = { id: string; sender_id: string; sender_name: string; recipient_id: string; kind: "gift" | "scam"; amount: number; status: string; outcome: string; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
 type MedicalTreatmentRequestRow = { id: string; patient_id: string; patient_name: string; provider_id: string; provider_name: string; provider_job: string; health_gain: number; amount: number; status: string; outcome: string; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
+type LoanRequestRow = { id: string; borrower_id: string; borrower_name: string; provider_id: string; provider_name: string; provider_job: string; amount: number; interest_rate_bp: number; spread_bp: number; status: string; outcome: string; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
+type LoanContractRow = { id: string; borrower_id: string; borrower_name: string; provider_id: string; provider_name: string; provider_job: string; principal_amount: number; outstanding_balance: number; interest_rate_bp: number; spread_bp: number; status: string; opened_at: number; closed_at: number | null };
 
 const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "bank", "business", "shopping", "hotel", "casino", "school", "hospital"]);
 // Persist at most one idle heartbeat every ten seconds. Only a short,
@@ -62,6 +64,7 @@ const HEARTBEAT_WRITE_INTERVAL_MS = 10_000;
 const ONLINE_HEARTBEAT_GRACE_MS = 30_000;
 const TRANSFER_REQUEST_TIMEOUT_MS = 60_000;
 const MEDICAL_REQUEST_TIMEOUT_MS = 30_000;
+const LOAN_REQUEST_TIMEOUT_MS = 30_000;
 const clamp = (value: number) => Math.max(0, Math.min(100, value));
 const abilitiesFor = (player: PlayerRow): Abilities => ({
   physical: player.fitness_exp,
@@ -150,19 +153,24 @@ async function identity(request: Request, db?: D1Database): Promise<AuthUser | n
 }
 
 function guestPlayer() {
-  return { cash: 10000, bankBalance: 0, loanBalance: 0, dailyMinimumPayment: 0, dailyPaymentMade: 0, missedPaymentDays: 0, gameOver: "", mainStory: "legacy", energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, creativityExp: 0, physicalExp: 0, socialExp: 0, charismaExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, actionAvailableAt: 0, actionLabel: "", elapsedMinutes: 0, location: "realtor" as LocationId, talentExp: 0, talentLevel: 0, talentPoints: 0, talents: [] as string[], storyChapter: 0, pendingEvent: "" };
+  return { cash: 10000, bankBalance: 0, loanBalance: 0, loanProviderName: "", loanRateBp: null, loanSpreadBp: null, dailyMinimumPayment: 0, dailyPaymentMade: 0, missedPaymentDays: 0, gameOver: "", mainStory: "legacy", energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, creativityExp: 0, physicalExp: 0, socialExp: 0, charismaExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, actionAvailableAt: 0, actionLabel: "", elapsedMinutes: 0, location: "realtor" as LocationId, talentExp: 0, talentLevel: 0, talentPoints: 0, talents: [] as string[], storyChapter: 0, pendingEvent: "" };
 }
 
 function parseList(value: string) {
   try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []; } catch { return []; }
 }
 
-function serializePlayer(row: PlayerRow, progress?: ProgressRow | null) {
+function serializePlayer(row: PlayerRow, progress?: ProgressRow | null, loanContract?: LoanContractRow | null) {
   const currentJob = jobInfo(row.current_job) ? row.current_job : "待業者";
   const location = VALID_LOCATIONS.has(row.location) ? row.location : "casino";
   const talents = progress ? parseList(progress.talents) : [];
   const talentLevel = Math.min(10, Math.floor((progress?.talent_exp ?? 0) / 100));
-  return { cash: row.cash, bankBalance: row.bank_balance, loanBalance: row.loan_balance, dailyMinimumPayment: row.daily_minimum_payment, dailyPaymentMade: row.daily_payment_made, missedPaymentDays: row.missed_payment_days, gameOver: row.game_over, mainStory: row.main_story, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, creativityExp: row.programming_exp, physicalExp: row.fitness_exp, socialExp: row.work_exp, charismaExp: row.charisma_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, actionAvailableAt: row.action_available_at, actionLabel: row.action_label, elapsedMinutes: row.elapsed_minutes, location, talentExp: progress?.talent_exp ?? 0, talentLevel, talentPoints: Math.max(0, talentLevel - talents.length), talents, storyChapter: progress?.story_chapter ?? 0, pendingEvent: progress?.pending_event ?? "" };
+  return { cash: row.cash, bankBalance: row.bank_balance, loanBalance: row.loan_balance, loanProviderName: loanContract?.provider_name ?? "", loanRateBp: loanContract?.interest_rate_bp ?? null, loanSpreadBp: loanContract?.spread_bp ?? null, dailyMinimumPayment: row.daily_minimum_payment, dailyPaymentMade: row.daily_payment_made, missedPaymentDays: row.missed_payment_days, gameOver: row.game_over, mainStory: row.main_story, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, creativityExp: row.programming_exp, physicalExp: row.fitness_exp, socialExp: row.work_exp, charismaExp: row.charisma_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, actionAvailableAt: row.action_available_at, actionLabel: row.action_label, elapsedMinutes: row.elapsed_minutes, location, talentExp: progress?.talent_exp ?? 0, talentLevel, talentPoints: Math.max(0, talentLevel - talents.length), talents, storyChapter: progress?.story_chapter ?? 0, pendingEvent: progress?.pending_event ?? "" };
+}
+
+async function activeLoanContract(db: D1Database, borrowerId: string) {
+  return db.prepare(`SELECT id, borrower_id, borrower_name, provider_id, provider_name, provider_job, principal_amount, outstanding_balance, interest_rate_bp, spread_bp, status, opened_at, closed_at
+    FROM player_loan_contracts WHERE borrower_id=? AND status='active' LIMIT 1`).bind(borrowerId).first<LoanContractRow>();
 }
 
 function profileFor(user: AuthUser) {
@@ -271,6 +279,21 @@ async function ensureSchema(db: D1Database) {
       resolution_token TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL,
       expires_at INTEGER NOT NULL, resolved_at INTEGER
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS player_loan_requests (
+      id TEXT PRIMARY KEY, borrower_id TEXT NOT NULL, borrower_name TEXT NOT NULL,
+      provider_id TEXT NOT NULL, provider_name TEXT NOT NULL, provider_job TEXT NOT NULL,
+      amount INTEGER NOT NULL, interest_rate_bp INTEGER NOT NULL, spread_bp INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending', outcome TEXT NOT NULL DEFAULT '',
+      resolution_token TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL, resolved_at INTEGER
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS player_loan_contracts (
+      id TEXT PRIMARY KEY, borrower_id TEXT NOT NULL, borrower_name TEXT NOT NULL,
+      provider_id TEXT NOT NULL, provider_name TEXT NOT NULL, provider_job TEXT NOT NULL,
+      principal_amount INTEGER NOT NULL, outstanding_balance INTEGER NOT NULL,
+      interest_rate_bp INTEGER NOT NULL, spread_bp INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active', opened_at INTEGER NOT NULL, closed_at INTEGER
+    )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS casino_bingo_state (
       id TEXT PRIMARY KEY, round_no INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL DEFAULT 'lobby',
       host_user_id TEXT NOT NULL DEFAULT '', entry_fee INTEGER NOT NULL DEFAULT 100, drawn_numbers TEXT NOT NULL DEFAULT '[]', next_draw_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL
@@ -316,6 +339,10 @@ async function ensureSchema(db: D1Database) {
     db.prepare("CREATE INDEX IF NOT EXISTS idx_mystery_clues_key ON mystery_clues(clue_key)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_transfer_requests_recipient_status ON player_transfer_requests(recipient_id, status, expires_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_medical_requests_provider_status ON player_medical_requests(provider_id, status, expires_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_loan_requests_provider_status ON player_loan_requests(provider_id, status, expires_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_loan_requests_borrower_status ON player_loan_requests(borrower_id, status, expires_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_loan_contracts_borrower_status ON player_loan_contracts(borrower_id, status)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_loan_contracts_provider_status ON player_loan_contracts(provider_id, status)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_bingo_entries_round ON casino_bingo_entries(round_no)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_tournament_entries_round ON casino_tournament_entries(tournament_no)"),
   ]);
@@ -350,6 +377,7 @@ async function upsertPlayer(db: D1Database, user: AuthUser, forceHeartbeat = fal
     }
   }
   if (!row) return null;
+  let loanContract = row.loan_balance > 0 ? await activeLoanContract(db, user.userId) : null;
   const today = Math.floor(row.elapsed_minutes / 1440) + 1;
   // Existing story saves receive a fresh first deadline when this system is introduced.
   if (row.main_story === "prodigal_return" && row.loan_balance > 0 && row.daily_minimum_payment <= 0 && !row.game_over) {
@@ -373,6 +401,7 @@ async function upsertPlayer(db: D1Database, user: AuthUser, forceHeartbeat = fal
     let paymentMade = row.daily_payment_made;
     let missedPaymentDays = row.missed_payment_days;
     let gameOver = row.game_over;
+    let providerEarnings = 0;
     for (let day = 0; day < elapsedDays; day += 1) {
       if (row.main_story === "prodigal_return" && loanBalance > 0 && !gameOver) {
         const paymentShortfall = Math.min(loanBalance, Math.max(0, minimumPayment - paymentMade));
@@ -387,14 +416,27 @@ async function upsertPlayer(db: D1Database, user: AuthUser, forceHeartbeat = fal
         missedPaymentDays = loanBalance > 0 && paymentMade < minimumPayment ? missedPaymentDays + 1 : 0;
         if (missedPaymentDays >= 2) gameOver = PRODIGAL_FAILURE_ENDING;
       } else if (loanBalance <= 0) missedPaymentDays = 0;
-      bankBalance = Math.min(9_000_000_000_000_000, Math.floor(bankBalance * 1.001));
-      const dailyLoanRate = row.main_story === "prodigal_return" ? (parseList(progress.talents).includes("credit_rebuild") ? 1.0018 : 1.002) : 1.005;
-      loanBalance = Math.min(9_000_000_000_000_000, Math.ceil(loanBalance * dailyLoanRate));
+      const depositRateBp = financeDepositRateFor(row.current_job);
+      bankBalance = Math.min(9_000_000_000_000_000, bankBalance + Math.floor(bankBalance * depositRateBp / 10_000));
+      if (loanContract && row.main_story !== "prodigal_return" && loanBalance > 0) {
+        providerEarnings += Math.max(0, Math.ceil(loanBalance * loanContract.spread_bp / 10_000));
+        loanBalance = Math.min(9_000_000_000_000_000, loanBalance + Math.ceil(loanBalance * loanContract.interest_rate_bp / 10_000));
+      } else {
+        const dailyLoanRateBp = row.main_story === "prodigal_return" ? (parseList(progress.talents).includes("credit_rebuild") ? 18 : 20) : BANK_LOAN_RATE_BP;
+        loanBalance = Math.min(9_000_000_000_000_000, loanBalance + Math.ceil(loanBalance * dailyLoanRateBp / 10_000));
+      }
       paymentMade = 0;
       minimumPayment = row.main_story === "prodigal_return" && !gameOver ? prodigalMinimumPayment(loanBalance) : 0;
     }
-    await db.prepare("UPDATE players SET cash=?, bank_balance=?, loan_balance=?, finance_day=?, daily_minimum_payment=?, daily_payment_made=?, missed_payment_days=?, game_over=?, updated_at=? WHERE user_id=?")
-      .bind(cashBalance, bankBalance, loanBalance, today, minimumPayment, paymentMade, missedPaymentDays, gameOver, now, user.userId).run();
+    const financeStatements = [db.prepare("UPDATE players SET cash=?, bank_balance=?, loan_balance=?, finance_day=?, daily_minimum_payment=?, daily_payment_made=?, missed_payment_days=?, game_over=?, updated_at=? WHERE user_id=?")
+      .bind(cashBalance, bankBalance, loanBalance, today, minimumPayment, paymentMade, missedPaymentDays, gameOver, now, user.userId)];
+    if (loanContract) {
+      financeStatements.push(db.prepare("UPDATE player_loan_contracts SET outstanding_balance=?, status=?, closed_at=? WHERE id=? AND status='active'")
+        .bind(loanBalance, loanBalance > 0 ? "active" : "paid", loanBalance > 0 ? null : now, loanContract.id));
+      if (providerEarnings > 0) financeStatements.push(db.prepare("UPDATE players SET cash=cash+? WHERE user_id=?").bind(providerEarnings, loanContract.provider_id));
+    }
+    await db.batch(financeStatements);
+    if (loanContract && loanBalance <= 0) loanContract = null;
     row.cash = cashBalance; row.bank_balance = bankBalance; row.loan_balance = loanBalance; row.finance_day = today; row.daily_minimum_payment = minimumPayment; row.daily_payment_made = paymentMade; row.missed_payment_days = missedPaymentDays; row.game_over = gameOver;
   }
   return row;
@@ -505,9 +547,33 @@ async function pendingMedicalRequests(db: D1Database, providerId: string) {
   return requests.results.map((request) => ({ id: request.id, patientName: request.patient_name, providerName: request.provider_name, providerJob: request.provider_job, healthGain: request.health_gain, amount: request.amount, expiresAt: request.expires_at }));
 }
 
+async function pendingLoanRequests(db: D1Database, providerId: string) {
+  const now = Date.now();
+  await db.batch([
+    db.prepare("UPDATE player_loan_requests SET status='cancelled', outcome='expired', resolved_at=? WHERE status='pending' AND expires_at<=?").bind(now, now),
+    db.prepare(`UPDATE player_loan_requests SET status='cancelled', outcome='provider_unavailable', resolved_at=?
+      WHERE provider_id=? AND status='pending' AND NOT EXISTS (
+        SELECT 1 FROM players p
+        WHERE p.user_id=player_loan_requests.provider_id AND p.last_seen_at>=?
+          AND p.current_job=player_loan_requests.provider_job AND p.job_category='finance' AND p.game_over='' AND p.main_story<>'unselected'
+      )`).bind(now, providerId, now - ONLINE_HEARTBEAT_GRACE_MS),
+    db.prepare(`UPDATE player_loan_requests SET status='cancelled', outcome='borrower_unavailable', resolved_at=?
+      WHERE provider_id=? AND status='pending' AND NOT EXISTS (
+        SELECT 1 FROM players p
+        WHERE p.user_id=player_loan_requests.borrower_id AND p.last_seen_at>=? AND p.loan_balance=0
+          AND p.game_over='' AND p.main_story NOT IN ('unselected', 'prodigal_return')
+      )`).bind(now, providerId, now - ONLINE_HEARTBEAT_GRACE_MS),
+  ]);
+  const requests = await db.prepare(`SELECT id, borrower_id, borrower_name, provider_id, provider_name, provider_job, amount, interest_rate_bp, spread_bp, status, outcome, resolution_token, created_at, expires_at, resolved_at
+    FROM player_loan_requests
+    WHERE provider_id=? AND status='pending' AND expires_at>?
+    ORDER BY created_at ASC LIMIT 1`).bind(providerId, now).all<LoanRequestRow>();
+  return requests.results.map((request) => ({ id: request.id, borrowerName: request.borrower_name, providerName: request.provider_name, providerJob: request.provider_job, amount: request.amount, interestRateBp: request.interest_rate_bp, spreadBp: request.spread_bp, expiresAt: request.expires_at }));
+}
+
 async function transferActionResponse(db: D1Database, user: AuthUser, player: PlayerRow, progress: ProgressRow, message: string) {
-  const [world, transfers, medicalRequests] = await Promise.all([multiplayer(db), pendingTransferRequests(db, user.userId), pendingMedicalRequests(db, user.userId)]);
-  return json({ player: serializePlayer(player, progress), message, transferRequests: transfers, medicalRequests, ...world });
+  const [world, transfers, medicalRequests, loanRequests, loanContract] = await Promise.all([multiplayer(db), pendingTransferRequests(db, user.userId), pendingMedicalRequests(db, user.userId), pendingLoanRequests(db, user.userId), activeLoanContract(db, user.userId)]);
+  return json({ player: serializePlayer(player, progress, loanContract), message, transferRequests: transfers, medicalRequests, loanRequests, ...world });
 }
 
 async function recordTransferEvent(db: D1Database, senderId: string, senderName: string, title: string, detail: string, tone: "good" | "neutral" | "warn" = "neutral") {
@@ -1368,12 +1434,17 @@ async function updateDisplayName(request: Request, env: Env) {
     env.DB.prepare("UPDATE player_transfer_requests SET sender_name=? WHERE sender_id=?").bind(displayName, user.userId),
     env.DB.prepare("UPDATE player_medical_requests SET patient_name=? WHERE patient_id=?").bind(displayName, user.userId),
     env.DB.prepare("UPDATE player_medical_requests SET provider_name=? WHERE provider_id=?").bind(displayName, user.userId),
+    env.DB.prepare("UPDATE player_loan_requests SET borrower_name=? WHERE borrower_id=?").bind(displayName, user.userId),
+    env.DB.prepare("UPDATE player_loan_requests SET provider_name=? WHERE provider_id=?").bind(displayName, user.userId),
+    env.DB.prepare("UPDATE player_loan_contracts SET borrower_name=? WHERE borrower_id=?").bind(displayName, user.userId),
+    env.DB.prepare("UPDATE player_loan_contracts SET provider_name=? WHERE provider_id=?").bind(displayName, user.userId),
   ]);
   const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
   if (!saved) return json({ message: "玩家資料更新後無法載入。" }, 500);
   const progress = await ensureProgress(env.DB, saved);
+  const loanContract = await activeLoanContract(env.DB, user.userId);
   const updatedUser = { ...user, displayName };
-  return json({ profile: profileFor(updatedUser), player: serializePlayer(saved, progress), message: `玩家名字已更新為「${displayName}」。` });
+  return json({ profile: profileFor(updatedUser), player: serializePlayer(saved, progress, loanContract), message: `玩家名字已更新為「${displayName}」。` });
 }
 
 async function getAvatar(userId: string, env: Env) {
@@ -1392,7 +1463,7 @@ async function getAvatar(userId: string, env: Env) {
 
 async function bootstrap(request: Request, env: Env) {
   const user = await identity(request, env.DB);
-  if (!user || !env.DB) return json({ authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [], casino: { capacity: 5, activeCount: 0, seats: [], hand: null }, poker: { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 }, bingo: { status: "lobby", players: [], drawn: [] }, tournament: { status: "lobby", players: [] }, medicalRequests: [] });
+  if (!user || !env.DB) return json({ authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [], casino: { capacity: 5, activeCount: 0, seats: [], hand: null }, poker: { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 }, bingo: { status: "lobby", players: [], drawn: [] }, tournament: { status: "lobby", players: [] }, medicalRequests: [], loanRequests: [] });
   await ensureSchemaOnce(env.DB);
   const row = await upsertPlayer(env.DB, user);
   if (!row) return json({ message: "無法載入玩家資料" }, 500);
@@ -1400,16 +1471,18 @@ async function bootstrap(request: Request, env: Env) {
   const world = await multiplayer(env.DB);
   const emptyCasino = { capacity: 5, activeCount: 0, seats: [], hand: null };
   const emptyPoker = { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 };
-  const [casino, poker, memory, transferRequests, medicalRequests, bingo, tournament] = await Promise.all([
+  const [casino, poker, memory, transferRequests, medicalRequests, loanRequests, bingo, tournament, loanContract] = await Promise.all([
     row.location === "casino" ? casinoState(env.DB, user.userId) : Promise.resolve(emptyCasino),
     row.location === "casino" ? pokerState(env.DB, user.userId) : Promise.resolve(emptyPoker),
     cityMemory(env.DB),
     pendingTransferRequests(env.DB, user.userId),
     pendingMedicalRequests(env.DB, user.userId),
+    pendingLoanRequests(env.DB, user.userId),
     row.location === "casino" ? bingoState(env.DB, user.userId) : Promise.resolve({ status: "lobby", players: [], drawn: [] }),
     row.location === "casino" ? tournamentState(env.DB, user.userId) : Promise.resolve({ status: "lobby", players: [] }),
+    activeLoanContract(env.DB, user.userId),
   ]);
-  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress), room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, bingo, tournament, cityMemory: memory, transferRequests, medicalRequests });
+  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress, loanContract), room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, bingo, tournament, cityMemory: memory, transferRequests, medicalRequests, loanRequests });
 }
 
 async function takeAction(request: Request, env: Env) {
@@ -1423,11 +1496,11 @@ async function takeAction(request: Request, env: Env) {
   let talents = new Set(parseList(progress.talents));
   const clampEnergy = (value: number) => Math.max(0, Math.min(talents.has("strong_body") ? 120 : 100, value));
 
-  let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; academy?: string; story?: string; talent?: string; choice?: string; targetId?: string; requestId?: string; medicalRequestId?: string };
+  let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; academy?: string; story?: string; talent?: string; choice?: string; targetId?: string; requestId?: string; medicalRequestId?: string; loanRequestId?: string };
   try { body = await request.json(); } catch { return json({ message: "行動資料格式錯誤。" }, 400); }
   if (current.game_over && body.action !== "reset") return json({ message: "這段人生已經結束，請重新開始。" }, 409);
   if (current.main_story === "unselected" && body.action !== "choose_story") return json({ message: "請先選擇人生主線。" }, 409);
-  if (!["move", "choose_story", "reset", "city_event", "bank", "transfer_request", "transfer_response", "medical_request", "medical_response"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
+  if (!["move", "choose_story", "reset", "city_event", "bank", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
   const next = { ...current };
   const sharedMinutes = worldMinutes();
   const memoryBefore = await cityMemory(env.DB);
@@ -1573,6 +1646,78 @@ async function takeAction(request: Request, env: Env) {
       const savedProvider = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
       return transferActionResponse(env.DB, user, savedProvider ?? provider, progress, `治療完成：${medicalRequest.patient_name}健康 +${medicalRequest.health_gain}，已收到 NT$${medicalRequest.amount}。`);
     }
+    case "loan_request": {
+      if (!body.targetId || body.targetId === user.userId) return json({ message: "請選擇其他玩家作為貸款媒合者。" }, 400);
+      const amount = Number(body.amount);
+      if (!Number.isSafeInteger(amount) || amount < 1 || amount > 50_000) return json({ message: "玩家貸款金額需為 NT$1～NT$50,000。" }, 400);
+      if (current.loan_balance > 0) return json({ message: "你目前已有貸款，清償後才能申請新的玩家貸款。" }, 400);
+      if (current.main_story === "prodigal_return") return json({ message: "《浪子回頭》主線債務不能轉為玩家貸款。" }, 400);
+      const target = await env.DB.prepare(`SELECT user_id, display_name, current_job, job_category, last_seen_at, main_story, game_over
+        FROM players WHERE user_id=?`).bind(body.targetId).first<{ user_id: string; display_name: string; current_job: string; job_category: string; last_seen_at: number; main_story: string; game_over: string }>();
+      const terms = target ? financeLoanTermsFor(target.current_job) : null;
+      if (!target || !terms || target.job_category !== "finance" || target.last_seen_at < Date.now() - ONLINE_HEARTBEAT_GRACE_MS) return json({ message: "這位玩家目前無法提供玩家貸款方案。" }, 409);
+      if (target.main_story === "unselected" || target.game_over) return json({ message: "這位玩家目前無法處理貸款申請。" }, 409);
+      const existing = await env.DB.prepare("SELECT id FROM player_loan_requests WHERE borrower_id=? AND status='pending' AND expires_at>? LIMIT 1")
+        .bind(user.userId, Date.now()).first<{ id: string }>();
+      if (existing) return json({ message: "你已經有一筆待處理的玩家貸款申請。" }, 409);
+      const now = Date.now();
+      await env.DB.prepare(`INSERT INTO player_loan_requests (id, borrower_id, borrower_name, provider_id, provider_name, provider_job, amount, interest_rate_bp, spread_bp, status, outcome, resolution_token, created_at, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', '', '', ?, ?)`).bind(
+        crypto.randomUUID(), user.userId, user.displayName.slice(0, 40), target.user_id, target.display_name.slice(0, 40), target.current_job, amount, terms.rateBp, terms.spreadBp, now, now + LOAN_REQUEST_TIMEOUT_MS,
+      ).run();
+      return transferActionResponse(env.DB, user, current, progress, `已向${target.display_name}送出 NT$${amount} 的貸款申請，等待對方在 30 秒內回覆。`);
+    }
+    case "loan_response": {
+      const requestId = body.loanRequestId ?? body.requestId;
+      if (!requestId || !["accept", "decline"].includes(body.kind || "")) return json({ message: "貸款申請回覆不正確。" }, 400);
+      const token = crypto.randomUUID();
+      const loanRequest = await env.DB.prepare(`UPDATE player_loan_requests
+        SET status='processing', resolution_token=?
+        WHERE id=? AND provider_id=? AND status='pending' AND expires_at>?
+        RETURNING id, borrower_id, borrower_name, provider_id, provider_name, provider_job, amount, interest_rate_bp, spread_bp, status, outcome, resolution_token, created_at, expires_at, resolved_at`)
+        .bind(token, requestId, user.userId, Date.now()).first<LoanRequestRow>();
+      if (!loanRequest) return transferActionResponse(env.DB, user, current, progress, "這筆貸款申請已失效或已被處理。");
+      if (body.kind === "decline") {
+        await env.DB.prepare("UPDATE player_loan_requests SET status='declined', outcome='declined', resolved_at=? WHERE id=? AND resolution_token=?")
+          .bind(Date.now(), loanRequest.id, token).run();
+        return transferActionResponse(env.DB, user, current, progress, "你已拒絕這筆玩家貸款申請。");
+      }
+      const now = Date.now();
+      const db = env.DB;
+      if (!db) return json({ message: "遊戲資料庫尚未連接。" }, 503);
+      const provider = await db.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
+      const borrower = await db.prepare("SELECT * FROM players WHERE user_id=?").bind(loanRequest.borrower_id).first<PlayerRow>();
+      const cancel = async (outcome: string, responseMessage: string) => {
+        await db.prepare("UPDATE player_loan_requests SET status='cancelled', outcome=?, resolved_at=? WHERE id=? AND resolution_token=?")
+          .bind(outcome, Date.now(), loanRequest.id, token).run();
+        return transferActionResponse(db, user, provider ?? current, progress, responseMessage);
+      };
+      const currentTerms = provider ? financeLoanTermsFor(provider.current_job) : null;
+      if (!provider || provider.last_seen_at < now - ONLINE_HEARTBEAT_GRACE_MS || provider.game_over || provider.main_story === "unselected" || provider.job_category !== "finance" || provider.current_job !== loanRequest.provider_job || !currentTerms || currentTerms.rateBp !== loanRequest.interest_rate_bp || currentTerms.spreadBp !== loanRequest.spread_bp) {
+        return cancel("provider_unavailable", "你的職業或在線狀態已變更，這筆貸款申請已失效。");
+      }
+      if (!borrower || borrower.last_seen_at < now - ONLINE_HEARTBEAT_GRACE_MS || borrower.game_over || borrower.main_story === "unselected") return cancel("borrower_unavailable", "借款玩家目前不在線上或無法接受貸款。");
+      if (borrower.main_story === "prodigal_return") return cancel("story_restricted", "《浪子回頭》主線債務不能使用玩家貸款。");
+      if (borrower.loan_balance > 0) return cancel("borrower_has_loan", "借款玩家已有貸款，這筆申請已取消。");
+      const contractId = crypto.randomUUID();
+      const credited = await db.prepare(`UPDATE players SET loan_balance=?, cash=cash+?
+        WHERE user_id=? AND loan_balance=0 AND main_story<>'prodigal_return' AND game_over=''
+        RETURNING user_id`).bind(loanRequest.amount, loanRequest.amount, loanRequest.borrower_id).first<{ user_id: string }>();
+      if (!credited) return cancel("borrower_has_loan", "借款玩家的貸款狀態已變更，這筆申請沒有完成。");
+      try {
+        await db.prepare(`INSERT INTO player_loan_contracts (id, borrower_id, borrower_name, provider_id, provider_name, provider_job, principal_amount, outstanding_balance, interest_rate_bp, spread_bp, status, opened_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`).bind(
+          contractId, loanRequest.borrower_id, loanRequest.borrower_name, loanRequest.provider_id, loanRequest.provider_name, loanRequest.provider_job, loanRequest.amount, loanRequest.amount, loanRequest.interest_rate_bp, loanRequest.spread_bp, now,
+        ).run();
+      } catch {
+        await db.prepare("UPDATE players SET loan_balance=0, cash=MAX(0, cash-?) WHERE user_id=? AND loan_balance=?").bind(loanRequest.amount, loanRequest.borrower_id, loanRequest.amount).run();
+        return cancel("contract_failed", "貸款合約建立失敗，銀行沒有撥款。");
+      }
+      await db.prepare("UPDATE player_loan_requests SET status='accepted', outcome='funded', resolved_at=? WHERE id=? AND resolution_token=?")
+        .bind(Date.now(), loanRequest.id, token).run();
+      await recordTransferEvent(db, loanRequest.provider_id, loanRequest.provider_name, "玩家貸款成立", `為${loanRequest.borrower_name}媒合 NT$${loanRequest.amount} 貸款，優惠利率每日 ${(loanRequest.interest_rate_bp / 100).toFixed(2)}%。`, "good");
+      return transferActionResponse(db, user, provider, progress, `貸款申請已成立：銀行撥款 NT$${loanRequest.amount}。借款者每日支付 ${(loanRequest.interest_rate_bp / 100).toFixed(2)}% 利息，你可獲得 ${(loanRequest.spread_bp / 100).toFixed(2)}% 利差收益。`);
+    }
     case "talent": {
       if (body.kind === "reset") {
         if (!talents.size) return json({ message: "目前沒有已配置的天賦。" }, 400);
@@ -1655,14 +1800,14 @@ async function takeAction(request: Request, env: Env) {
       if (!Number.isSafeInteger(amount) || amount < 1 || amount > 9_000_000_000_000_000) return json({ message: "請輸入有效的整數金額。" }, 400);
       if (body.kind === "deposit") {
         if (next.cash < amount) return json({ message: "手上現金不足。" }, 400);
-        next.cash -= amount; next.bank_balance += amount; title = "存入銀行"; message = `已存入 NT$${amount}；每個遊戲日結算 0.1% 收益。`;
+        next.cash -= amount; next.bank_balance += amount; title = "存入銀行"; message = `已存入 NT$${amount}；每個遊戲日結算 ${(financeDepositRateFor(next.current_job) / 100).toFixed(2)}% 收益。`;
       } else if (body.kind === "withdraw") {
         if (next.bank_balance < amount) return json({ message: "銀行存款不足。" }, 400);
         next.bank_balance -= amount; next.cash += amount; title = "提領存款"; message = `已從銀行提領 NT$${amount}。`;
       } else if (body.kind === "borrow") {
         if (next.loan_balance > 0) return json({ message: "請先還清目前貸款，才能再次借款。" }, 400);
         if (amount > 50_000) return json({ message: "單筆貸款上限為 NT$50,000。" }, 400);
-        next.loan_balance = amount; next.cash += amount; title = "銀行貸款"; message = `借入 NT$${amount}；每個遊戲日結算 0.5% 利息。`;
+        next.loan_balance = amount; next.cash += amount; title = "銀行貸款"; message = `借入 NT$${amount}；每個遊戲日結算 ${(BANK_LOAN_RATE_BP / 100).toFixed(2)}% 利息。`;
       } else if (body.kind === "repay") {
         if (next.loan_balance <= 0) return json({ message: "目前沒有貸款。" }, 400);
         if (amount > next.loan_balance) return json({ message: "還款金額不能超過貸款餘額。" }, 400);
@@ -1672,6 +1817,11 @@ async function takeAction(request: Request, env: Env) {
         if (next.main_story === "prodigal_return") {
           next.daily_payment_made += amount;
           if (!wasMinimumComplete && next.daily_payment_made >= next.daily_minimum_payment) talentExpGain += 3;
+        }
+        const loanContract = await activeLoanContract(env.DB, user.userId);
+        if (loanContract) {
+          await env.DB.prepare("UPDATE player_loan_contracts SET outstanding_balance=?, status=?, closed_at=? WHERE id=? AND status='active'")
+            .bind(next.loan_balance, next.loan_balance > 0 ? "active" : "paid", next.loan_balance > 0 ? null : Date.now(), loanContract.id).run();
         }
         title = "償還貸款"; message = `已償還 NT$${amount}，剩餘貸款 NT$${next.loan_balance}。${next.main_story === "prodigal_return" ? ` 本日累計已繳 NT$${next.daily_payment_made}／最低 NT$${next.daily_minimum_payment}。` : ""}`;
       } else return json({ message: "銀行服務不存在。" }, 400);
@@ -1709,6 +1859,7 @@ async function takeAction(request: Request, env: Env) {
       const entryRequirements = careerRequirements(category.id, 0);
       if (category.id !== "unfixed" && !meetsCareerRequirements(abilitiesFor(next), entryRequirements)) return json({ message: `進入${category.label}需要${formatRequirements(entryRequirements)}。` }, 400);
       await env.DB.prepare("UPDATE player_medical_requests SET status='cancelled', outcome='provider_job_changed', resolved_at=? WHERE provider_id=? AND status='pending'").bind(Date.now(), user.userId).run();
+      await env.DB.prepare("UPDATE player_loan_requests SET status='cancelled', outcome='provider_job_changed', resolved_at=? WHERE provider_id=? AND status='pending'").bind(Date.now(), user.userId).run();
       next.current_job = selected.job; next.job_category = selected.categoryId; next.job_exp = 0;
       title = category.id === "unfixed" ? `狀態變更：${selected.job}` : `進入${selected.categoryLabel}`;
       message = category.id === "unfixed" ? `目前狀態已改為${selected.job}。` : `成功進入「${selected.categoryLabel}」，從${selected.job}開始發展；產業升遷經驗從 0 開始。`; break;
@@ -1806,6 +1957,7 @@ async function takeAction(request: Request, env: Env) {
     }
     case "reset":
       await env.DB.prepare("UPDATE player_medical_requests SET status='cancelled', outcome='provider_reset', resolved_at=? WHERE provider_id=? AND status='pending'").bind(Date.now(), user.userId).run();
+      await env.DB.prepare("UPDATE player_loan_requests SET status='cancelled', outcome='provider_reset', resolved_at=? WHERE provider_id=? AND status='pending'").bind(Date.now(), user.userId).run();
       Object.assign(next, { cash: next.main_story === "prodigal_return" ? 37 : 10000, bank_balance: 0, loan_balance: next.main_story === "prodigal_return" ? 250_000 : 0, finance_day: 1, daily_minimum_payment: next.main_story === "prodigal_return" ? 750 : 0, daily_payment_made: 0, missed_payment_days: 0, game_over: "", energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", elapsed_minutes: 0, location: "realtor" });
       await env.DB.prepare("UPDATE player_progress SET talent_exp=0, talents='[]', story_chapter=0, last_event_day=0, pending_event='', updated_at=? WHERE user_id=?").bind(Date.now(), user.userId).run();
       progress = { ...progress, talent_exp: 0, talents: "[]", story_chapter: 0, last_event_day: 0, pending_event: "" }; talents = new Set();
@@ -1875,7 +2027,8 @@ async function takeAction(request: Request, env: Env) {
   }
   if (eligibleEvent) message += await maybeFindMysteryClue(env.DB, user.userId, saved!.location);
   const world = await multiplayer(env.DB);
-  return json({ player: serializePlayer(saved!, progress), message, scratch, cityMemory: await cityMemory(env.DB), ...world });
+  const [loanContract, loanRequests] = await Promise.all([activeLoanContract(env.DB, user.userId), pendingLoanRequests(env.DB, user.userId)]);
+  return json({ player: serializePlayer(saved!, progress, loanContract), message, scratch, loanRequests, cityMemory: await cityMemory(env.DB), ...world });
 }
 
 export default {

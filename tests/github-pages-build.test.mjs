@@ -161,9 +161,9 @@ test("administrative actions are instant and gameplay waits stay shortened", asy
   assert.match(page, /睡眠 8 小時" meta="現實等待 2 分鐘/);
   assert.match(page, /旅店臨時工 · 30 秒/);
   assert.match(page, /不扣體力、飽足、健康/);
-  assert.match(page, /const canActDuringWait = \["move", "reset", "city_event", "bank", "transfer_request", "transfer_response", "medical_request", "medical_response"\]/);
-  assert.match(worker, /\["move", "choose_story", "reset", "city_event", "bank", "transfer_request", "transfer_response", "medical_request", "medical_response"\]/);
-  assert.match(page, /期間可移動、使用銀行、處理贈送／詐騙／治療請求，或前往賭場遊玩/);
+  assert.match(page, /const canActDuringWait = \["move", "reset", "city_event", "bank", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response"\]/);
+  assert.match(worker, /\["move", "choose_story", "reset", "city_event", "bank", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response"\]/);
+  assert.match(page, /期間可移動、使用銀行、處理贈送／詐騙／治療／貸款請求，或前往賭場遊玩/);
   assert.match(page, /BankPanel player=\{player\} busy=\{busy \|\| !bankOpen\}/);
   assert.match(page, /<CasinoTable state=\{casino\} signedIn=\{Boolean\(profile\)\} busy=\{busy\}/);
   assert.match(page, /<PokerTable state=\{poker\} signedIn=\{Boolean\(profile\)\} busy=\{busy\}/);
@@ -211,6 +211,31 @@ test("medical career adds health support, hospital discounts, and guarded player
   assert.match(schema, /playerMedicalRequests = sqliteTable\("player_medical_requests"/);
   assert.match(migration, /CREATE TABLE `player_medical_requests`/);
   assert.match(migration, /idx_medical_requests_provider_status/);
+});
+
+test("finance career improves deposits and mediates uncapped bank-funded player loans", async () => {
+  const jobs = await readFile(new URL("shared/jobs.ts", root), "utf8");
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const schema = await readFile(new URL("db/schema.ts", root), "utf8");
+  const migration = await readFile(new URL("drizzle/0021_amusing_thanos.sql", root), "utf8");
+
+  assert.match(jobs, /jobs: \["銀行員", "理財專員", "投資顧問", "分行經理"\]/);
+  assert.match(jobs, /"銀行員": 12/);
+  assert.match(jobs, /"分行經理": \{ rateBp: 40, spreadBp: 10 \}/);
+  assert.match(worker, /case "loan_request"/);
+  assert.match(worker, /case "loan_response"/);
+  assert.match(worker, /銀行撥款 NT\$\$\{loanRequest\.amount\}/);
+  assert.match(worker, /player_loan_contracts SET outstanding_balance/);
+  assert.doesNotMatch(worker, /provider.*active.*3/);
+  assert.match(page, /借款方案/);
+  assert.match(page, /玩家貸款申請/);
+  assert.match(page, /銀行撥款/);
+  assert.match(schema, /playerLoanRequests = sqliteTable\("player_loan_requests"/);
+  assert.match(schema, /playerLoanContracts = sqliteTable\("player_loan_contracts"/);
+  assert.match(migration, /CREATE TABLE `player_loan_requests`/);
+  assert.match(migration, /CREATE TABLE `player_loan_contracts`/);
+  assert.match(migration, /idx_loan_contracts_provider_status/);
 });
 
 test("story, talents, city memory, events, and hidden mystery are wired", async () => {
