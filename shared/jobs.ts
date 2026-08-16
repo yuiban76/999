@@ -2,7 +2,7 @@ export const JOB_CATEGORIES = [
   { id: "office", label: "一般職場", jobs: ["行政助理", "行政專員", "資深行政專員", "行政主管"] },
   { id: "medical", label: "醫療照護", jobs: ["診所助理", "護理師", "資深護理師", "護理長"] },
   { id: "finance", label: "商業金融", jobs: ["銀行員", "理財專員", "投資顧問", "分行經理"] },
-  { id: "creative", label: "創意娛樂", jobs: ["作家", "畫家", "設計師", "演員", "歌手", "導演", "實況主", "網紅"] },
+  { id: "literary", label: "文學作家", jobs: ["寫作助理", "無名作家", "簽約作家", "暢銷作家"] },
   { id: "hospitality", label: "餐飲服務", jobs: ["廚師", "咖啡師", "調酒師", "餐廳老闆", "旅館經理", "導遊"] },
   { id: "sports", label: "運動競技", jobs: ["職業球員", "賽車手", "格鬥選手", "教練", "裁判", "健身教練"] },
   { id: "freelance", label: "自由工作", jobs: ["攝影師", "翻譯", "接案設計師", "顧問", "家教", "街頭藝人"] },
@@ -34,7 +34,7 @@ const CAREER_ABILITY_PROFILE: Record<string, readonly [AbilityKey, AbilityKey]> 
   office: ["social", "intelligence"],
   medical: ["intelligence", "social"],
   finance: ["social", "intelligence"],
-  creative: ["creativity", "charisma"],
+  literary: ["creativity", "charisma"],
   hospitality: ["social", "charisma"],
   sports: ["physical", "charisma"],
   freelance: ["creativity", "social"],
@@ -91,6 +91,22 @@ export const FINANCE_LOAN_TERMS = {
 export const BANK_DEPOSIT_RATE_BP = 10;
 export const BANK_LOAN_RATE_BP = 50;
 
+export const WRITER_FAN_THRESHOLDS = [0, 100, 500, 2_000] as const;
+export const WRITER_FAN_RANGES = {
+  "寫作助理": [0, 20],
+  "無名作家": [10, 40],
+  "簽約作家": [25, 80],
+  "暢銷作家": [60, 180],
+} as const;
+export const WRITER_BOOK_PRICES = {
+  "簽約作家": 200,
+  "暢銷作家": 300,
+} as const;
+export const WRITER_DAILY_FAN_RATE = 1;
+export const WRITER_DAILY_WRITING_LIMIT = 2;
+export const WRITER_MAX_ACTIVE_BOOKS = 10;
+export const WRITER_MAX_PURCHASES_PER_BOOK = 10;
+
 export function medicalHospitalDiscountFor(job: string) {
   return MEDICAL_HOSPITAL_DISCOUNTS[job as keyof typeof MEDICAL_HOSPITAL_DISCOUNTS] ?? 0;
 }
@@ -111,6 +127,14 @@ export function financeLoanTermsFor(job: string) {
   return FINANCE_LOAN_TERMS[job as keyof typeof FINANCE_LOAN_TERMS] ?? null;
 }
 
+export function writerFanRangeFor(job: string) {
+  return WRITER_FAN_RANGES[job as keyof typeof WRITER_FAN_RANGES] ?? null;
+}
+
+export function writerBookPriceFor(job: string) {
+  return WRITER_BOOK_PRICES[job as keyof typeof WRITER_BOOK_PRICES] ?? null;
+}
+
 export function careerWorkSpecialFor(job: string, hours?: number) {
   const special = CAREER_WORK_SPECIALS[job as keyof typeof CAREER_WORK_SPECIALS];
   return special && (hours === undefined || special.hours === hours) ? special : null;
@@ -128,6 +152,7 @@ export function careerRequirements(categoryId: string, index: number): Partial<A
   const profile = CAREER_ABILITY_PROFILE[categoryId];
   if (!profile) return {};
   if (index === 0) return { [profile[0]]: 0, [profile[1]]: 0 };
+  if (categoryId === "literary") return {};
   if (categoryId === "medical" || categoryId === "finance") {
     const requirements: Partial<Abilities>[] = [
       { intelligence: 0, social: 0 },
@@ -151,11 +176,13 @@ function normalizedCareerTier(categoryId: string, index: number) {
 }
 
 export function careerThresholdForCategory(categoryId: string, index: number) {
+  if (categoryId === "literary") return WRITER_FAN_THRESHOLDS[index] ?? WRITER_FAN_THRESHOLDS.at(-1)!;
   if (categoryId === "medical" || categoryId === "finance") return [0, 100, 250, 500][index] ?? 500;
   return CAREER_THRESHOLDS[normalizedCareerTier(categoryId, index)] ?? CAREER_THRESHOLDS.at(-1)!;
 }
 
 export function careerPayForCategory(categoryId: string, index: number) {
+  if (categoryId === "literary") return 0;
   return CAREER_PAY[normalizedCareerTier(categoryId, index)] ?? CAREER_PAY.at(-1)!;
 }
 

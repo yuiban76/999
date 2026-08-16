@@ -161,8 +161,8 @@ test("administrative actions are instant and gameplay waits stay shortened", asy
   assert.match(page, /睡眠 8 小時" meta="現實等待 2 分鐘/);
   assert.match(page, /旅店臨時工 · 30 秒/);
   assert.match(page, /不扣體力、飽足、健康/);
-  assert.match(page, /const canActDuringWait = \["move", "reset", "city_event", "bank", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response"\]/);
-  assert.match(worker, /\["move", "choose_story", "reset", "city_event", "bank", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response"\]/);
+  assert.match(page, /const canActDuringWait = \["move", "reset", "city_event", "bank", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy"\]/);
+  assert.match(worker, /\["move", "choose_story", "reset", "city_event", "bank", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy"\]/);
   assert.match(page, /期間可移動、使用銀行、處理贈送／詐騙／治療／貸款請求，或前往賭場遊玩/);
   assert.match(page, /BankPanel player=\{player\} busy=\{busy \|\| !bankOpen\}/);
   assert.match(page, /<CasinoTable state=\{casino\} signedIn=\{Boolean\(profile\)\} busy=\{busy\}/);
@@ -236,6 +236,35 @@ test("finance career improves deposits and mediates uncapped bank-funded player 
   assert.match(migration, /CREATE TABLE `player_loan_requests`/);
   assert.match(migration, /CREATE TABLE `player_loan_contracts`/);
   assert.match(migration, /idx_loan_contracts_provider_status/);
+});
+
+test("literary career provides daily writing, fan promotion, and bookstore publishing", async () => {
+  const jobs = await readFile(new URL("shared/jobs.ts", root), "utf8");
+  const world = await readFile(new URL("shared/world.ts", root), "utf8");
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const schema = await readFile(new URL("db/schema.ts", root), "utf8");
+
+  assert.match(jobs, /id: "literary", label: "文學作家", jobs: \["寫作助理", "無名作家", "簽約作家", "暢銷作家"\]/);
+  assert.match(jobs, /WRITER_FAN_THRESHOLDS = \[0, 100, 500, 2_000\]/);
+  assert.match(jobs, /WRITER_DAILY_WRITING_LIMIT = 2/);
+  assert.match(jobs, /WRITER_MAX_ACTIVE_BOOKS = 10/);
+  assert.match(jobs, /WRITER_MAX_PURCHASES_PER_BOOK = 10/);
+  assert.match(worker, /case "writer_write"/);
+  assert.match(worker, /WRITER_DAILY_WRITING_LIMIT/);
+  assert.match(worker, /case "book_publish"/);
+  assert.match(worker, /case "book_toggle"/);
+  assert.match(worker, /case "book_buy"/);
+  assert.match(worker, /UPDATE players SET cash=cash-\?/);
+  assert.match(worker, /UPDATE players SET cash=cash\+\?/);
+  assert.match(page, /城市書店/);
+  assert.match(page, /<BookStorePanel/);
+  assert.match(page, /今日寫作/);
+  assert.doesNotMatch(page, /mood|心情/);
+  assert.match(worker, /DROP COLUMN mood/);
+  assert.match(world, /bookstore: \{ open: 7 \* 60, close: 23 \* 60, label: "07:00～23:00" \}/);
+  assert.match(schema, /writerBooks = sqliteTable\("writer_books"/);
+  assert.match(schema, /writerBookPurchases = sqliteTable\("writer_book_purchases"/);
 });
 
 test("story, talents, city memory, events, and hidden mystery are wired", async () => {

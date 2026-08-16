@@ -254,6 +254,10 @@ button { color: inherit; }
 .career-track { height: 4px; background: #d8d4c8; }
 .career-track i { display: block; height: 100%; background: var(--orange); transition: width .35s ease; }
 .career-card p { margin: 7px 0 0; color: var(--muted); font-size: 8px; line-height: 1.45; }
+.writer-summary { display: grid; gap: 4px; margin-top: 10px; padding: 10px 12px; border: 1px solid #a5b79f; background: #edf3e9; }
+.writer-summary span { color: var(--moss); font-size: 8px; letter-spacing: .08em; }
+.writer-summary strong { font-size: 10px; }
+.writer-summary small { color: var(--muted); font-size: 8px; }
 .illness-alert { display: grid; gap: 4px; margin-top: 14px; padding: 11px; border: 1px solid #b64029; background: #fde1d6; color: #8b2d1c; }
 .illness-alert strong { font-size: 10px; }
 .illness-alert span { font-size: 8px; line-height: 1.5; }
@@ -852,6 +856,29 @@ body {
 .bank-panel input { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
 .bank-payment-status { border: 0; border-radius: 12px; background: #fff1ef; }
 .bank-payment-status.warning { background: #ffe6e1; }
+.bookstore-panel { grid-column: 1 / -1; padding: 20px; border: 1px solid #dedee3; border-radius: 17px; background: #fff; box-shadow: 0 6px 20px rgba(0, 0, 0, .06); }
+.bookstore-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 15px; }
+.bookstore-panel > header span { display: block; color: #86868b; font: 9px Consolas, monospace; letter-spacing: .1em; }
+.bookstore-panel > header strong { display: block; margin-top: 5px; font-size: 20px; }
+.bookstore-panel > header small { color: #6e6e73; font-size: 10px; }
+.book-publish-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; padding: 14px; border: 1px solid #d9e8f7; border-radius: 13px; background: #f5faff; }
+.book-publish-form label { display: grid; gap: 6px; color: #3d5870; font-size: 11px; font-weight: 700; }
+.book-publish-form label small { color: #6e6e73; font-size: 9px; font-weight: 400; }
+.book-publish-form input { min-width: 0; padding: 10px 11px; border: 1px solid #d2d2d7; border-radius: 9px; background: #fff; font-size: 13px; }
+.book-publish-form button, .book-card button { min-height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: #0071e3; color: #fff; font-size: 10px; font-weight: 700; cursor: pointer; }
+.book-publish-form button:disabled, .book-card button:disabled { background: #d5d5da; color: #7d7d82; cursor: default; }
+.bookstore-note, .bookstore-empty { color: #6e6e73; font-size: 11px; line-height: 1.6; }
+.bookstore-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; margin-top: 20px; }
+.bookstore-columns > div { min-width: 0; }
+.bookstore-columns .section-heading { margin-bottom: 9px; }
+.book-list { display: grid; gap: 8px; }
+.book-card { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; border: 1px solid #e5e5ea; border-radius: 12px; background: #fafafa; }
+.book-card.mine { background: #f4f8ff; border-color: #d9e8f7; }
+.book-card > div { display: grid; gap: 4px; min-width: 0; }
+.book-card strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.book-card small, .book-card em { color: #6e6e73; font-size: 9px; font-style: normal; }
+.book-card em { color: #0071e3; }
+.bookstore-panel > footer { margin-top: 15px; color: #86868b; font-size: 9px; line-height: 1.5; }
 
 .world-footer { min-height: 48px; padding: 0 24px; border-color: #dedee3; color: #86868b; background: #fff; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
 .world-footer button { color: #0071e3; text-decoration: none; }
@@ -1129,6 +1156,10 @@ input:focus-visible { outline: 3px solid rgba(0, 113, 227, .38); outline-offset:
   .action-stage { padding: 22px 14px; }
   .action-cards { grid-template-columns: 1fr; }
   .action-card { min-height: 156px; }
+  .book-publish-form, .bookstore-columns { grid-template-columns: 1fr; }
+  .bookstore-panel { padding: 16px; }
+  .book-card { align-items: flex-start; flex-direction: column; }
+  .book-card button { width: 100%; }
   .action-card button,
   .bank-actions button,
   .casino-controls button,

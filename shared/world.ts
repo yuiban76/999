@@ -6,6 +6,7 @@ export const OPENING_HOURS: Partial<Record<string, { open: number; close: number
   bank: { open: 7 * 60, close: 23 * 60, label: "07:00～23:00" },
   business: { open: 6 * 60, close: 24 * 60, label: "06:00～24:00" },
   shopping: { open: 6 * 60, close: 24 * 60, label: "06:00～24:00" },
+  bookstore: { open: 7 * 60, close: 23 * 60, label: "07:00～23:00" },
   school: { open: 7 * 60, close: 23 * 60, label: "07:00～23:00" },
 };
 

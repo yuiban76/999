@@ -31,11 +31,13 @@ export const players = sqliteTable("players", {
   dailyMinimumPayment: integer("daily_minimum_payment").notNull().default(0),
   dailyPaymentMade: integer("daily_payment_made").notNull().default(0),
   missedPaymentDays: integer("missed_payment_days").notNull().default(0),
+  writerFans: integer("writer_fans").notNull().default(0),
+  writerDay: integer("writer_day").notNull().default(0),
+  writerWrites: integer("writer_writes").notNull().default(0),
   gameOver: text("game_over").notNull().default(""),
   mainStory: text("main_story").notNull().default("legacy"),
   energy: integer("energy").notNull().default(100),
   health: integer("health").notNull().default(100),
-  mood: integer("mood").notNull().default(80),
   hunger: integer("hunger").notNull().default(80),
   intelligenceExp: integer("intelligence_exp").notNull().default(0),
   creativityExp: integer("programming_exp").notNull().default(0),
@@ -208,6 +210,25 @@ export const playerLoanContracts = sqliteTable("player_loan_contracts", {
   openedAt: integer("opened_at").notNull(),
   closedAt: integer("closed_at"),
 }, (table) => [index("idx_loan_contracts_borrower_status").on(table.borrowerId, table.status), index("idx_loan_contracts_provider_status").on(table.providerId, table.status)]);
+
+export const writerBooks = sqliteTable("writer_books", {
+  id: text("id").primaryKey(),
+  authorId: text("author_id").notNull(),
+  authorName: text("author_name").notNull(),
+  title: text("title").notNull(),
+  price: integer("price").notNull(),
+  status: text("status").notNull().default("active"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+}, (table) => [index("idx_writer_books_author_status").on(table.authorId, table.status), index("idx_writer_books_status_updated").on(table.status, table.updatedAt)]);
+
+export const writerBookPurchases = sqliteTable("writer_book_purchases", {
+  bookId: text("book_id").notNull(),
+  buyerId: text("buyer_id").notNull(),
+  authorId: text("author_id").notNull(),
+  quantity: integer("quantity").notNull().default(0),
+  updatedAt: integer("updated_at").notNull(),
+}, (table) => [primaryKey({ columns: [table.bookId, table.buyerId] }), index("idx_writer_purchases_buyer").on(table.buyerId, table.updatedAt), index("idx_writer_purchases_author").on(table.authorId, table.updatedAt)]);
 
 export const casinoBingoState = sqliteTable("casino_bingo_state", {
   id: text("id").primaryKey(), roundNo: integer("round_no").notNull().default(1), status: text("status").notNull().default("lobby"),

@@ -1,8 +1,8 @@
-import { ABILITY_LABELS, ACADEMIES, BANK_LOAN_RATE_BP, careerForCategory, careerRequirements, careerWorkSpecialFor, categoryInfo, financeDepositRateFor, financeLoanTermsFor, jobInfo, medicalHospitalDiscountFor, medicalTreatmentFor, medicalWorkHealthBonusFor, meetsCareerRequirements, type Abilities } from "../shared/jobs";
+import { ABILITY_LABELS, ACADEMIES, BANK_LOAN_RATE_BP, careerForCategory, careerRequirements, careerWorkSpecialFor, categoryInfo, financeDepositRateFor, financeLoanTermsFor, jobInfo, medicalHospitalDiscountFor, medicalTreatmentFor, medicalWorkHealthBonusFor, meetsCareerRequirements, WRITER_DAILY_FAN_RATE, WRITER_DAILY_WRITING_LIMIT, WRITER_MAX_ACTIVE_BOOKS, WRITER_MAX_PURCHASES_PER_BOOK, writerBookPriceFor, writerFanRangeFor, type Abilities } from "../shared/jobs";
 import { CITY_EVENTS, STORY_CHAPTERS, storyChapterForDebt, talentInfo } from "../shared/progression";
 import { isHospitalRegularOpen, isLocationOpen, minuteOfDay, OPENING_HOURS, worldMinutes } from "../shared/world";
 
-type LocationId = "home" | "realtor" | "bank" | "business" | "shopping" | "hotel" | "casino" | "school" | "hospital";
+type LocationId = "home" | "realtor" | "bank" | "business" | "shopping" | "bookstore" | "hotel" | "casino" | "school" | "hospital";
 
 interface Env { DB?: D1Database; ASSETS?: Fetcher; FRONTEND_ORIGIN?: string }
 
@@ -19,11 +19,13 @@ type PlayerRow = {
   daily_minimum_payment: number;
   daily_payment_made: number;
   missed_payment_days: number;
+  writer_fans: number;
+  writer_day: number;
+  writer_writes: number;
   game_over: string;
   main_story: string;
   energy: number;
   health: number;
-  mood: number;
   hunger: number;
   intelligence_exp: number;
   programming_exp: number;
@@ -56,8 +58,9 @@ type TransferRequestRow = { id: string; sender_id: string; sender_name: string; 
 type MedicalTreatmentRequestRow = { id: string; patient_id: string; patient_name: string; provider_id: string; provider_name: string; provider_job: string; health_gain: number; amount: number; status: string; outcome: string; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
 type LoanRequestRow = { id: string; borrower_id: string; borrower_name: string; provider_id: string; provider_name: string; provider_job: string; amount: number; interest_rate_bp: number; spread_bp: number; status: string; outcome: string; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
 type LoanContractRow = { id: string; borrower_id: string; borrower_name: string; provider_id: string; provider_name: string; provider_job: string; principal_amount: number; outstanding_balance: number; interest_rate_bp: number; spread_bp: number; status: string; opened_at: number; closed_at: number | null };
+type WriterBookRow = { id: string; author_id: string; author_name: string; title: string; price: number; status: "active" | "hidden"; created_at: number; updated_at: number; sales_count?: number; owned_count?: number };
 
-const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "bank", "business", "shopping", "hotel", "casino", "school", "hospital"]);
+const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "bank", "business", "shopping", "bookstore", "hotel", "casino", "school", "hospital"]);
 // Persist at most one idle heartbeat every ten seconds. Only a short,
 // continuous gap counts as online play; returning after going offline adds no time.
 const HEARTBEAT_WRITE_INTERVAL_MS = 10_000;
@@ -153,7 +156,7 @@ async function identity(request: Request, db?: D1Database): Promise<AuthUser | n
 }
 
 function guestPlayer() {
-  return { cash: 10000, bankBalance: 0, loanBalance: 0, loanProviderName: "", loanRateBp: null, loanSpreadBp: null, dailyMinimumPayment: 0, dailyPaymentMade: 0, missedPaymentDays: 0, gameOver: "", mainStory: "legacy", energy: 100, health: 100, mood: 80, hunger: 80, intelligenceExp: 0, creativityExp: 0, physicalExp: 0, socialExp: 0, charismaExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, actionAvailableAt: 0, actionLabel: "", elapsedMinutes: 0, location: "realtor" as LocationId, talentExp: 0, talentLevel: 0, talentPoints: 0, talents: [] as string[], storyChapter: 0, pendingEvent: "" };
+  return { cash: 10000, bankBalance: 0, loanBalance: 0, loanProviderName: "", loanRateBp: null, loanSpreadBp: null, dailyMinimumPayment: 0, dailyPaymentMade: 0, missedPaymentDays: 0, writerFans: 0, writingUses: 0, gameOver: "", mainStory: "legacy", energy: 100, health: 100, hunger: 80, intelligenceExp: 0, creativityExp: 0, physicalExp: 0, socialExp: 0, charismaExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, actionAvailableAt: 0, actionLabel: "", elapsedMinutes: 0, location: "realtor" as LocationId, talentExp: 0, talentLevel: 0, talentPoints: 0, talents: [] as string[], storyChapter: 0, pendingEvent: "" };
 }
 
 function parseList(value: string) {
@@ -165,12 +168,31 @@ function serializePlayer(row: PlayerRow, progress?: ProgressRow | null, loanCont
   const location = VALID_LOCATIONS.has(row.location) ? row.location : "casino";
   const talents = progress ? parseList(progress.talents) : [];
   const talentLevel = Math.min(10, Math.floor((progress?.talent_exp ?? 0) / 100));
-  return { cash: row.cash, bankBalance: row.bank_balance, loanBalance: row.loan_balance, loanProviderName: loanContract?.provider_name ?? "", loanRateBp: loanContract?.interest_rate_bp ?? null, loanSpreadBp: loanContract?.spread_bp ?? null, dailyMinimumPayment: row.daily_minimum_payment, dailyPaymentMade: row.daily_payment_made, missedPaymentDays: row.missed_payment_days, gameOver: row.game_over, mainStory: row.main_story, energy: row.energy, health: row.health, mood: row.mood, hunger: row.hunger, intelligenceExp: row.intelligence_exp, creativityExp: row.programming_exp, physicalExp: row.fitness_exp, socialExp: row.work_exp, charismaExp: row.charisma_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, actionAvailableAt: row.action_available_at, actionLabel: row.action_label, elapsedMinutes: row.elapsed_minutes, location, talentExp: progress?.talent_exp ?? 0, talentLevel, talentPoints: Math.max(0, talentLevel - talents.length), talents, storyChapter: progress?.story_chapter ?? 0, pendingEvent: progress?.pending_event ?? "" };
+  return { cash: row.cash, bankBalance: row.bank_balance, loanBalance: row.loan_balance, loanProviderName: loanContract?.provider_name ?? "", loanRateBp: loanContract?.interest_rate_bp ?? null, loanSpreadBp: loanContract?.spread_bp ?? null, dailyMinimumPayment: row.daily_minimum_payment, dailyPaymentMade: row.daily_payment_made, missedPaymentDays: row.missed_payment_days, writerFans: row.writer_fans, writingUses: row.writer_writes, gameOver: row.game_over, mainStory: row.main_story, energy: row.energy, health: row.health, hunger: row.hunger, intelligenceExp: row.intelligence_exp, creativityExp: row.programming_exp, physicalExp: row.fitness_exp, socialExp: row.work_exp, charismaExp: row.charisma_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, actionAvailableAt: row.action_available_at, actionLabel: row.action_label, elapsedMinutes: row.elapsed_minutes, location, talentExp: progress?.talent_exp ?? 0, talentLevel, talentPoints: Math.max(0, talentLevel - talents.length), talents, storyChapter: progress?.story_chapter ?? 0, pendingEvent: progress?.pending_event ?? "" };
 }
 
 async function activeLoanContract(db: D1Database, borrowerId: string) {
   return db.prepare(`SELECT id, borrower_id, borrower_name, provider_id, provider_name, provider_job, principal_amount, outstanding_balance, interest_rate_bp, spread_bp, status, opened_at, closed_at
     FROM player_loan_contracts WHERE borrower_id=? AND status='active' LIMIT 1`).bind(borrowerId).first<LoanContractRow>();
+}
+
+async function bookStore(db: D1Database, userId: string) {
+  const rows = await db.prepare(`SELECT b.id, b.author_id, b.author_name, b.title, b.price, b.status, b.created_at, b.updated_at,
+      COALESCE((SELECT SUM(s.quantity) FROM writer_book_purchases s WHERE s.book_id=b.id), 0) AS sales_count,
+      COALESCE((SELECT s.quantity FROM writer_book_purchases s WHERE s.book_id=b.id AND s.buyer_id=?), 0) AS owned_count
+    FROM writer_books b
+    WHERE b.status='active' OR b.author_id=?
+    ORDER BY CASE WHEN b.author_id=? THEN 0 ELSE 1 END, b.updated_at DESC
+    LIMIT 120`).bind(userId, userId, userId).all<WriterBookRow>();
+  const books = rows.results.map((book) => ({ id: book.id, authorId: book.author_id, authorName: book.author_name, title: book.title, price: book.price, status: book.status, salesCount: Number(book.sales_count ?? 0), ownedCount: Number(book.owned_count ?? 0), isMine: book.author_id === userId }));
+  return { books, maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK };
+}
+
+function randomWriterFans(job: string) {
+  const range = writerFanRangeFor(job);
+  if (!range) return 0;
+  const random = crypto.getRandomValues(new Uint32Array(1))[0] / 4_294_967_296;
+  return range[0] + Math.floor(random * (range[1] - range[0] + 1));
 }
 
 function profileFor(user: AuthUser) {
@@ -201,9 +223,11 @@ async function ensureSchema(db: D1Database) {
       loan_balance INTEGER NOT NULL DEFAULT 0, finance_day INTEGER NOT NULL DEFAULT 0,
       daily_minimum_payment INTEGER NOT NULL DEFAULT 0, daily_payment_made INTEGER NOT NULL DEFAULT 0,
       missed_payment_days INTEGER NOT NULL DEFAULT 0, game_over TEXT NOT NULL DEFAULT '',
+      writer_fans INTEGER NOT NULL DEFAULT 0, writer_day INTEGER NOT NULL DEFAULT 0,
+      writer_writes INTEGER NOT NULL DEFAULT 0,
       main_story TEXT NOT NULL DEFAULT 'legacy',
       energy INTEGER NOT NULL DEFAULT 100,
-      health INTEGER NOT NULL DEFAULT 100, mood INTEGER NOT NULL DEFAULT 80,
+      health INTEGER NOT NULL DEFAULT 100,
       hunger INTEGER NOT NULL DEFAULT 80, intelligence_exp INTEGER NOT NULL DEFAULT 0,
       programming_exp INTEGER NOT NULL DEFAULT 0, fitness_exp INTEGER NOT NULL DEFAULT 0,
       work_exp INTEGER NOT NULL DEFAULT 0, charisma_exp INTEGER NOT NULL DEFAULT 0,
@@ -294,6 +318,16 @@ async function ensureSchema(db: D1Database) {
       interest_rate_bp INTEGER NOT NULL, spread_bp INTEGER NOT NULL,
       status TEXT NOT NULL DEFAULT 'active', opened_at INTEGER NOT NULL, closed_at INTEGER
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS writer_books (
+      id TEXT PRIMARY KEY, author_id TEXT NOT NULL, author_name TEXT NOT NULL,
+      title TEXT NOT NULL, price INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'active',
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS writer_book_purchases (
+      book_id TEXT NOT NULL, buyer_id TEXT NOT NULL, author_id TEXT NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (book_id, buyer_id)
+    )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS casino_bingo_state (
       id TEXT PRIMARY KEY, round_no INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL DEFAULT 'lobby',
       host_user_id TEXT NOT NULL DEFAULT '', entry_fee INTEGER NOT NULL DEFAULT 100, drawn_numbers TEXT NOT NULL DEFAULT '[]', next_draw_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL
@@ -343,9 +377,22 @@ async function ensureSchema(db: D1Database) {
     db.prepare("CREATE INDEX IF NOT EXISTS idx_loan_requests_borrower_status ON player_loan_requests(borrower_id, status, expires_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_loan_contracts_borrower_status ON player_loan_contracts(borrower_id, status)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_loan_contracts_provider_status ON player_loan_contracts(provider_id, status)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_writer_books_author_status ON writer_books(author_id, status)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_writer_books_status_updated ON writer_books(status, updated_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_writer_purchases_buyer ON writer_book_purchases(buyer_id, updated_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_writer_purchases_author ON writer_book_purchases(author_id, updated_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_bingo_entries_round ON casino_bingo_entries(round_no)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_tournament_entries_round ON casino_tournament_entries(tournament_no)"),
   ]);
+  const columns = await db.prepare("PRAGMA table_info(players)").all<{ name: string }>();
+  const columnNames = new Set(columns.results.map((column) => column.name));
+  for (const statement of [
+    !columnNames.has("writer_fans") ? "ALTER TABLE players ADD COLUMN writer_fans INTEGER NOT NULL DEFAULT 0" : null,
+    !columnNames.has("writer_day") ? "ALTER TABLE players ADD COLUMN writer_day INTEGER NOT NULL DEFAULT 0" : null,
+    !columnNames.has("writer_writes") ? "ALTER TABLE players ADD COLUMN writer_writes INTEGER NOT NULL DEFAULT 0" : null,
+  ].filter((item): item is string => Boolean(item))) await db.prepare(statement).run();
+  if (columnNames.has("mood")) await db.prepare("ALTER TABLE players DROP COLUMN mood").run();
+  await db.prepare("UPDATE players SET current_job='寫作助理', job_category='literary', job_exp=0 WHERE job_category='creative' OR current_job IN ('作家','畫家','設計師','演員','歌手','導演','實況主','網紅')").run();
 }
 
 let schemaReady: Promise<void> | null = null;
@@ -379,6 +426,10 @@ async function upsertPlayer(db: D1Database, user: AuthUser, forceHeartbeat = fal
   if (!row) return null;
   let loanContract = row.loan_balance > 0 ? await activeLoanContract(db, user.userId) : null;
   const today = Math.floor(row.elapsed_minutes / 1440) + 1;
+  if (row.writer_day <= 0) {
+    await db.prepare("UPDATE players SET writer_day=?, writer_writes=0 WHERE user_id=?").bind(today, user.userId).run();
+    row.writer_day = today; row.writer_writes = 0;
+  }
   // Existing story saves receive a fresh first deadline when this system is introduced.
   if (row.main_story === "prodigal_return" && row.loan_balance > 0 && row.daily_minimum_payment <= 0 && !row.game_over) {
     const minimumPayment = prodigalMinimumPayment(row.loan_balance);
@@ -389,8 +440,8 @@ async function upsertPlayer(db: D1Database, user: AuthUser, forceHeartbeat = fal
   }
   if (row.finance_day <= 0) {
     const minimumPayment = row.main_story === "prodigal_return" ? prodigalMinimumPayment(row.loan_balance) : 0;
-    await db.prepare("UPDATE players SET finance_day=?, daily_minimum_payment=? WHERE user_id=?").bind(today, minimumPayment, user.userId).run();
-    row.finance_day = today; row.daily_minimum_payment = minimumPayment;
+    await db.prepare("UPDATE players SET finance_day=?, daily_minimum_payment=?, writer_day=?, writer_writes=0 WHERE user_id=?").bind(today, minimumPayment, today, user.userId).run();
+    row.finance_day = today; row.daily_minimum_payment = minimumPayment; row.writer_day = today; row.writer_writes = 0;
   } else if (today > row.finance_day) {
     const progress = await ensureProgress(db, row);
     const elapsedDays = today - row.finance_day;
@@ -400,6 +451,7 @@ async function upsertPlayer(db: D1Database, user: AuthUser, forceHeartbeat = fal
     let minimumPayment = row.daily_minimum_payment || (row.main_story === "prodigal_return" ? prodigalMinimumPayment(loanBalance) : 0);
     let paymentMade = row.daily_payment_made;
     let missedPaymentDays = row.missed_payment_days;
+    let writerWrites = row.writer_writes;
     let gameOver = row.game_over;
     let providerEarnings = 0;
     for (let day = 0; day < elapsedDays; day += 1) {
@@ -418,6 +470,7 @@ async function upsertPlayer(db: D1Database, user: AuthUser, forceHeartbeat = fal
       } else if (loanBalance <= 0) missedPaymentDays = 0;
       const depositRateBp = financeDepositRateFor(row.current_job);
       bankBalance = Math.min(9_000_000_000_000_000, bankBalance + Math.floor(bankBalance * depositRateBp / 10_000));
+      if (row.job_category === "literary") cashBalance = Math.min(9_000_000_000_000_000, cashBalance + row.writer_fans * WRITER_DAILY_FAN_RATE);
       if (loanContract && row.main_story !== "prodigal_return" && loanBalance > 0) {
         providerEarnings += Math.max(0, Math.ceil(loanBalance * loanContract.spread_bp / 10_000));
         loanBalance = Math.min(9_000_000_000_000_000, loanBalance + Math.ceil(loanBalance * loanContract.interest_rate_bp / 10_000));
@@ -428,8 +481,9 @@ async function upsertPlayer(db: D1Database, user: AuthUser, forceHeartbeat = fal
       paymentMade = 0;
       minimumPayment = row.main_story === "prodigal_return" && !gameOver ? prodigalMinimumPayment(loanBalance) : 0;
     }
-    const financeStatements = [db.prepare("UPDATE players SET cash=?, bank_balance=?, loan_balance=?, finance_day=?, daily_minimum_payment=?, daily_payment_made=?, missed_payment_days=?, game_over=?, updated_at=? WHERE user_id=?")
-      .bind(cashBalance, bankBalance, loanBalance, today, minimumPayment, paymentMade, missedPaymentDays, gameOver, now, user.userId)];
+    writerWrites = 0;
+    const financeStatements = [db.prepare("UPDATE players SET cash=?, bank_balance=?, loan_balance=?, finance_day=?, daily_minimum_payment=?, daily_payment_made=?, missed_payment_days=?, game_over=?, writer_day=?, writer_writes=?, updated_at=? WHERE user_id=?")
+      .bind(cashBalance, bankBalance, loanBalance, today, minimumPayment, paymentMade, missedPaymentDays, gameOver, today, writerWrites, now, user.userId)];
     if (loanContract) {
       financeStatements.push(db.prepare("UPDATE player_loan_contracts SET outstanding_balance=?, status=?, closed_at=? WHERE id=? AND status='active'")
         .bind(loanBalance, loanBalance > 0 ? "active" : "paid", loanBalance > 0 ? null : now, loanContract.id));
@@ -437,7 +491,7 @@ async function upsertPlayer(db: D1Database, user: AuthUser, forceHeartbeat = fal
     }
     await db.batch(financeStatements);
     if (loanContract && loanBalance <= 0) loanContract = null;
-    row.cash = cashBalance; row.bank_balance = bankBalance; row.loan_balance = loanBalance; row.finance_day = today; row.daily_minimum_payment = minimumPayment; row.daily_payment_made = paymentMade; row.missed_payment_days = missedPaymentDays; row.game_over = gameOver;
+    row.cash = cashBalance; row.bank_balance = bankBalance; row.loan_balance = loanBalance; row.finance_day = today; row.daily_minimum_payment = minimumPayment; row.daily_payment_made = paymentMade; row.missed_payment_days = missedPaymentDays; row.game_over = gameOver; row.writer_day = today; row.writer_writes = writerWrites;
   }
   return row;
 }
@@ -1463,7 +1517,7 @@ async function getAvatar(userId: string, env: Env) {
 
 async function bootstrap(request: Request, env: Env) {
   const user = await identity(request, env.DB);
-  if (!user || !env.DB) return json({ authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [], casino: { capacity: 5, activeCount: 0, seats: [], hand: null }, poker: { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 }, bingo: { status: "lobby", players: [], drawn: [] }, tournament: { status: "lobby", players: [] }, medicalRequests: [], loanRequests: [] });
+  if (!user || !env.DB) return json({ authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [], casino: { capacity: 5, activeCount: 0, seats: [], hand: null }, poker: { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 }, bingo: { status: "lobby", players: [], drawn: [] }, tournament: { status: "lobby", players: [] }, medicalRequests: [], loanRequests: [], bookStore: { books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK } });
   await ensureSchemaOnce(env.DB);
   const row = await upsertPlayer(env.DB, user);
   if (!row) return json({ message: "無法載入玩家資料" }, 500);
@@ -1471,7 +1525,7 @@ async function bootstrap(request: Request, env: Env) {
   const world = await multiplayer(env.DB);
   const emptyCasino = { capacity: 5, activeCount: 0, seats: [], hand: null };
   const emptyPoker = { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 };
-  const [casino, poker, memory, transferRequests, medicalRequests, loanRequests, bingo, tournament, loanContract] = await Promise.all([
+  const [casino, poker, memory, transferRequests, medicalRequests, loanRequests, bingo, tournament, loanContract, bookStoreState] = await Promise.all([
     row.location === "casino" ? casinoState(env.DB, user.userId) : Promise.resolve(emptyCasino),
     row.location === "casino" ? pokerState(env.DB, user.userId) : Promise.resolve(emptyPoker),
     cityMemory(env.DB),
@@ -1481,8 +1535,9 @@ async function bootstrap(request: Request, env: Env) {
     row.location === "casino" ? bingoState(env.DB, user.userId) : Promise.resolve({ status: "lobby", players: [], drawn: [] }),
     row.location === "casino" ? tournamentState(env.DB, user.userId) : Promise.resolve({ status: "lobby", players: [] }),
     activeLoanContract(env.DB, user.userId),
+    bookStore(env.DB, user.userId),
   ]);
-  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress, loanContract), room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, bingo, tournament, cityMemory: memory, transferRequests, medicalRequests, loanRequests });
+  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress, loanContract), room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, bingo, tournament, cityMemory: memory, transferRequests, medicalRequests, loanRequests, bookStore: bookStoreState });
 }
 
 async function takeAction(request: Request, env: Env) {
@@ -1496,11 +1551,11 @@ async function takeAction(request: Request, env: Env) {
   let talents = new Set(parseList(progress.talents));
   const clampEnergy = (value: number) => Math.max(0, Math.min(talents.has("strong_body") ? 120 : 100, value));
 
-  let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; academy?: string; story?: string; talent?: string; choice?: string; targetId?: string; requestId?: string; medicalRequestId?: string; loanRequestId?: string };
+  let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; academy?: string; story?: string; talent?: string; choice?: string; targetId?: string; requestId?: string; medicalRequestId?: string; loanRequestId?: string; bookId?: string; title?: string; status?: string };
   try { body = await request.json(); } catch { return json({ message: "行動資料格式錯誤。" }, 400); }
   if (current.game_over && body.action !== "reset") return json({ message: "這段人生已經結束，請重新開始。" }, 409);
   if (current.main_story === "unselected" && body.action !== "choose_story") return json({ message: "請先選擇人生主線。" }, 409);
-  if (!["move", "choose_story", "reset", "city_event", "bank", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
+  if (!["move", "choose_story", "reset", "city_event", "bank", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
   const next = { ...current };
   const sharedMinutes = worldMinutes();
   const memoryBefore = await cityMemory(env.DB);
@@ -1514,6 +1569,89 @@ async function takeAction(request: Request, env: Env) {
   let scratch: { price: number; prize: number } | null = null;
 
   switch (body.action) {
+    case "writer_write": {
+      if (next.location !== "business") return json({ message: "請先前往工作地寫作。" }, 400);
+      if (!isLocationOpen("business", sharedMinutes)) return json({ message: `工作地營業時間為 ${OPENING_HOURS.business?.label}。` }, 400);
+      if (next.job_category !== "literary" || !writerFanRangeFor(next.current_job)) return json({ message: "只有文學作家職業可以寫作。" }, 400);
+      if (next.illness) return json({ message: `目前罹患${next.illness}，請先前往醫院治療。` }, 400);
+      if (next.writer_writes >= WRITER_DAILY_WRITING_LIMIT) return json({ message: "今天的兩次寫作機會都已使用，下一個遊玩日才能再次寫作。" }, 409);
+      if (next.energy < 5) return json({ message: "體力不足，先休息一下再寫作吧。" }, 400);
+      const previousCareer = careerForCategory("literary", next.writer_fans, next.current_job);
+      const gainedFans = randomWriterFans(next.current_job);
+      next.writer_fans += gainedFans;
+      next.writer_writes += 1;
+      next.job_exp = next.writer_fans;
+      next.energy = clampEnergy(next.energy - 5);
+      next.health = clamp(next.health - 1);
+      next.hunger = clamp(next.hunger - 2);
+      minutes = 30;
+      const newCareer = careerForCategory("literary", next.writer_fans, next.current_job);
+      next.current_job = newCareer.title;
+      if (newCareer.title !== previousCareer.title) talentExpGain += 10;
+      title = newCareer.title !== previousCareer.title ? `升級為${newCareer.title}` : "完成今日寫作";
+      message = `完成第 ${next.writer_writes} 次寫作：粉絲 +${gainedFans}，目前粉絲 ${next.writer_fans}。${newCareer.title !== previousCareer.title ? ` 恭喜成為${newCareer.title}！` : `今日還可寫作 ${WRITER_DAILY_WRITING_LIMIT - next.writer_writes} 次。`}`;
+      break;
+    }
+    case "book_publish": {
+      if (next.location !== "bookstore") return json({ message: "請先前往城市書店出版作品。" }, 400);
+      if (!isLocationOpen("bookstore", sharedMinutes)) return json({ message: `城市書店營業時間為 ${OPENING_HOURS.bookstore?.label}。` }, 400);
+      const price = writerBookPriceFor(next.current_job);
+      const titleText = typeof body.title === "string" ? body.title.trim().replace(/\s+/g, " ") : "";
+      if (next.job_category !== "literary" || price === null) return json({ message: "升至簽約作家後才能出版書籍。" }, 400);
+      if (!titleText || titleText.length > 40) return json({ message: "書籍名稱需為 1～40 個字。" }, 400);
+      const activeCount = await env.DB.prepare("SELECT COUNT(*) AS count FROM writer_books WHERE author_id=? AND status='active'").bind(user.userId).first<{ count: number }>();
+      if (Number(activeCount?.count ?? 0) >= WRITER_MAX_ACTIVE_BOOKS) return json({ message: `最多同時上架 ${WRITER_MAX_ACTIVE_BOOKS} 本書，請先下架一本。` }, 409);
+      const duplicate = await env.DB.prepare("SELECT id FROM writer_books WHERE author_id=? AND status='active' AND title=? LIMIT 1").bind(user.userId, titleText).first<{ id: string }>();
+      if (duplicate) return json({ message: "你已經有一本同名的上架書籍。" }, 409);
+      const now = Date.now();
+      await env.DB.prepare("INSERT INTO writer_books (id, author_id, author_name, title, price, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'active', ?, ?)")
+        .bind(crypto.randomUUID(), user.userId, user.displayName.slice(0, 40), titleText, price, now, now).run();
+      title = "新書上架"; message = `《${titleText}》已上架書店，售價 NT$${price}。`;
+      break;
+    }
+    case "book_toggle": {
+      if (next.location !== "bookstore") return json({ message: "請先前往城市書店管理作品。" }, 400);
+      if (!isLocationOpen("bookstore", sharedMinutes)) return json({ message: `城市書店營業時間為 ${OPENING_HOURS.bookstore?.label}。` }, 400);
+      if (!body.bookId || !["active", "hidden"].includes(body.status || "")) return json({ message: "書籍上架狀態不正確。" }, 400);
+      if (body.status === "active") {
+        const activeCount = await env.DB.prepare("SELECT COUNT(*) AS count FROM writer_books WHERE author_id=? AND status='active'").bind(user.userId).first<{ count: number }>();
+        const currentBook = await env.DB.prepare("SELECT status FROM writer_books WHERE id=? AND author_id=?").bind(body.bookId, user.userId).first<{ status: string }>();
+        if (!currentBook) return json({ message: "找不到這本書。" }, 404);
+        if (currentBook.status !== "active" && Number(activeCount?.count ?? 0) >= WRITER_MAX_ACTIVE_BOOKS) return json({ message: `最多同時上架 ${WRITER_MAX_ACTIVE_BOOKS} 本書。` }, 409);
+      }
+      const updatedBook = await env.DB.prepare("UPDATE writer_books SET status=?, updated_at=? WHERE id=? AND author_id=? RETURNING title, status")
+        .bind(body.status, Date.now(), body.bookId, user.userId).first<{ title: string; status: string }>();
+      if (!updatedBook) return json({ message: "找不到這本書或你不是作者。" }, 404);
+      title = updatedBook.status === "active" ? "書籍上架" : "書籍下架"; message = `《${updatedBook.title}》已${updatedBook.status === "active" ? "上架" : "下架"}。`;
+      break;
+    }
+    case "book_buy": {
+      if (next.location !== "bookstore") return json({ message: "請先前往城市書店。" }, 400);
+      if (!isLocationOpen("bookstore", sharedMinutes)) return json({ message: `城市書店營業時間為 ${OPENING_HOURS.bookstore?.label}。` }, 400);
+      if (!body.bookId) return json({ message: "請選擇要購買的書籍。" }, 400);
+      const book = await env.DB.prepare("SELECT id, author_id, author_name, title, price, status FROM writer_books WHERE id=?").bind(body.bookId).first<WriterBookRow>();
+      if (!book || book.status !== "active") return json({ message: "這本書目前沒有上架。" }, 409);
+      if (book.author_id === user.userId) return json({ message: "作者不能購買自己的書。" }, 400);
+      const owned = await env.DB.prepare("SELECT quantity FROM writer_book_purchases WHERE book_id=? AND buyer_id=?").bind(book.id, user.userId).first<{ quantity: number }>();
+      if (Number(owned?.quantity ?? 0) >= WRITER_MAX_PURCHASES_PER_BOOK) return json({ message: `每位玩家每本書最多購買 ${WRITER_MAX_PURCHASES_PER_BOOK} 次。` }, 409);
+      const debited = await env.DB.prepare("UPDATE players SET cash=cash-? WHERE user_id=? AND cash>=? RETURNING user_id").bind(book.price, user.userId, book.price).first<{ user_id: string }>();
+      if (!debited) return json({ message: "現金不足，無法購買這本書。" }, 400);
+      try {
+        const purchased = await env.DB.prepare(`INSERT INTO writer_book_purchases (book_id, buyer_id, author_id, quantity, updated_at)
+          VALUES (?, ?, ?, 1, ?)
+          ON CONFLICT(book_id, buyer_id) DO UPDATE SET quantity=quantity+1, updated_at=excluded.updated_at
+          WHERE writer_book_purchases.quantity < ?
+          RETURNING quantity`).bind(book.id, user.userId, book.author_id, Date.now(), WRITER_MAX_PURCHASES_PER_BOOK).first<{ quantity: number }>();
+        if (!purchased) throw new Error("purchase-limit");
+        await env.DB.prepare("UPDATE players SET cash=cash+? WHERE user_id=?").bind(book.price, book.author_id).run();
+      } catch {
+        await env.DB.prepare("UPDATE players SET cash=cash+? WHERE user_id=?").bind(book.price, user.userId).run();
+        return json({ message: "購買未完成，金額已退回。" }, 409);
+      }
+      next.cash -= book.price;
+      title = "購買書籍"; message = `已購買《${book.title}》，NT$${book.price} 已直接交給作者${book.author_name}。`;
+      break;
+    }
     case "transfer_request": {
       const kind = body.kind === "gift" || body.kind === "scam" ? body.kind : null;
       const amount = Number(body.amount);
@@ -1759,7 +1897,7 @@ async function takeAction(request: Request, env: Env) {
     case "choose_story":
       if (next.main_story !== "unselected") return json({ message: "人生主線選定後不能再次更換。" }, 409);
       if (body.story !== "prodigal_return") return json({ message: "這條人生主線目前尚未開放。" }, 400);
-      Object.assign(next, { cash: 37, bank_balance: 0, loan_balance: 250_000, main_story: "prodigal_return", finance_day: Math.floor(next.elapsed_minutes / 1440) + 1, daily_minimum_payment: 750, daily_payment_made: 0, missed_payment_days: 0, game_over: "", energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", location: "realtor" });
+      Object.assign(next, { cash: 37, bank_balance: 0, loan_balance: 250_000, main_story: "prodigal_return", finance_day: Math.floor(next.elapsed_minutes / 1440) + 1, daily_minimum_payment: 750, daily_payment_made: 0, missed_payment_days: 0, writer_fans: 0, writer_day: Math.floor(next.elapsed_minutes / 1440) + 1, writer_writes: 0, game_over: "", energy: 100, health: 100, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", location: "realtor" });
       title = "選擇主線：《浪子回頭》"; message = "你帶著 NT$37 與 NT$250,000 負債，決定承認失敗並重新開始。"; tone = "neutral"; break;
     case "move": {
       if (!VALID_LOCATIONS.has(body.location as LocationId)) return json({ message: "目的地不存在。" }, 400);
@@ -1768,7 +1906,7 @@ async function takeAction(request: Request, env: Env) {
       const target = body.location as LocationId;
       if (!isLocationOpen(target, sharedMinutes)) return json({ message: `${OPENING_HOURS[target]?.label} 營業，現在已關門。` }, 400);
       next.location = body.location as LocationId;
-      const placeName = ({ home: "我的住所", realtor: "安心房仲", bank: "城市銀行", business: "工作地", shopping: "購物街", hotel: "不夜旅店", casino: "幸運賭場", school: "未來學院", hospital: "市立醫院" } as Record<LocationId, string>)[next.location as LocationId];
+       const placeName = ({ home: "我的住所", realtor: "安心房仲", bank: "城市銀行", business: "工作地", shopping: "購物街", bookstore: "城市書店", hotel: "不夜旅店", casino: "幸運賭場", school: "未來學院", hospital: "市立醫院" } as Record<LocationId, string>)[next.location as LocationId];
       title = "移動完成"; message = `已抵達${placeName}。`; tone = "neutral"; break;
     }
     case "housing": {
@@ -1860,7 +1998,8 @@ async function takeAction(request: Request, env: Env) {
       if (category.id !== "unfixed" && !meetsCareerRequirements(abilitiesFor(next), entryRequirements)) return json({ message: `進入${category.label}需要${formatRequirements(entryRequirements)}。` }, 400);
       await env.DB.prepare("UPDATE player_medical_requests SET status='cancelled', outcome='provider_job_changed', resolved_at=? WHERE provider_id=? AND status='pending'").bind(Date.now(), user.userId).run();
       await env.DB.prepare("UPDATE player_loan_requests SET status='cancelled', outcome='provider_job_changed', resolved_at=? WHERE provider_id=? AND status='pending'").bind(Date.now(), user.userId).run();
-      next.current_job = selected.job; next.job_category = selected.categoryId; next.job_exp = 0;
+      next.current_job = selected.job; next.job_category = selected.categoryId; next.job_exp = selected.categoryId === "literary" ? next.writer_fans : 0;
+      if (selected.categoryId === "literary") next.current_job = careerForCategory("literary", next.writer_fans, selected.job).title;
       title = category.id === "unfixed" ? `狀態變更：${selected.job}` : `進入${selected.categoryLabel}`;
       message = category.id === "unfixed" ? `目前狀態已改為${selected.job}。` : `成功進入「${selected.categoryLabel}」，從${selected.job}開始發展；產業升遷經驗從 0 開始。`; break;
     }
@@ -1869,6 +2008,7 @@ async function takeAction(request: Request, env: Env) {
       if (!isLocationOpen("business", sharedMinutes)) return json({ message: `工作地營業時間為 ${OPENING_HOURS.business?.label}。` }, 400);
       if (next.illness) return json({ message: `目前罹患${next.illness}，請先前往醫院治療。` }, 400);
       if (next.job_category === "unfixed") return json({ message: `目前是${next.current_job === "流浪者" ? "流浪者" : "待業者"}，請先選擇一條產業路線。` }, 400);
+      if (next.job_category === "literary") return json({ message: "文學作家請使用每日寫作，不使用一般工作班次。" }, 400);
       const hours = Number(body.hours);
       const workSpecial = careerWorkSpecialFor(next.current_job, hours);
       if (![1, 4, 8].includes(hours) && !workSpecial) return json({ message: "工時選擇不正確。" }, 400);
@@ -1878,7 +2018,7 @@ async function takeAction(request: Request, env: Env) {
       const income = Math.floor(hours * previousCareer.hourlyPay * incomeMultiplier);
       const energyCost = Math.ceil(hours * 5 * (talents.has("endurance") ? .85 : 1));
       const jobGain = Math.ceil(hours * 4 * (talents.has("skilled") ? 1.15 : 1));
-      next.cash += income; next.energy = Math.max(0, next.energy - energyCost); next.health = clamp(next.health - Math.ceil(hours / 2) + medicalWorkHealthBonusFor(next.current_job)); next.mood = clamp(next.mood - Math.ceil(hours * .9)); next.hunger = clamp(next.hunger - hours * 2); next.job_exp += jobGain; minutes = hours === 1 ? 30 : hours === 4 ? 120 : 240;
+      next.cash += income; next.energy = Math.max(0, next.energy - energyCost); next.health = clamp(next.health - Math.ceil(hours / 2) + medicalWorkHealthBonusFor(next.current_job)); next.hunger = clamp(next.hunger - hours * 2); next.job_exp += jobGain; minutes = hours === 1 ? 30 : hours === 4 ? 120 : 240;
       if (workSpecial) minutes = workSpecial.minutes;
       if (talents.has("workaholic_2")) minutes = Math.ceil(minutes * .9);
       const newCareer = careerForCategory(next.job_category, next.job_exp, next.current_job, abilitiesFor(next));
@@ -1912,10 +2052,10 @@ async function takeAction(request: Request, env: Env) {
       if (next.location !== "shopping") return json({ message: "請先前往購物街。" }, 400);
       if (!isLocationOpen("shopping", sharedMinutes)) return json({ message: `購物街營業時間為 ${OPENING_HOURS.shopping?.label}。` }, 400);
       const mealDiscount = talents.has("frugal") ? .9 : 1;
-      const meal = body.kind === "rice" ? { name: "飯糰", price: Math.floor(45 * mealDiscount), hunger: 20, mood: 1 } : body.kind === "bento" ? { name: "便當", price: Math.floor(100 * mealDiscount), hunger: 45, mood: 3 } : null;
+      const meal = body.kind === "rice" ? { name: "飯糰", price: Math.floor(45 * mealDiscount), hunger: 20 } : body.kind === "bento" ? { name: "便當", price: Math.floor(100 * mealDiscount), hunger: 45 } : null;
       if (!meal) return json({ message: "餐點不存在。" }, 400);
       if (next.cash < meal.price) return json({ message: "現金不足。" }, 400);
-      next.cash -= meal.price; next.hunger = clamp(next.hunger + meal.hunger); next.mood = clamp(next.mood + meal.mood);
+      next.cash -= meal.price; next.hunger = clamp(next.hunger + meal.hunger);
       title = `享用${meal.name}`; message = `${meal.name}讓飽足 +${meal.hunger}。`; break;
     }
     case "scratch": {
@@ -1932,8 +2072,8 @@ async function takeAction(request: Request, env: Env) {
     case "sleep":
       if (next.location !== "home") return json({ message: "請先回到溫暖小屋。" }, 400);
       if (!next.owns_home && next.rented_until <= next.elapsed_minutes) return json({ message: "租約已到期，請先到房仲續租。" }, 400);
-      next.energy = talents.has("strong_body") ? 120 : 100; next.health = clamp(next.health + 5); next.mood = clamp(next.mood + 10); next.hunger = clamp(next.hunger - 12); minutes = 120;
-      title = "好好睡了一覺"; message = "體力完全恢復，健康 +5、心情 +10。"; break;
+      next.energy = talents.has("strong_body") ? 120 : 100; next.health = clamp(next.health + 5); next.hunger = clamp(next.hunger - 12); minutes = 120;
+      title = "好好睡了一覺"; message = "體力完全恢復，健康 +5。"; break;
     case "hospital": {
       if (next.location !== "hospital") return json({ message: "請先前往市立醫院。" }, 400);
       if (body.kind !== "emergency" && !isHospitalRegularOpen(sharedMinutes)) return json({ message: "一般門診與完整治療時間為 07:00～23:00；急診 24 小時開放。" }, 400);
@@ -1958,7 +2098,7 @@ async function takeAction(request: Request, env: Env) {
     case "reset":
       await env.DB.prepare("UPDATE player_medical_requests SET status='cancelled', outcome='provider_reset', resolved_at=? WHERE provider_id=? AND status='pending'").bind(Date.now(), user.userId).run();
       await env.DB.prepare("UPDATE player_loan_requests SET status='cancelled', outcome='provider_reset', resolved_at=? WHERE provider_id=? AND status='pending'").bind(Date.now(), user.userId).run();
-      Object.assign(next, { cash: next.main_story === "prodigal_return" ? 37 : 10000, bank_balance: 0, loan_balance: next.main_story === "prodigal_return" ? 250_000 : 0, finance_day: 1, daily_minimum_payment: next.main_story === "prodigal_return" ? 750 : 0, daily_payment_made: 0, missed_payment_days: 0, game_over: "", energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", elapsed_minutes: 0, location: "realtor" });
+      Object.assign(next, { cash: next.main_story === "prodigal_return" ? 37 : 10000, bank_balance: 0, loan_balance: next.main_story === "prodigal_return" ? 250_000 : 0, finance_day: 1, daily_minimum_payment: next.main_story === "prodigal_return" ? 750 : 0, daily_payment_made: 0, missed_payment_days: 0, writer_fans: 0, writer_day: 1, writer_writes: 0, game_over: "", energy: 100, health: 100, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", elapsed_minutes: 0, location: "realtor" });
       await env.DB.prepare("UPDATE player_progress SET talent_exp=0, talents='[]', story_chapter=0, last_event_day=0, pending_event='', updated_at=? WHERE user_id=?").bind(Date.now(), user.userId).run();
       progress = { ...progress, talent_exp: 0, talents: "[]", story_chapter: 0, last_event_day: 0, pending_event: "" }; talents = new Set();
       title = "重新開始人生"; message = "新的人生已開始，所有進度回到起點。"; tone = "neutral"; break;
@@ -1971,7 +2111,7 @@ async function takeAction(request: Request, env: Env) {
     progress = { ...progress, talent_exp: Math.min(1099, progress.talent_exp + talentExpGain) };
   }
 
-  const bypassVitalityEffects = body.action === "move" || (body.action === "hotel" && body.kind === "work");
+  const bypassVitalityEffects = body.action === "move" || (body.action === "hotel" && body.kind === "work") || ["book_publish", "book_toggle", "book_buy"].includes(body.action || "");
   if (body.action !== "hospital" && body.action !== "reset" && !bypassVitalityEffects) {
     if (next.hunger <= 15) next.health = clamp(next.health - 6);
     if (next.energy <= 5) next.health = clamp(next.health - 4);
@@ -2002,13 +2142,13 @@ async function takeAction(request: Request, env: Env) {
   const gameTime = `${String(Math.floor(eventMinute / 60)).padStart(2, "0")}:${String(eventMinute % 60).padStart(2, "0")}`;
   const now = Date.now();
   const eventId = crypto.randomUUID();
-  const statements = [env.DB.prepare(`UPDATE players SET cash=?, bank_balance=?, loan_balance=?, finance_day=?, daily_minimum_payment=?, daily_payment_made=?, missed_payment_days=?, game_over=?, main_story=?, energy=?, health=?, mood=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, charisma_exp=?, current_job=?, job_category=?, job_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, action_available_at=?, action_label=?, elapsed_minutes=?, location=?, updated_at=?, last_seen_at=? WHERE user_id=?`)
-    .bind(next.cash, next.bank_balance, next.loan_balance, next.finance_day, next.daily_minimum_payment, next.daily_payment_made, next.missed_payment_days, next.game_over, next.main_story, next.energy, next.health, next.mood, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.charisma_exp, next.current_job, next.job_category, next.job_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.action_available_at, next.action_label, next.elapsed_minutes, next.location, now, now, user.userId)];
+  const statements = [env.DB.prepare(`UPDATE players SET cash=?, bank_balance=?, loan_balance=?, finance_day=?, daily_minimum_payment=?, daily_payment_made=?, missed_payment_days=?, writer_fans=?, writer_day=?, writer_writes=?, game_over=?, main_story=?, energy=?, health=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, charisma_exp=?, current_job=?, job_category=?, job_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, action_available_at=?, action_label=?, elapsed_minutes=?, location=?, updated_at=?, last_seen_at=? WHERE user_id=?`)
+    .bind(next.cash, next.bank_balance, next.loan_balance, next.finance_day, next.daily_minimum_payment, next.daily_payment_made, next.missed_payment_days, next.writer_fans, next.writer_day, next.writer_writes, next.game_over, next.main_story, next.energy, next.health, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.charisma_exp, next.current_job, next.job_category, next.job_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.action_available_at, next.action_label, next.elapsed_minutes, next.location, now, now, user.userId)];
   if (body.action !== "move") statements.push(env.DB.prepare("INSERT INTO game_events (id, user_id, player_name, room_id, title, detail, tone, game_time, created_at) VALUES (?, ?, ?, 'lobby-01', ?, ?, ?, ?, ?)")
     .bind(eventId, user.userId, user.displayName.slice(0, 40), title, message, tone, gameTime, now));
   await env.DB.batch(statements);
   const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id = ?").bind(user.userId).first<PlayerRow>();
-  const metric = body.action === "work" ? "work" : body.action === "hospital" ? "hospital" : body.action === "housing" ? "housing" : body.action === "study" ? "study" : body.action === "city_event" ? "event" : null;
+  const metric = ["work", "writer_write"].includes(body.action || "") ? "work" : body.action === "hospital" ? "hospital" : body.action === "housing" ? "housing" : body.action === "study" ? "study" : body.action === "city_event" ? "event" : null;
   if (metric) await recordCityMemory(env.DB, user.userId, metric);
   const chapterBefore = progress.story_chapter;
   progress = await ensureProgress(env.DB, saved!);
@@ -2027,8 +2167,8 @@ async function takeAction(request: Request, env: Env) {
   }
   if (eligibleEvent) message += await maybeFindMysteryClue(env.DB, user.userId, saved!.location);
   const world = await multiplayer(env.DB);
-  const [loanContract, loanRequests] = await Promise.all([activeLoanContract(env.DB, user.userId), pendingLoanRequests(env.DB, user.userId)]);
-  return json({ player: serializePlayer(saved!, progress, loanContract), message, scratch, loanRequests, cityMemory: await cityMemory(env.DB), ...world });
+  const [loanContract, loanRequests, bookStoreState] = await Promise.all([activeLoanContract(env.DB, user.userId), pendingLoanRequests(env.DB, user.userId), bookStore(env.DB, user.userId)]);
+  return json({ player: serializePlayer(saved!, progress, loanContract), message, scratch, loanRequests, bookStore: bookStoreState, cityMemory: await cityMemory(env.DB), ...world });
 }
 
 export default {
