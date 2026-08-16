@@ -120,6 +120,8 @@ test("multiplayer cash invitations support gifts and protected scam resolution",
   assert.match(worker, /const finalScores = entries\.results\.map/);
   assert.match(worker, /總分\$\{entry\.score\}/);
   assert.match(page, /總分 \{player\.score\} 分/);
+  assert.match(page, /player\.blackjackScore !== null/);
+  assert.match(worker, /blackjackScore: round\?\.game === "blackjack"/);
   assert.match(worker, /body\.action === "hit"/);
   assert.match(worker, /body\.action === "call"/);
   assert.match(worker, /\["join", "leave"\]/);
