@@ -113,10 +113,14 @@ function actionWaitMessage(player: PlayerRow, now = Date.now()) {
 }
 
 function corsHeaders(request: Request, env: Env) {
-  const allowed = env.FRONTEND_ORIGIN || "https://yuiban76.github.io";
+  const allowedOrigins = (env.FRONTEND_ORIGIN || "https://yuiban76.github.io")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const fallback = allowedOrigins[0] || "https://yuiban76.github.io";
   const origin = request.headers.get("Origin");
   return {
-    "Access-Control-Allow-Origin": origin === allowed ? origin : allowed,
+    "Access-Control-Allow-Origin": origin && allowedOrigins.includes(origin) ? origin : fallback,
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Max-Age": "86400",

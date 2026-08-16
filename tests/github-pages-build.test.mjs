@@ -241,6 +241,17 @@ test("crime career adds guarded player actions, prison records, and territory in
   assert.match(migration, /idx_territory_visit_owner_day/);
 });
 
+test("production API origin and CORS allow both published frontends", async () => {
+  const env = await readFile(new URL(".env.production", root), "utf8");
+  const wrangler = await readFile(new URL("wrangler.jsonc", root), "utf8");
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+
+  assert.match(env, /VITE_API_ORIGIN=https:\/\/life-online-api\.yuiban76-life-online\.workers\.dev/);
+  assert.match(wrangler, /https:\/\/yuiban76\.github\.io,https:\/\/life-online-game\.alert-joy-9259\.chatgpt\.site/);
+  assert.match(worker, /split\("[,]"\)/);
+  assert.match(worker, /allowedOrigins\.includes\(origin\)/);
+});
+
 test("medical career adds health support, hospital discounts, and guarded player treatment", async () => {
   const jobs = await readFile(new URL("shared/jobs.ts", root), "utf8");
   const worker = await readFile(new URL("worker/index.ts", root), "utf8");

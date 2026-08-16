@@ -4,7 +4,7 @@
 	"compatibility_date": "2026-08-12",
 	"main": "./worker/index.ts",
 	"vars": {
-		"FRONTEND_ORIGIN": "https://yuiban76.github.io"
+		"FRONTEND_ORIGIN": "https://yuiban76.github.io,https://life-online-game.alert-joy-9259.chatgpt.site"
 	},
 	"d1_databases": [
 		{
