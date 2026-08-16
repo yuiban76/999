@@ -245,6 +245,10 @@ button { color: inherit; }
 .housing-card span { color: var(--muted); font-size: 8px; letter-spacing: .1em; }
 .housing-card strong { font: 700 12px Georgia, "Noto Serif TC", serif; }
 .housing-card small { color: var(--muted); font-size: 8px; }
+.restaurant-card { display: grid; gap: 5px; margin-top: 10px; padding: 12px 13px; border: 1px solid #b9d3f2; border-radius: 12px; background: #eef6ff; }
+.restaurant-card span { color: #5f7184; font-size: 8px; letter-spacing: .1em; }
+.restaurant-card strong { color: #194d83; font-size: 12px; }
+.restaurant-card small { color: #5f7184; font-size: 8px; line-height: 1.45; }
 
 .career-card { margin-top: 16px; padding: 13px; border: 1px solid #8c9187; background: var(--paper-bright); }
 .career-card > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }

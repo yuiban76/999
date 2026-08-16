@@ -3,7 +3,7 @@ export const JOB_CATEGORIES = [
   { id: "medical", label: "醫療照護", jobs: ["診所助理", "護理師", "資深護理師", "護理長"] },
   { id: "finance", label: "商業金融", jobs: ["銀行員", "理財專員", "投資顧問", "分行經理"] },
   { id: "literary", label: "文學作家", jobs: ["寫作助理", "無名作家", "簽約作家", "暢銷作家"] },
-  { id: "hospitality", label: "餐飲服務", jobs: ["廚師", "咖啡師", "調酒師", "餐廳老闆", "旅館經理", "導遊"] },
+  { id: "hospitality", label: "餐飲服務", jobs: ["廚房助理", "廚師", "主廚", "餐廳老闆"] },
   { id: "sports", label: "運動競技", jobs: ["職業球員", "賽車手", "格鬥選手", "教練", "裁判", "健身教練"] },
   { id: "freelance", label: "自由工作", jobs: ["攝影師", "翻譯", "接案設計師", "顧問", "家教", "街頭藝人"] },
   { id: "unfixed", label: "無固定職業", jobs: ["待業者", "流浪者"] },
@@ -57,7 +57,23 @@ export const CAREER_WORK_SPECIALS = {
   "護理師": { name: "輪班津貼", hours: 9, minutes: 3 },
   "資深護理師": { name: "臨床專注", hours: 8, minutes: 3 },
   "護理長": { name: "準時交班", hours: 8, minutes: 2 },
+  "廚房助理": { name: "備料班", hours: 4, minutes: 2 },
+  "廚師": { name: "出餐高峰班", hours: 6, minutes: 3 },
+  "主廚": { name: "品質監修班", hours: 8, minutes: 4 },
+  "餐廳老闆": { name: "餐廳營運班", hours: 8, minutes: 4 },
 } as const;
+
+export const HOSPITALITY_SPECIAL_HUNGER = {
+  "廚房助理": 10,
+  "廚師": 20,
+  "主廚": 30,
+  "餐廳老闆": 40,
+} as const;
+
+export const RESTAURANT_PURCHASE_PRICE = 400_000;
+export const RESTAURANT_DAILY_GROSS = 20_000;
+export const RESTAURANT_DAILY_COST = 5_000;
+export const RESTAURANT_DAILY_NET = RESTAURANT_DAILY_GROSS - RESTAURANT_DAILY_COST;
 
 export const MEDICAL_HOSPITAL_DISCOUNTS = {
   "診所助理": 0.05,
@@ -119,6 +135,10 @@ export function medicalWorkHealthBonusFor(job: string) {
   return jobInfo(job)?.categoryId === "medical" ? MEDICAL_WORK_HEALTH_BONUS : 0;
 }
 
+export function hospitalitySpecialHungerFor(job: string) {
+  return HOSPITALITY_SPECIAL_HUNGER[job as keyof typeof HOSPITALITY_SPECIAL_HUNGER] ?? 0;
+}
+
 export function financeDepositRateFor(job: string) {
   return FINANCE_DEPOSIT_RATES_BP[job as keyof typeof FINANCE_DEPOSIT_RATES_BP] ?? BANK_DEPOSIT_RATE_BP;
 }
@@ -162,6 +182,15 @@ export function careerRequirements(categoryId: string, index: number): Partial<A
     ];
     return requirements[index] ?? requirements.at(-1)!;
   }
+  if (categoryId === "hospitality") {
+    const requirements: Partial<Abilities>[] = [
+      { social: 0, charisma: 0 },
+      { social: 30, charisma: 20 },
+      { social: 70, charisma: 50 },
+      { social: 130, charisma: 90 },
+    ];
+    return requirements[index] ?? requirements.at(-1)!;
+  }
   const tier = normalizedCareerTier(categoryId, index);
   return {
     [profile[0]]: PRIMARY_REQUIREMENTS[tier] ?? PRIMARY_REQUIREMENTS.at(-1),
@@ -177,7 +206,7 @@ function normalizedCareerTier(categoryId: string, index: number) {
 
 export function careerThresholdForCategory(categoryId: string, index: number) {
   if (categoryId === "literary") return WRITER_FAN_THRESHOLDS[index] ?? WRITER_FAN_THRESHOLDS.at(-1)!;
-  if (categoryId === "medical" || categoryId === "finance") return [0, 100, 250, 500][index] ?? 500;
+  if (categoryId === "medical" || categoryId === "finance" || categoryId === "hospitality") return [0, 100, 250, 500][index] ?? 500;
   return CAREER_THRESHOLDS[normalizedCareerTier(categoryId, index)] ?? CAREER_THRESHOLDS.at(-1)!;
 }
 

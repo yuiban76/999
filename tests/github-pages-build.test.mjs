@@ -161,8 +161,8 @@ test("administrative actions are instant and gameplay waits stay shortened", asy
   assert.match(page, /睡眠 8 小時" meta="現實等待 2 分鐘/);
   assert.match(page, /旅店臨時工 · 30 秒/);
   assert.match(page, /不扣體力、飽足、健康/);
-  assert.match(page, /const canActDuringWait = \["move", "reset", "city_event", "bank", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy"\]/);
-  assert.match(worker, /\["move", "choose_story", "reset", "city_event", "bank", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy"\]/);
+  assert.match(page, /const canActDuringWait = \["move", "reset", "city_event", "bank", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy"\]/);
+  assert.match(worker, /\["move", "choose_story", "reset", "city_event", "bank", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy"\]/);
   assert.match(page, /期間可移動、使用銀行、處理贈送／詐騙／治療／貸款請求，或前往賭場遊玩/);
   assert.match(page, /BankPanel player=\{player\} busy=\{busy \|\| !bankOpen\}/);
   assert.match(page, /<CasinoTable state=\{casino\} signedIn=\{Boolean\(profile\)\} busy=\{busy\}/);
@@ -183,6 +183,30 @@ test("general office career has four ranks and role-specific work specials", asy
   assert.match(worker, /careerWorkSpecialFor\(next\.current_job, hours\)/);
   assert.match(page, /title=\{longWorkTitle\}/);
   assert.match(page, /workSpecial && workSpecial\.hours !== 8/);
+});
+
+test("hospitality career has four ranks, hunger specials, and a daily-settled restaurant", async () => {
+  const jobs = await readFile(new URL("shared/jobs.ts", root), "utf8");
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const schema = await readFile(new URL("db/schema.ts", root), "utf8");
+  const migration = await readFile(new URL("drizzle/0023_restaurant_owner.sql", root), "utf8");
+
+  assert.match(jobs, /jobs: \["廚房助理", "廚師", "主廚", "餐廳老闆"\]/);
+  assert.match(jobs, /"廚房助理": \{ name: "備料班", hours: 4, minutes: 2 \}/);
+  assert.match(jobs, /"廚師": \{ name: "出餐高峰班", hours: 6, minutes: 3 \}/);
+  assert.match(jobs, /HOSPITALITY_SPECIAL_HUNGER/);
+  assert.match(jobs, /RESTAURANT_PURCHASE_PRICE = 400_000/);
+  assert.match(jobs, /RESTAURANT_DAILY_NET = RESTAURANT_DAILY_GROSS - RESTAURANT_DAILY_COST/);
+  assert.match(worker, /case "restaurant"/);
+  assert.match(worker, /next\.owns_restaurant = 1/);
+  assert.match(worker, /row\.owns_restaurant && row\.job_category === "hospitality" && row\.current_job === "餐廳老闆"/);
+  assert.match(worker, /餐廳收益每日結算/);
+  assert.match(page, /購買自有餐廳/);
+  assert.match(page, /每日在線結算淨收益/);
+  assert.match(page, /飽足 \+\$\{restaurantSpecialHunger\}/);
+  assert.match(schema, /ownsRestaurant: integer\("owns_restaurant", \{ mode: "boolean" \}\)/);
+  assert.match(migration, /ALTER TABLE `players` ADD COLUMN `owns_restaurant` integer DEFAULT 0 NOT NULL/);
 });
 
 test("medical career adds health support, hospital discounts, and guarded player treatment", async () => {

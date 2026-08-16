@@ -34,6 +34,7 @@ export const players = sqliteTable("players", {
   writerFans: integer("writer_fans").notNull().default(0),
   writerDay: integer("writer_day").notNull().default(0),
   writerWrites: integer("writer_writes").notNull().default(0),
+  ownsRestaurant: integer("owns_restaurant", { mode: "boolean" }).notNull().default(false),
   gameOver: text("game_over").notNull().default(""),
   mainStory: text("main_story").notNull().default("legacy"),
   energy: integer("energy").notNull().default(100),
