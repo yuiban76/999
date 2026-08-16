@@ -909,6 +909,7 @@ body {
 .player-transfer-actions { display: flex; gap: 6px; margin-top: 8px; }
 .player-transfer-actions button { min-height: 28px; padding: 0 10px; border: 0; border-radius: 999px; background: #0071e3; color: #fff; font-size: 10px; font-weight: 800; }
 .player-transfer-actions button.scam { background: #6e5a86; }
+.player-transfer-actions button.crime { background: #20242b; }
 .player-transfer-actions button.medical { background: #16835c; }
 .player-transfer-actions button.finance { background: #b36a18; }
 .player-transfer-actions button:disabled { background: #d2d2d7; color: #86868b; }
@@ -978,6 +979,7 @@ body {
 .transfer-card > p { color: #515154; font-size: 14px; line-height: 1.65; }
 .transfer-card > label { display: grid; gap: 7px; margin-top: 18px; color: #515154; font-size: 11px; font-weight: 800; }
 .transfer-card input { min-height: 44px; padding: 0 12px; border: 1px solid #c9c9ce; border-radius: 11px; font: 700 16px -apple-system, BlinkMacSystemFont, sans-serif; }
+.transfer-card select { min-height: 44px; padding: 0 12px; border: 1px solid #c9c9ce; border-radius: 11px; background: #fff; color: #1d1d1f; font: 700 16px -apple-system, BlinkMacSystemFont, sans-serif; }
 .transfer-card > small { display: block; margin-top: 10px; color: #6e6e73; font-size: 11px; line-height: 1.5; }
 .transfer-submit, .transfer-response button { min-height: 42px; border: 0; border-radius: 999px; background: #0071e3; color: #fff; font-weight: 800; }
 .transfer-submit { width: 100%; margin-top: 20px; }

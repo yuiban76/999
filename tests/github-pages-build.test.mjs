@@ -209,6 +209,38 @@ test("hospitality career has four ranks, hunger specials, and a daily-settled re
   assert.match(migration, /ALTER TABLE `players` ADD COLUMN `owns_restaurant` integer DEFAULT 0 NOT NULL/);
 });
 
+test("crime career adds guarded player actions, prison records, and territory income", async () => {
+  const jobs = await readFile(new URL("shared/jobs.ts", root), "utf8");
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const schema = await readFile(new URL("db/schema.ts", root), "utf8");
+  const migration = await readFile(new URL("drizzle/0024_crime_prison_territory.sql", root), "utf8");
+
+  assert.match(jobs, /id: "crime", label: "犯罪路線", jobs: \["詐騙犯", "駭客", "走私者", "大橋頭營運長"\]/);
+  assert.match(jobs, /CRIME_ARREST_CHANCES/);
+  assert.match(jobs, /HACK_SUCCESS_CHANCE = 0\.20/);
+  assert.match(jobs, /TERRITORY_VISIT_REWARD = 100/);
+  assert.match(jobs, /TERRITORY_DAILY_CAP = 10_000/);
+  assert.match(worker, /case "crime_hack"/);
+  assert.match(worker, /只有駭客可以執行這項行動/);
+  assert.match(worker, /只有詐騙犯可以使用詐騙功能/);
+  assert.match(worker, /function arrestPlayer/);
+  assert.match(worker, /case "territory"/);
+  assert.match(worker, /async function recordTerritoryVisit/);
+  assert.match(worker, /territory_visit_log/);
+  assert.match(worker, /current\.prison_until > current\.elapsed_minutes/);
+  assert.match(worker, /UPDATE players SET current_job='unemployed'/);
+  assert.match(page, /監獄服刑中/);
+  assert.match(page, /竊取現金/);
+  assert.match(page, /每日最多 \$\{HACK_DAILY_LIMIT\} 次/);
+  assert.match(page, /設定大橋頭地盤/);
+  assert.match(page, /監獄服刑 ·/);
+  assert.match(schema, /territoryVisitLog = sqliteTable\("territory_visit_log"/);
+  assert.match(migration, /ALTER TABLE `players` ADD COLUMN `prison_until`/);
+  assert.match(migration, /CREATE TABLE `territory_visit_log`/);
+  assert.match(migration, /idx_territory_visit_owner_day/);
+});
+
 test("medical career adds health support, hospital discounts, and guarded player treatment", async () => {
   const jobs = await readFile(new URL("shared/jobs.ts", root), "utf8");
   const worker = await readFile(new URL("worker/index.ts", root), "utf8");

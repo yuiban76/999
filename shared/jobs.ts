@@ -4,7 +4,7 @@ export const JOB_CATEGORIES = [
   { id: "finance", label: "商業金融", jobs: ["銀行員", "理財專員", "投資顧問", "分行經理"] },
   { id: "literary", label: "文學作家", jobs: ["寫作助理", "無名作家", "簽約作家", "暢銷作家"] },
   { id: "hospitality", label: "餐飲服務", jobs: ["廚房助理", "廚師", "主廚", "餐廳老闆"] },
-  { id: "sports", label: "運動競技", jobs: ["職業球員", "賽車手", "格鬥選手", "教練", "裁判", "健身教練"] },
+  { id: "crime", label: "犯罪路線", jobs: ["詐騙犯", "駭客", "走私者", "大橋頭營運長"] },
   { id: "freelance", label: "自由工作", jobs: ["攝影師", "翻譯", "接案設計師", "顧問", "家教", "街頭藝人"] },
   { id: "unfixed", label: "無固定職業", jobs: ["待業者", "流浪者"] },
 ] as const;
@@ -36,7 +36,7 @@ const CAREER_ABILITY_PROFILE: Record<string, readonly [AbilityKey, AbilityKey]> 
   finance: ["social", "intelligence"],
   literary: ["creativity", "charisma"],
   hospitality: ["social", "charisma"],
-  sports: ["physical", "charisma"],
+  crime: ["intelligence", "social"],
   freelance: ["creativity", "social"],
 };
 
@@ -61,6 +61,10 @@ export const CAREER_WORK_SPECIALS = {
   "廚師": { name: "出餐高峰班", hours: 6, minutes: 3 },
   "主廚": { name: "品質監修班", hours: 8, minutes: 4 },
   "餐廳老闆": { name: "餐廳營運班", hours: 8, minutes: 4 },
+  "詐騙犯": { name: "話術行動", hours: 4, minutes: 2 },
+  "駭客": { name: "系統入侵", hours: 6, minutes: 3 },
+  "走私者": { name: "地下運貨", hours: 8, minutes: 4 },
+  "大橋頭營運長": { name: "地盤巡查", hours: 8, minutes: 4 },
 } as const;
 
 export const HOSPITALITY_SPECIAL_HUNGER = {
@@ -74,6 +78,26 @@ export const RESTAURANT_PURCHASE_PRICE = 400_000;
 export const RESTAURANT_DAILY_GROSS = 20_000;
 export const RESTAURANT_DAILY_COST = 5_000;
 export const RESTAURANT_DAILY_NET = RESTAURANT_DAILY_GROSS - RESTAURANT_DAILY_COST;
+
+export const CRIME_ARREST_CHANCES = {
+  "詐騙犯": 0.12,
+  "駭客": 0.16,
+  "走私者": 0.20,
+  "大橋頭營運長": 0.18,
+} as const;
+export const CRIME_SENTENCE_MINUTES = {
+  "詐騙犯": 120,
+  "駭客": 180,
+  "走私者": 240,
+  "大橋頭營運長": 300,
+} as const;
+export const HACK_SUCCESS_CHANCE = 0.20;
+export const HACK_STEAL_RATE = 0.10;
+export const HACK_MAX_STEAL = 5_000;
+export const HACK_DAILY_LIMIT = 3;
+export const TERRITORY_VISIT_REWARD = 100;
+export const TERRITORY_DAILY_CAP = 10_000;
+export const TERRITORY_VISIT_COOLDOWN_MINUTES = 30;
 
 export const MEDICAL_HOSPITAL_DISCOUNTS = {
   "診所助理": 0.05,
@@ -139,6 +163,14 @@ export function hospitalitySpecialHungerFor(job: string) {
   return HOSPITALITY_SPECIAL_HUNGER[job as keyof typeof HOSPITALITY_SPECIAL_HUNGER] ?? 0;
 }
 
+export function crimeArrestChanceFor(job: string) {
+  return CRIME_ARREST_CHANCES[job as keyof typeof CRIME_ARREST_CHANCES] ?? 0;
+}
+
+export function crimeSentenceMinutesFor(job: string) {
+  return CRIME_SENTENCE_MINUTES[job as keyof typeof CRIME_SENTENCE_MINUTES] ?? 0;
+}
+
 export function financeDepositRateFor(job: string) {
   return FINANCE_DEPOSIT_RATES_BP[job as keyof typeof FINANCE_DEPOSIT_RATES_BP] ?? BANK_DEPOSIT_RATE_BP;
 }
@@ -191,6 +223,15 @@ export function careerRequirements(categoryId: string, index: number): Partial<A
     ];
     return requirements[index] ?? requirements.at(-1)!;
   }
+  if (categoryId === "crime") {
+    const requirements: Partial<Abilities>[] = [
+      { social: 0, intelligence: 0 },
+      { intelligence: 40, social: 20 },
+      { social: 70, charisma: 40 },
+      { intelligence: 100, social: 80, charisma: 60 },
+    ];
+    return requirements[index] ?? requirements.at(-1)!;
+  }
   const tier = normalizedCareerTier(categoryId, index);
   return {
     [profile[0]]: PRIMARY_REQUIREMENTS[tier] ?? PRIMARY_REQUIREMENTS.at(-1),
@@ -206,7 +247,7 @@ function normalizedCareerTier(categoryId: string, index: number) {
 
 export function careerThresholdForCategory(categoryId: string, index: number) {
   if (categoryId === "literary") return WRITER_FAN_THRESHOLDS[index] ?? WRITER_FAN_THRESHOLDS.at(-1)!;
-  if (categoryId === "medical" || categoryId === "finance" || categoryId === "hospitality") return [0, 100, 250, 500][index] ?? 500;
+  if (categoryId === "medical" || categoryId === "finance" || categoryId === "hospitality" || categoryId === "crime") return [0, 100, 250, 500][index] ?? 500;
   return CAREER_THRESHOLDS[normalizedCareerTier(categoryId, index)] ?? CAREER_THRESHOLDS.at(-1)!;
 }
 

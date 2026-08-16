@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ABILITY_LABELS, ACADEMIES, BANK_LOAN_RATE_BP, careerForCategory, careerRequirements, careerThresholdForCategory, careerWorkSpecialFor, categoryInfo, financeDepositRateFor, financeLoanTermsFor, hospitalitySpecialHungerFor, JOB_CATEGORIES, jobInfo, medicalHospitalDiscountFor, medicalTreatmentFor, medicalWorkHealthBonusFor, meetsCareerRequirements, nextCareerForCategory, RESTAURANT_DAILY_NET, RESTAURANT_PURCHASE_PRICE, WRITER_DAILY_FAN_RATE, WRITER_DAILY_WRITING_LIMIT, WRITER_MAX_ACTIVE_BOOKS, WRITER_MAX_PURCHASES_PER_BOOK, writerBookPriceFor, writerFanRangeFor, type Abilities } from "../shared/jobs";
+import { ABILITY_LABELS, ACADEMIES, BANK_LOAN_RATE_BP, careerForCategory, careerRequirements, careerThresholdForCategory, careerWorkSpecialFor, categoryInfo, crimeArrestChanceFor, crimeSentenceMinutesFor, financeDepositRateFor, financeLoanTermsFor, HACK_DAILY_LIMIT, HACK_MAX_STEAL, HACK_STEAL_RATE, HACK_SUCCESS_CHANCE, hospitalitySpecialHungerFor, JOB_CATEGORIES, jobInfo, medicalHospitalDiscountFor, medicalTreatmentFor, medicalWorkHealthBonusFor, meetsCareerRequirements, nextCareerForCategory, RESTAURANT_DAILY_NET, RESTAURANT_PURCHASE_PRICE, TERRITORY_DAILY_CAP, TERRITORY_VISIT_REWARD, WRITER_DAILY_FAN_RATE, WRITER_DAILY_WRITING_LIMIT, WRITER_MAX_ACTIVE_BOOKS, WRITER_MAX_PURCHASES_PER_BOOK, writerBookPriceFor, writerFanRangeFor, type Abilities } from "../shared/jobs";
 import { CITY_EVENTS, STORY_CHAPTERS, TALENTS } from "../shared/progression";
 import { isHospitalRegularOpen, isLocationOpen, worldMinutes } from "../shared/world";
 import { CAREER_PREVIEW_ROUTES } from "../shared/careerPreview";
 
-type LocationId = "home" | "realtor" | "bank" | "business" | "shopping" | "bookstore" | "hotel" | "casino" | "school" | "hospital";
+type LocationId = "home" | "realtor" | "bank" | "business" | "shopping" | "bookstore" | "hotel" | "casino" | "school" | "hospital" | "prison";
 type StatKey = "energy" | "health" | "hunger";
 
 type Player = {
@@ -27,6 +27,16 @@ type Player = {
   writerFans: number;
   writingUses: number;
   ownsRestaurant: boolean;
+  prisonUntil: number;
+  prisonCrime: string;
+  territoryLocation: string;
+  territoryDay: number;
+  territoryPayoutDay: number;
+  territoryVisits: number;
+  territoryIncome: number;
+  territoryPending: number;
+  hackDay: number;
+  hackUses: number;
   intelligenceExp: number;
   creativityExp: number;
   physicalExp: number;
@@ -69,6 +79,7 @@ type OnlinePlayer = {
   jobCategory: string;
   updatedAt: number;
   avatarUrl: string | null;
+  prisonCrime: string;
 };
 
 type FeedItem = {
@@ -219,6 +230,16 @@ const INITIAL_PLAYER: Player = {
   writerFans: 0,
   writingUses: 0,
   ownsRestaurant: false,
+  prisonUntil: 0,
+  prisonCrime: "",
+  territoryLocation: "",
+  territoryDay: 0,
+  territoryPayoutDay: 0,
+  territoryVisits: 0,
+  territoryIncome: 0,
+  territoryPending: 0,
+  hackDay: 0,
+  hackUses: 0,
   intelligenceExp: 0,
   creativityExp: 0,
   physicalExp: 0,
@@ -304,6 +325,7 @@ const locations: Array<{ id: LocationId; emoji: string; image?: string; name: st
   { id: "casino", emoji: "♠", image: "./casino-icon.png", name: "幸運賭場", caption: "最多五位玩家同桌，各自挑戰二十一點莊家", hours: "24 小時" },
   { id: "school", emoji: "▤", name: "未來學院", caption: "投資自己，讓選擇越來越多", hours: "07:00～23:00" },
   { id: "hospital", emoji: "✚", name: "市立醫院", caption: "一般診療 07:00～23:00，急診全天開放", hours: "急診 24 小時" },
+  { id: "prison", emoji: "▥", name: "監獄", caption: "違法行為被捕後服刑的地方", hours: "24 小時" },
 ];
 
 const statMeta: Array<{ key: StatKey; icon: string; label: string }> = [
@@ -375,6 +397,7 @@ function guestAction(current: Player, action: string, payload: Record<string, un
   if (action === "move") {
     const target = payload.location as LocationId;
     if (!locations.some((item) => item.id === target) || target === next.location) return fail("你已經在這裡了。");
+    if (target === "prison") return fail("監獄只接受被捕玩家進入。");
     if (target === "home" && !next.ownsHome && next.rentedUntil <= sharedMinutes) return fail("你目前沒有住所，請先到安心房仲租屋或買房。");
     if (!isLocationOpen(target, sharedMinutes)) return fail(`${locations.find((item) => item.id === target)?.hours} 營業，現在已關門。`);
     next.location = target; title = "移動完成"; message = `已抵達${locationName(target)}。`;
@@ -601,6 +624,8 @@ function GameHome() {
   const [busy, setBusy] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [jobOpen, setJobOpen] = useState(false);
+  const [territoryOpen, setTerritoryOpen] = useState(false);
+  const [territorySelection, setTerritorySelection] = useState<LocationId>("business");
   const [talentOpen, setTalentOpen] = useState(false);
   const [cityMemory, setCityMemory] = useState<CityMemory>(EMPTY_CITY_MEMORY);
   const [scratchResult, setScratchResult] = useState<{ price: number; prize: number } | null>(null);
@@ -643,6 +668,13 @@ function GameHome() {
   const isWriter = player.jobCategory === "literary";
   const isRestaurantOwner = player.jobCategory === "hospitality" && player.currentJob === "餐廳老闆";
   const hasRestaurant = isRestaurantOwner && player.ownsRestaurant;
+  const isCrime = player.jobCategory === "crime";
+  const isPrisoner = player.location === "prison" && player.prisonUntil > player.elapsedMinutes;
+  const prisonHoursLeft = Math.max(0, Math.ceil((player.prisonUntil - player.elapsedMinutes) / 60));
+  const isTerritoryOwner = isCrime && player.currentJob === "大橋頭營運長";
+  const territoryLabel = locations.find((item) => item.id === player.territoryLocation)?.name ?? player.territoryLocation;
+  const crimeRisk = isCrime ? Math.round(crimeArrestChanceFor(player.currentJob) * 100) : 0;
+  const crimeSentence = isCrime ? Math.ceil(crimeSentenceMinutesFor(player.currentJob) / 60) : 0;
   const restaurantSpecialHunger = hospitalitySpecialHungerFor(player.currentJob);
   const writerRange = writerFanRangeFor(player.currentJob);
   const writerBookPrice = writerBookPriceFor(player.currentJob);
@@ -945,7 +977,7 @@ function GameHome() {
           <div className={`housing-card ${!player.ownsHome && !rentalDaysLeft ? "homeless" : ""}`}><span>居住狀態</span><strong>{housingLabel}</strong><small>{player.ownsHome ? "永久住所" : rentalDaysLeft ? `剩餘 ${Math.floor(rentalMinutesLeft / 60)} 小時 ${Math.floor(rentalMinutesLeft % 60)} 分 · 僅在線時計時` : "請前往安心房仲"}</small></div>
           {player.ownsRestaurant && <div className="restaurant-card"><span>事業資產</span><strong>自有餐廳</strong><small>{isRestaurantOwner ? `每日在線結算淨收益 NT$${formatMoney(RESTAURANT_DAILY_NET)}` : "目前更換職業，餐廳收益暫停"}</small></div>}
           <div className="career-card">
-            <div><span>目前職業</span><strong>{career.title}</strong></div><small>{isWriter ? `粉絲 ${formatMoney(player.writerFans)} · 每日收益約 NT$${formatMoney(player.writerFans * WRITER_DAILY_FAN_RATE)}` : hasRestaurant ? `每日結算淨收益 NT$${formatMoney(RESTAURANT_DAILY_NET)}` : `時薪 NT$${formatMoney(career.hourlyPay)}`}</small>
+             <div><span>目前職業</span><strong>{career.title}</strong></div><small>{isCrime ? `違法行動被捕機率 ${crimeRisk}% · 服刑 ${crimeSentence} 小時` : isWriter ? `粉絲 ${formatMoney(player.writerFans)} · 每日收益約 NT$${formatMoney(player.writerFans * WRITER_DAILY_FAN_RATE)}` : hasRestaurant ? `每日結算淨收益 NT$${formatMoney(RESTAURANT_DAILY_NET)}` : `時薪 NT$${formatMoney(career.hourlyPay)}`}</small>
             <div className="career-track"><i style={{ width: `${careerProgress}%` }} /></div>
             <p>{isWriter && nextCareer ? `升遷為${nextCareerTitle}：還需 ${Math.max(0, nextCareer.threshold - player.writerFans)} 位粉絲` : isWriter ? "已達文學作家最高職位" : hasRestaurant ? "餐廳已啟用每日結算，改職後收益暫停" : nextCareer && player.jobCategory !== "unfixed" ? `升遷為${nextCareerTitle}：${Math.max(0, nextCareer.threshold - player.jobExp)} EXP，${formatRequirements(nextCareer.requirements)}` : player.jobCategory === "unfixed" ? "前往工作地選擇產業路線" : "已達此產業最高職位"}</p>
           </div>
@@ -961,17 +993,19 @@ function GameHome() {
         <section className="world-panel panel">
           <div className="location-header"><div><p>YOU ARE HERE</p><h2>{currentLocation.image ? <img className="location-photo" src={currentLocation.image} alt="" /> : <span>{currentLocation.emoji}</span>}{currentLocation.name}</h2><small>{currentLocation.caption} · {currentLocation.hours}</small></div>{player.location === "business" ? <div className="location-career-progress"><span>PROMOTION PROGRESS</span><strong>{player.jobCategory === "unfixed" ? "尚未選擇產業" : nextCareer ? `下一階：${nextCareerTitle}` : "已達產業最高職位"}</strong><div><i style={{ width: `${player.jobCategory === "unfixed" ? 0 : careerProgress}%` }} /></div><small>{player.jobCategory === "unfixed" ? "請從下方「找工作」選擇產業路線" : isWriter ? `粉絲數：${player.writerFans} / ${nextCareer?.threshold ?? player.writerFans}` : nextCareer ? `職業經驗：${player.jobExp} / ${nextCareer.threshold} EXP` : `目前累積 ${player.jobExp} EXP`}</small><small>{isWriter ? `每日寫作最多 ${WRITER_DAILY_WRITING_LIMIT} 次；升遷只看粉絲數` : nextCareer && player.jobCategory !== "unfixed" ? `能力要求：${formatRequirements(nextCareer.requirements) || "無"}` : player.jobCategory === "unfixed" ? "入行第一階免能力門檻" : "能力與經驗均已達標"}</small></div> : <span className="map-index">CITY · LOBBY 01</span>}</div>
           <nav className="location-strip" aria-label="城市地點">
-            {locations.map((item) => <button className={`${item.id === player.location ? "active" : ""} ${!isLocationOpen(item.id, sharedMinutes) ? "closed" : ""}`} key={item.id} onClick={() => void act("move", { location: item.id })} disabled={busy}>{item.image ? <img className="location-photo" src={item.image} alt="" /> : <span>{item.emoji}</span>}<small>{item.name}</small><em>{isLocationOpen(item.id, sharedMinutes) ? item.hours : "已關門"}</em></button>)}
+            {locations.map((item) => <button className={`${item.id === player.location ? "active" : ""} ${!isLocationOpen(item.id, sharedMinutes) ? "closed" : ""}`} key={item.id} onClick={() => void act("move", { location: item.id })} disabled={busy || (item.id === "prison" && player.location !== "prison")}>{item.image ? <img className="location-photo" src={item.image} alt="" /> : <span>{item.emoji}</span>}<small>{item.name}</small><em>{item.id === "prison" && player.location !== "prison" ? "僅限服刑" : isLocationOpen(item.id, sharedMinutes) ? item.hours : "已關門"}</em></button>)}
           </nav>
           <div className="action-stage">
             <div className="stage-number">{String(locations.findIndex((item) => item.id === player.location) + 1).padStart(2, "0")}</div>
             <div className="action-intro"><span>今天，想把時間花在哪裡？</span><h3>{actionTitle(player.location)}</h3><p>{actionLocked ? `${player.actionLabel || "目前的行動"}進行中，${actionSecondsLeft} 秒後可再次行動；期間可移動、使用銀行、處理贈送／詐騙／治療／貸款邀請，或前往賭場遊玩。` : actionDescription(player.location)}</p></div>
             <div className="action-cards">
               {player.location === "home" && <ActionCard icon="☾" title="睡眠 8 小時" meta="現實等待 2 分鐘 · 體力全滿 · 健康 +5" button="好好休息" onClick={() => void act("sleep")} disabled={actionBusy} />}
+              {player.location === "prison" && isPrisoner && <ActionCard icon="▥" title="監獄服刑中" meta={`罪名：${player.prisonCrime || "違法行為"} · 剩餘在線遊玩約 ${prisonHoursLeft} 小時 · 其他玩家可查看紀錄`} button="等待服刑結束" onClick={() => undefined} disabled />}
               {player.location === "realtor" && <><ActionCard icon="01" title="城市小套房 · 1 天" meta="每日 NT$350 · 租金 NT$350" button="租 1 天" onClick={() => void act("housing", { kind: "rent", days: 1 })} disabled={actionBusy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /><ActionCard icon="07" title="城市小套房 · 7 天" meta="每日 NT$350 · 租金 NT$2,450" button="租 7 天" onClick={() => void act("housing", { kind: "rent", days: 7 })} featured disabled={actionBusy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /><ActionCard icon="買" title="購買城市小宅" meta="NT$50,000 · 永久住所 · 買房後仍可查看租屋" button={player.ownsHome ? "已擁有，仍可看租屋" : "購買房屋"} onClick={() => void act("housing", { kind: "buy" })} disabled={actionBusy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /></>}
               {player.location === "bank" && <BankPanel player={player} busy={busy || !bankOpen} closed={!bankOpen} onAction={(kind, amount) => void act("bank", { kind, amount })} />}
               {player.location === "business" && <>
                 <ActionCard icon="職" title="找工作" meta="第一階工作免能力門檻 · 產業路線 · 換工作立即完成" button="打開產業列表" onClick={() => setJobOpen(true)} featured disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} />
+                {isTerritoryOwner && <ActionCard icon="地" title={player.territoryLocation ? `大橋頭地盤 · ${territoryLabel}` : "設定大橋頭地盤"} meta={player.territoryLocation ? `今日進入 ${player.territoryVisits} 次 · 已累積 NT$${formatMoney(player.territoryIncome)} · 待結算 NT$${formatMoney(player.territoryPending)}` : `選擇一個地點 · 每次進入紀錄 NT$${formatMoney(TERRITORY_VISIT_REWARD)} · 每日上限 NT$${formatMoney(TERRITORY_DAILY_CAP)}`} button={player.territoryLocation ? "更換地盤" : "選擇地盤"} onClick={() => { setTerritorySelection((player.territoryLocation as LocationId) || "business"); setTerritoryOpen(true); }} featured disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} />}
                 {isWriter ? <>
                   <ActionCard icon="文" title={`今日寫作 · ${writerWritesLeft}/${WRITER_DAILY_WRITING_LIMIT} 次`} meta={`現實等待 30 秒 · 每次隨機 +${writerRange?.[0] ?? 0}～${writerRange?.[1] ?? 0} 粉絲 · 不直接發薪`} button={writerWritesLeft ? "開始寫作" : "今日次數已用完"} onClick={() => void act("writer_write")} featured disabled={actionBusy || !businessOpen || writerWritesLeft <= 0} disabledLabel={!businessOpen ? "已關門" : writerWritesLeft <= 0 ? "明日再寫" : undefined} />
                   <ActionCard icon="書" title="管理出版作品" meta="前往城市書店建立或下架作品，隨時管理" button="前往書店" onClick={() => void act("move", { location: "bookstore" })} disabled={actionBusy || !bookstoreOpen} disabledLabel={!bookstoreOpen ? "書店已關門" : undefined} />
@@ -1000,7 +1034,7 @@ function GameHome() {
           <div className="section-heading story-title"><span>多人世界</span><small>LIVE LOBBY</small></div>
           <div className="online-summary"><strong><i />{online.length} 位在線</strong><span>每 5 秒同步</span></div>
           <ul className="online-list">
-            {online.length ? online.slice(0, 8).map((item) => { const service = medicalTreatmentFor(item.currentJob); const loanTerms = financeLoanTermsFor(item.currentJob); return <li key={item.id}><button type="button" className={`mini-avatar ${item.avatarUrl ? "has-photo" : ""}`} aria-label={`放大查看${item.displayName}的大頭貼`} onClick={() => setEnlargedPlayer(item)}>{item.avatarUrl ? <img src={`${API_ORIGIN}${item.avatarUrl}`} alt="" /> : item.displayName.slice(0, 1)}</button><div><strong>{item.displayName}{item.id === profile?.id ? "（你）" : ""}</strong><small>正在 {locationName(item.location)} · {item.currentJob === "待業者" ? "待業者" : item.currentJob}</small><span className="online-finance">現金 NT${formatMoney(item.cash)} · 貸款 NT${formatMoney(item.loanBalance)}</span>{profile && item.id !== profile.id && <span className="player-transfer-actions"><button type="button" onClick={() => openTransfer(item, "gift")} disabled={busy || player.cash < 1}>贈送</button><button type="button" className="scam" onClick={() => openTransfer(item, "scam")} disabled={busy || player.cash < 2}>詐騙</button>{service && <button type="button" className="medical" onClick={() => requestMedicalTreatment(item)} disabled={busy || player.health >= 100}>請求治療 · NT${formatMoney(service.price)}</button>}{loanTerms && <button type="button" className="finance" onClick={() => openLoanRequest(item)} disabled={busy || player.loanBalance > 0}>借款方案</button>}</span>}</div></li>; }) : <li className="empty-online">登入後，你會在這裡遇見其他玩家。</li>}
+            {online.length ? online.slice(0, 8).map((item) => { const service = medicalTreatmentFor(item.currentJob); const loanTerms = financeLoanTermsFor(item.currentJob); const isOther = Boolean(profile && item.id !== profile.id); const isPrisonPlayer = item.location === "prison"; return <li key={item.id}><button type="button" className={`mini-avatar ${item.avatarUrl ? "has-photo" : ""}`} aria-label={`放大查看${item.displayName}的大頭貼`} onClick={() => setEnlargedPlayer(item)}>{item.avatarUrl ? <img src={`${API_ORIGIN}${item.avatarUrl}`} alt="" /> : item.displayName.slice(0, 1)}</button><div><strong>{item.displayName}{item.id === profile?.id ? "（你）" : ""}</strong><small>{isPrisonPlayer ? `監獄服刑 · ${item.prisonCrime || "違法行為"}` : `正在 ${locationName(item.location)} · ${item.currentJob === "待業者" ? "待業者" : item.currentJob}`}</small><span className="online-finance">現金 NT${formatMoney(item.cash)} · 貸款 NT${formatMoney(item.loanBalance)}</span>{isOther && !isPrisoner && <span className="player-transfer-actions"><button type="button" onClick={() => openTransfer(item, "gift")} disabled={busy || player.cash < 1}>贈送</button>{player.currentJob === "詐騙犯" && !isPrisonPlayer && <button type="button" className="scam" onClick={() => openTransfer(item, "scam")} disabled={busy || player.cash < 2}>詐騙</button>}{player.currentJob === "駭客" && !isPrisonPlayer && <button type="button" className="crime" title={`每日最多 ${HACK_DAILY_LIMIT} 次 · 成功率 ${Math.round(HACK_SUCCESS_CHANCE * 100)}% · 竊取目標現金 ${Math.round(HACK_STEAL_RATE * 100)}%，單次上限 NT$${formatMoney(HACK_MAX_STEAL)}`} onClick={() => void act("crime_hack", { targetId: item.id })} disabled={busy || player.hackUses >= HACK_DAILY_LIMIT}>竊取現金</button>}{service && <button type="button" className="medical" onClick={() => requestMedicalTreatment(item)} disabled={busy || player.health >= 100}>請求治療 · NT${formatMoney(service.price)}</button>}{loanTerms && <button type="button" className="finance" onClick={() => openLoanRequest(item)} disabled={busy || player.loanBalance > 0}>借款方案</button>}</span>}</div></li>; }) : <li className="empty-online">登入後，你會在這裡遇見其他玩家。</li>}
           </ul>
           <div className="section-heading feed-heading"><span>城市動態</span><small>ACTIVITY</small></div>
           <ol className="feed-list">
@@ -1041,6 +1075,7 @@ function GameHome() {
           </div>}
         </section>
       </div>}
+      {territoryOpen && <div className="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="territory-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setTerritoryOpen(false); }}><section className="transfer-card territory-card"><button className="auth-close" type="button" aria-label="關閉地盤設定" onClick={() => setTerritoryOpen(false)}>×</button><span className="panel-kicker">DAQIAOTOU TERRITORY</span><h2 id="territory-title">設定大橋頭地盤</h2><p>選擇一個公共地點。其他玩家進入時不會被扣款，只會留下進入紀錄並累積你的保護費。</p><label>地盤位置<select value={territorySelection} onChange={(event) => setTerritorySelection(event.target.value as LocationId)}>{locations.filter((item) => !["home", "prison"].includes(item.id)).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><small>每次有效進入 NT${formatMoney(TERRITORY_VISIT_REWARD)} · 每日上限 NT${formatMoney(TERRITORY_DAILY_CAP)} · 短時間重複進出不重複計算。</small><button className="transfer-submit" disabled={busy || !businessOpen} onClick={() => { setTerritoryOpen(false); void act("territory", { kind: "set", territoryLocation: territorySelection }); }}>確認設定地盤</button></section></div>}
       {scratchResult && <div className="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="scratch-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setScratchResult(null); }}>
         <section className={`scratch-ticket ${scratchResult.prize ? "winner" : ""}`}>
           <button className="auth-close" type="button" aria-label="關閉" onClick={() => setScratchResult(null)}>×</button>
@@ -1303,9 +1338,9 @@ function BetForm({ bet, setBet, maxBet, busy, submitBet, onLeave }: { bet: strin
 }
 
 function actionTitle(location: LocationId) {
-  return { home: "有一個落腳處，才有安心休息的地方", realtor: "先找到住所，再打造自己的生活", bank: "管理資產，也要衡量借貸成本", business: "累積經驗，向下一次升遷前進", shopping: "照顧日常，才能走得更遠", bookstore: "讓故事被看見，也讓作品流通", hotel: "沒有住所，也能有一晚落腳處", casino: "五人同桌，挑戰二十一點與德州撲克", school: "今天學會的，會成為明天的選項", hospital: "及早治療，才能繼續人生旅程" }[location];
+  return { home: "有一個落腳處，才有安心休息的地方", realtor: "先找到住所，再打造自己的生活", bank: "管理資產，也要衡量借貸成本", business: "累積經驗，向下一次升遷前進", shopping: "照顧日常，才能走得更遠", bookstore: "讓故事被看見，也讓作品流通", hotel: "沒有住所，也能有一晚落腳處", casino: "五人同桌，挑戰二十一點與德州撲克", school: "今天學會的，會成為明天的選項", hospital: "及早治療，才能繼續人生旅程", prison: "為違法行為付出時間代價" }[location];
 }
 
 function actionDescription(location: LocationId) {
-  return { home: "有效租約或自有住宅才能進入，全天 24 小時開放。睡一覺能恢復體力與健康。", realtor: "營業時間 07:00～23:00。租屋每日 NT$350；城市小宅售價 NT$50,000。", bank: "營業時間 07:00～23:00。存款收益依金融職位而定；一般貸款每日利息 0.5%；《浪子回頭》主線債務每日利息 0.2%。在線玩家也能申請金融玩家的銀行貸款方案。", business: "營業時間 06:00～24:00。第一階工作免能力門檻；各產業最高階時薪皆為 NT$1,300。文學作家每天可寫作兩次，粉絲會在遊玩日結算為收益；餐廳老闆可用 NT$400,000 購買餐廳，之後每日在線結算淨收益 NT$15,000。", shopping: "營業時間 06:00～24:00。用合理的花費補充飽足，也能購買刮刮樂。", bookstore: "營業時間 07:00～23:00。簽約作家起可建立書名並上架作品；其他玩家可以購買，每本每人最多十次。", hotel: "全天 24 小時營業。旅店臨時工等待 30 秒、收入 NT$100，不扣體力、飽足或健康，也不會獲得職業經驗；住宿與餐點也全天供應。", casino: "全天 24 小時開放。21 點每局使用同一副洗好的牌依序抽取；德州撲克有完整四輪下注。", school: "開放時間 07:00～23:00。五所學院分別培養體力、智力、創造力、社交與魅力。", hospital: "健康低於 50 時，行動後開始有機率生病。急診 24 小時開放；一般診療為 07:00～23:00。" }[location];
+  return { home: "有效租約或自有住宅才能進入，全天 24 小時開放。睡一覺能恢復體力與健康。", realtor: "營業時間 07:00～23:00。租屋每日 NT$350；城市小宅售價 NT$50,000。", bank: "營業時間 07:00～23:00。存款收益依金融職位而定；一般貸款每日利息 0.5%；《浪子回頭》主線債務每日利息 0.2%。在線玩家也能申請金融玩家的銀行貸款方案。", business: "營業時間 06:00～24:00。第一階工作免能力門檻；各產業最高階時薪皆為 NT$1,300。犯罪路線的違法行動有被捕風險；詐騙犯可發起詐騙，駭客可嘗試竊取在線玩家現金。大橋頭營運長可設定一處地盤，每次有效進入記錄 NT$100，每日最多 NT$10,000。", shopping: "營業時間 06:00～24:00。用合理的花費補充飽足，也能購買刮刮樂。", bookstore: "營業時間 07:00～23:00。簽約作家起可建立書名並上架作品；其他玩家可以購買，每本每人最多十次。", hotel: "全天 24 小時營業。旅店臨時工等待 30 秒、收入 NT$100，不扣體力、飽足或健康，也不會獲得職業經驗；住宿與餐點也全天供應。", casino: "全天 24 小時開放。21 點每局使用同一副洗好的牌依序抽取；德州撲克有完整四輪下注。", school: "開放時間 07:00～23:00。五所學院分別培養體力、智力、創造力、社交與魅力。", hospital: "健康低於 50 時，行動後開始有機率生病。急診 24 小時開放；一般診療為 07:00～23:00。", prison: "服刑期間只計算你在線上遊玩的時間；其他玩家可在多人世界看到你的罪名與服刑狀態。" }[location];
 }

@@ -35,6 +35,16 @@ export const players = sqliteTable("players", {
   writerDay: integer("writer_day").notNull().default(0),
   writerWrites: integer("writer_writes").notNull().default(0),
   ownsRestaurant: integer("owns_restaurant", { mode: "boolean" }).notNull().default(false),
+  prisonUntil: integer("prison_until").notNull().default(0),
+  prisonCrime: text("prison_crime").notNull().default(""),
+  territoryLocation: text("territory_location").notNull().default(""),
+  territoryDay: integer("territory_day").notNull().default(0),
+  territoryPayoutDay: integer("territory_payout_day").notNull().default(0),
+  territoryVisits: integer("territory_visits").notNull().default(0),
+  territoryIncome: integer("territory_income").notNull().default(0),
+  territoryPending: integer("territory_pending").notNull().default(0),
+  hackDay: integer("hack_day").notNull().default(0),
+  hackUses: integer("hack_uses").notNull().default(0),
   gameOver: text("game_over").notNull().default(""),
   mainStory: text("main_story").notNull().default("legacy"),
   energy: integer("energy").notNull().default(100),
@@ -60,6 +70,16 @@ export const players = sqliteTable("players", {
   updatedAt: integer("updated_at").notNull(),
   lastSeenAt: integer("last_seen_at").notNull(),
 }, (table) => [index("idx_players_last_seen").on(table.lastSeenAt)]);
+
+export const territoryVisitLog = sqliteTable("territory_visit_log", {
+  ownerId: text("owner_id").notNull(),
+  visitorId: text("visitor_id").notNull(),
+  cycleDay: integer("cycle_day").notNull(),
+  lastVisitMinute: integer("last_visit_minute").notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.ownerId, table.visitorId, table.cycleDay] }),
+  index("idx_territory_visit_owner_day").on(table.ownerId, table.cycleDay),
+]);
 
 export const gameEvents = sqliteTable("game_events", {
   id: text("id").primaryKey(),
