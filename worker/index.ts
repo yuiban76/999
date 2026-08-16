@@ -611,7 +611,6 @@ async function settleTournamentRound(db: D1Database, state: TournamentStateRow, 
   const handResults = new Map<string, string>();
   let dealerCards = parseCards(round.dealer_cards);
   let deck = parseCards(round.deck);
-  let ranked: Array<{ user_id: string; player_name: string; score: number; points: number }> = [];
   if (round.game === "blackjack") {
     while (handScore(dealerCards) < 17 && deck.length) dealerCards.push(deck.pop()!);
     const dealerScore = handScore(dealerCards);
@@ -621,8 +620,11 @@ async function settleTournamentRound(db: D1Database, state: TournamentStateRow, 
       const label = score > 21 ? "爆牌" : outcome === 3 ? "獲勝" : outcome === 1 ? "平手" : "落敗";
       return { hand, score, rank: outcome * 100 + Math.min(score, 21), result: `${cards.join(" ")} · ${score > 21 ? "爆牌" : `${score} 點`} · ${label}` };
     }).sort((left, right) => right.rank - left.rank || right.score - left.score);
-    evaluated.forEach((item, index) => { points.set(item.hand.user_id, Math.max(1, evaluated.length - index)); handResults.set(item.hand.user_id, `莊家 ${dealerScore > 21 ? "爆牌" : `${dealerScore} 點`} · ${item.result}`); });
-    ranked = entries.results.map((entry) => ({ ...entry, points: points.get(entry.user_id) ?? 0 })).sort((left, right) => right.points - left.points || right.score - left.score);
+    evaluated.forEach((item, index) => {
+      const earned = Math.max(1, evaluated.length - index);
+      points.set(item.hand.user_id, earned);
+      handResults.set(item.hand.user_id, `莊家 ${dealerScore > 21 ? "爆牌" : `${dealerScore} 點`} · ${item.result} · 本局 +${earned} 分`);
+    });
   } else {
     const community = parseCards(round.community_cards);
     const evaluated = hands.map((hand) => { const cards = [...parseCards(hand.hole_cards), ...community]; return { hand, evaluation: hand.status === "folded" ? null : bestPokerHand(cards) }; });
@@ -632,16 +634,21 @@ async function settleTournamentRound(db: D1Database, state: TournamentStateRow, 
       if (!right.evaluation) return -1;
       return comparePokerScores(right.evaluation.score, left.evaluation.score);
     });
-    evaluated.forEach((item, index) => { const earned = item.evaluation ? Math.max(1, evaluated.length - index) : 0; points.set(item.hand.user_id, earned); handResults.set(item.hand.user_id, item.evaluation ? `${item.evaluation.name} · ${item.evaluation.score.join("-")}` : "本局已棄牌。"); });
-    ranked = entries.results.map((entry) => ({ ...entry, points: points.get(entry.user_id) ?? 0 })).sort((left, right) => right.points - left.points || right.score - left.score);
+    evaluated.forEach((item, index) => { const earned = item.evaluation ? Math.max(1, evaluated.length - index) : 0; points.set(item.hand.user_id, earned); handResults.set(item.hand.user_id, item.evaluation ? `${item.evaluation.name} · ${item.evaluation.score.join("-")} · 本局 +${earned} 分` : "本局已棄牌 · 本局 +0 分"); });
   }
   const updates = entries.results.flatMap((entry) => [
     db.prepare("UPDATE casino_tournament_entries SET score=score+?, latest_hand=? WHERE tournament_no=? AND user_id=?").bind(points.get(entry.user_id) ?? 0, handResults.get(entry.user_id) ?? "未完成本局", state.round_no, entry.user_id),
     db.prepare("UPDATE casino_tournament_hands SET status='complete', result=?, updated_at=? WHERE tournament_no=? AND round_no=? AND user_id=?").bind(handResults.get(entry.user_id) ?? "未完成本局", now, state.round_no, round.round_no, entry.user_id),
   ]);
-  const finalScores = ranked.map((entry) => ({ ...entry, score: entry.score + entry.points }));
+  // Rebuild totals from the persisted score and this round's points.  Using the
+  // round ranking here used to make the fifth round's total look out of order
+  // and could hide points that were already earned in earlier rounds.
+  const finalScores = entries.results.map((entry) => {
+    const roundPoints = points.get(entry.user_id) ?? 0;
+    return { ...entry, score: (Number(entry.score) || 0) + roundPoints, points: roundPoints };
+  }).sort((left, right) => right.score - left.score || right.points - left.points || left.player_name.localeCompare(right.player_name));
   const resolvedRound = state.current_round + 1;
-  const summary = ranked.map((entry, index) => `${index + 1}.${entry.player_name} +${entry.points}分`).join(" · ");
+  const summary = finalScores.map((entry, index) => `${index + 1}.${entry.player_name} 本局+${entry.points}（總分${entry.score}）`).join(" · ");
   const roundUpdate = db.prepare("UPDATE casino_tournament_rounds SET status='completed', deck=?, dealer_cards=?, updated_at=?, next_action_at=0 WHERE tournament_no=? AND round_no=?").bind(JSON.stringify(deck), JSON.stringify(dealerCards), now, state.round_no, round.round_no);
   if (resolvedRound >= state.round_limit) {
     const pool = entries.results.length * state.entry_fee; const shares = finalScores.length === 2 ? [.7, .3] : [.6, .3, .1];

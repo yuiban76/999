@@ -101,6 +101,9 @@ test("multiplayer cash invitations support gifts and protected scam resolution",
   assert.match(page, /錦標賽 · 積分賽/);
   assert.match(page, /<BingoTable/);
   assert.match(page, /<TournamentTable/);
+  assert.match(page, /LeaveConfirmDialog/);
+  assert.match(page, /確定要離開牌桌嗎/);
+  assert.match(page, /確定要離開\$\{gameName\}錦標賽嗎/);
   assert.match(page, /要牌/);
   assert.match(page, /跟注/);
   assert.match(page, /onAction\("hit"\)/);
@@ -113,6 +116,10 @@ test("multiplayer cash invitations support gifts and protected scam resolution",
   assert.match(worker, /async function tournamentAction/);
   assert.match(worker, /async function startTournamentRound/);
   assert.match(worker, /casino_tournament_hands/);
+  assert.match(worker, /本局 \+\$\{earned\} 分/);
+  assert.match(worker, /const finalScores = entries\.results\.map/);
+  assert.match(worker, /總分\$\{entry\.score\}/);
+  assert.match(page, /總分 \{player\.score\} 分/);
   assert.match(worker, /body\.action === "hit"/);
   assert.match(worker, /body\.action === "call"/);
   assert.match(worker, /\["join", "leave"\]/);
@@ -122,6 +129,8 @@ test("multiplayer cash invitations support gifts and protected scam resolution",
   assert.match(page, /建立下一輪賓果/);
   assert.match(page, /建立下一場並設定報名費/);
   assert.match(css, /\.social-casino-table/);
+  assert.match(css, /\.table-confirm-card/);
+  assert.match(css, /\.casino-table > header > strong.*font-size: 12px/);
   assert.match(worker, /bestPokerHand\(cards\)/);
   assert.match(page, /更改玩家名字/);
   assert.match(page, /api\/profile\/name/);

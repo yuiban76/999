@@ -340,17 +340,17 @@ button { color: inherit; }
 .casino-game-tabs button.active { background: var(--ink); color: white; }
 .casino-table { overflow: hidden; border: 1px solid #102b20; background: #174833; color: #fffaf0; box-shadow: 5px 5px 0 #102b20; }
 .casino-table > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px; border-bottom: 1px solid rgba(255,255,255,.2); background: #123a29; }
-.casino-table > header span { color: #d8b86b; font: 8px Consolas, monospace; letter-spacing: .15em; }
+.casino-table > header span { color: #f4dca0; font: 10px Consolas, monospace; letter-spacing: .15em; }
 .casino-table > header h4 { margin: 4px 0 0; font: 700 20px Georgia, "Noto Serif TC", serif; }
-.casino-table > header > strong { color: #f3d987; font-size: 10px; white-space: nowrap; }
+.casino-table > header > strong { color: #fff0b8; font-size: 12px; white-space: nowrap; }
 .casino-seats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.18); }
 .casino-seats > div { min-width: 0; min-height: 94px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 9px 6px; border: 1px dashed rgba(255,255,255,.28); border-radius: 8px; color: rgba(255,255,255,.52); text-align: center; }
 .casino-seats > div.occupied { border-style: solid; border-color: #d8b86b; color: #fffaf0; background: rgba(0,0,0,.12); }
 .casino-seats > div.mine { box-shadow: inset 0 0 0 2px #f3d987; }
 .casino-seats span { flex: 0 0 20px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: rgba(255,255,255,.12); font: 8px Consolas, monospace; }
-.casino-seats strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
-.casino-seats small { min-height: 12px; color: #d8b86b; font-size: 8px; }
-.casino-seats button { padding: 6px 8px; border: 1px solid #d8b86b; background: transparent; color: #f9e3a7; cursor: pointer; font-size: 8px; font-weight: 800; }
+.casino-seats strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.casino-seats small { min-height: 12px; color: #f5e7b6; font-size: 10px; }
+.casino-seats button { padding: 6px 8px; border: 1px solid #f3d78b; background: transparent; color: #fff2c8; cursor: pointer; font-size: 10px; font-weight: 800; }
 .casino-seats button:hover { background: #f5d77f; color: #173427; }
 .blackjack-board { padding: 18px; }
 .card-hand + .card-hand { margin-top: 18px; }
@@ -358,38 +358,38 @@ button { color: inherit; }
 .card-hand > div { display: flex; flex-wrap: wrap; gap: 7px; min-height: 60px; }
 .card-hand i { width: 41px; height: 56px; display: grid; place-items: center; border-radius: 4px; background: #fffdf7; color: #1f251f; box-shadow: 0 3px 0 rgba(0,0,0,.28); font: 700 15px Georgia, serif; font-style: normal; }
 .card-hand i.red { color: #b7312d; }
-.casino-message, .casino-result { margin: 0; padding: 22px 18px; text-align: center; font-size: 11px; }
-.casino-result { margin: 16px 0 0; padding: 10px; border: 1px solid rgba(255,255,255,.25); background: rgba(0,0,0,.14); color: #ffe39b; font-weight: 800; }
+.casino-message, .casino-result { margin: 0; padding: 22px 18px; text-align: center; font-size: 13px; }
+.casino-result { margin: 16px 0 0; padding: 10px; border: 1px solid rgba(255,255,255,.25); background: rgba(0,0,0,.14); color: #fff1bd; font-weight: 800; }
 .casino-controls, .bet-buttons > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
-.casino-controls button, .bet-buttons button { min-width: 92px; padding: 10px 14px; border: 1px solid #f5d77f; background: #f5d77f; color: #173427; cursor: pointer; font-size: 10px; font-weight: 800; }
+.casino-controls button, .bet-buttons button { min-width: 92px; padding: 10px 14px; border: 1px solid #f5d77f; background: #f5d77f; color: #173427; cursor: pointer; font-size: 12px; font-weight: 800; }
 .casino-controls button:hover, .bet-buttons button:hover { background: #fff1bd; }
 .casino-controls button.all-in { border-color: #ffb89c; background: #f09b76; color: #351814; }
 .casino-controls button.all-in:hover { background: #ffc2a9; }
 .casino-controls button.leave { border-color: rgba(255,255,255,.45); background: transparent; color: white; }
 .casino-controls button:disabled, .bet-buttons button:disabled { cursor: not-allowed; opacity: .48; }
 .custom-bet { padding: 22px 18px; }
-.custom-bet label { display: flex; justify-content: space-between; gap: 12px; color: #fffaf0; font-size: 11px; font-weight: 800; }
-.custom-bet label small { color: #d8b86b; font-size: 9px; }
+.custom-bet label { display: flex; justify-content: space-between; gap: 12px; color: #fffaf0; font-size: 13px; font-weight: 800; }
+.custom-bet label small { color: #f5e7b6; font-size: 11px; }
 .custom-bet > div { display: grid; grid-template-columns: auto minmax(100px, 1fr) auto; align-items: center; max-width: 470px; margin-top: 12px; background: #fffdf7; color: #173427; }
-.custom-bet > div span { padding-left: 12px; font-size: 11px; font-weight: 800; }
+.custom-bet > div span { padding-left: 12px; font-size: 12px; font-weight: 800; }
 .custom-bet input { min-width: 0; padding: 12px 8px; border: 0; outline: 0; background: transparent; color: #173427; font: 700 15px Consolas, monospace; }
-.custom-bet > div button { align-self: stretch; padding: 0 16px; border: 0; background: #f5d77f; color: #173427; cursor: pointer; font-size: 10px; font-weight: 800; }
-.custom-bet .leave-seat { margin-top: 12px; padding: 7px 0; border: 0; background: transparent; color: rgba(255,255,255,.7); text-decoration: underline; cursor: pointer; font-size: 9px; }
+.custom-bet > div button { align-self: stretch; padding: 0 16px; border: 0; background: #f5d77f; color: #173427; cursor: pointer; font-size: 11px; font-weight: 800; }
+.custom-bet .leave-seat { margin-top: 12px; padding: 7px 0; border: 0; background: transparent; color: #f5e7d0; text-decoration: underline; cursor: pointer; font-size: 11px; }
 .casino-waiting { padding: 24px 18px; text-align: center; }
 .casino-waiting > strong { display: block; color: #f5d77f; font: 700 48px/1 Georgia, serif; }
 .casino-waiting h5 { margin: 6px 0 10px; font-size: 13px; }
-.casino-waiting p, .casino-next-round { color: #d9e6dc; font-size: 10px; }
-.casino-waiting button { margin-top: 8px; padding: 7px 10px; border: 1px solid rgba(255,255,255,.4); background: transparent; color: white; cursor: pointer; font-size: 8px; }
+.casino-waiting p, .casino-next-round { color: #e7f1e9; font-size: 12px; }
+.casino-waiting button { margin-top: 8px; padding: 7px 10px; border: 1px solid rgba(255,255,255,.6); background: transparent; color: white; cursor: pointer; font-size: 10px; }
 .casino-next-round { margin: 14px 0 0; }
 .shared-blackjack-board { padding: 16px 18px; border-bottom: 1px solid rgba(255,255,255,.18); background: rgba(0,0,0,.1); }
 .poker-table { background: #244268; box-shadow: 5px 5px 0 #14263f; }
 .poker-table > header { background: #1a3455; }
 .poker-board { padding: 16px 18px; border-bottom: 1px solid rgba(255,255,255,.18); background: rgba(0,0,0,.12); }
 .poker-community { padding-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,.18); }
-.poker-community > span { display: block; margin-bottom: 9px; color: #f3d987; font-size: 10px; font-weight: 800; }
-.poker-community > p { margin: 13px 0 0; color: #d9e6dc; font-size: 9px; }
+.poker-community > span { display: block; margin-bottom: 9px; color: #fff1b8; font-size: 12px; font-weight: 800; }
+.poker-community > p { margin: 13px 0 0; color: #e7f1e9; font-size: 11px; }
 .shared-dealer { padding-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,.18); }
-.shared-dealer > span { display: block; margin-bottom: 9px; color: #f3d987; font-size: 10px; font-weight: 800; }
+.shared-dealer > span { display: block; margin-bottom: 9px; color: #fff1b8; font-size: 12px; font-weight: 800; }
 .table-card-row { display: flex; flex-wrap: wrap; gap: 6px; min-height: 43px; }
 .table-card-row i { width: 31px; height: 42px; display: grid; place-items: center; border-radius: 3px; background: #fffdf7; color: #1f251f; box-shadow: 0 2px 0 rgba(0,0,0,.3); font: 700 11px Georgia, serif; font-style: normal; }
 .table-card-row i.red { color: #b7312d; }
@@ -397,14 +397,24 @@ button { color: inherit; }
 .shared-player-hands article { min-width: 105px; padding: 9px; border: 1px solid rgba(255,255,255,.18); background: rgba(0,0,0,.12); }
 .shared-player-hands article.mine { border-color: #f3d987; box-shadow: inset 0 0 0 1px #f3d987; }
 .shared-player-hands article > header { min-height: 36px; display: grid; gap: 3px; margin-bottom: 7px; }
-.shared-player-hands article > header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8px; }
-.shared-player-hands article > header small { color: #d8b86b; font-size: 7px; }
-.shared-player-hands article > p { margin: 11px 0; color: rgba(255,255,255,.55); font-size: 8px; text-align: center; }
-.shared-player-hands article > em { display: block; margin-top: 7px; color: #ffe39b; font-size: 7px; font-style: normal; line-height: 1.4; }
+.shared-player-hands article > header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.shared-player-hands article > header small { color: #f5e7b6; font-size: 10px; }
+.shared-player-hands article > p { margin: 11px 0; color: rgba(255,255,255,.72); font-size: 10px; text-align: center; }
+.shared-player-hands article > em { display: block; margin-top: 7px; color: #fff1bd; font-size: 10px; font-style: normal; line-height: 1.4; }
 .casino-round-actions { padding-bottom: 16px; }
 .casino-round-actions .custom-bet { padding-top: 4px; }
-.table-leave { display: block; margin: 0 auto; padding: 7px 11px; border: 1px solid rgba(255,255,255,.42); background: transparent; color: white; cursor: pointer; font-size: 8px; }
-.casino-table > footer { padding: 9px 18px; border-top: 1px solid rgba(255,255,255,.18); color: rgba(255,255,255,.62); background: rgba(0,0,0,.12); font-size: 8px; line-height: 1.5; }
+.table-leave { display: block; margin: 0 auto; padding: 7px 11px; border: 1px solid rgba(255,255,255,.6); background: transparent; color: #fff; cursor: pointer; font-size: 11px; }
+.casino-table > footer { padding: 9px 18px; border-top: 1px solid rgba(255,255,255,.18); color: rgba(255,255,255,.76); background: rgba(0,0,0,.12); font-size: 10px; line-height: 1.5; }
+
+.table-confirm-overlay { z-index: 100; }
+.table-confirm-card { width: min(430px, 100%); padding: 30px; border: 1px solid rgba(255,255,255,.3); border-radius: 22px; background: #fff; box-shadow: 0 30px 90px rgba(0,0,0,.3); color: #1d1d1f; }
+.table-confirm-card h2 { margin: 12px 0 8px; font: 700 25px/1.2 -apple-system, BlinkMacSystemFont, "PingFang TC", sans-serif; }
+.table-confirm-card p { margin: 0; color: #515154; font-size: 13px; line-height: 1.7; }
+.table-confirm-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 24px; }
+.table-confirm-actions button { min-height: 44px; border: 1px solid #d2d2d7; border-radius: 999px; background: #f5f5f7; color: #1d1d1f; font-size: 13px; font-weight: 800; cursor: pointer; }
+.table-confirm-actions button:hover { background: #e8e8ed; }
+.table-confirm-actions button.danger { border-color: #c9342c; background: #c9342c; color: #fff; }
+.table-confirm-actions button.danger:hover { background: #a92721; }
 
 .world-footer { min-height: 43px; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; border-top: 1px solid var(--line); color: var(--muted); font: 9px Consolas, monospace; }
 .world-footer button { border: 0; padding: 6px; background: transparent; color: var(--muted); text-decoration: underline; cursor: pointer; font-size: 10px; }
@@ -967,25 +977,25 @@ body {
 .social-casino-table { background: #fff; color: #1d1d1f; box-shadow: 0 18px 50px rgba(12, 27, 51, .16); }
 .social-casino-table > header { padding: 22px 24px; border: 0; background: radial-gradient(circle at 85% 0, rgba(92, 164, 255, .3), transparent 38%), linear-gradient(135deg, #101828, #173a69); }
 .social-casino-table > header h3 { margin: 5px 0 4px; color: #fff; font: 700 22px -apple-system, BlinkMacSystemFont, "PingFang TC", sans-serif; letter-spacing: -.03em; }
-.social-casino-table > header p { margin: 0; color: rgba(255,255,255,.66); font-size: 11px; }
+.social-casino-table > header p { margin: 0; color: rgba(255,255,255,.82); font-size: 13px; line-height: 1.5; }
 .social-casino-table > header .room-status { padding: 7px 11px; border-radius: 999px; background: rgba(255,255,255,.13); color: #fff; }
 .social-casino-table > header .room-status.lobby::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #34c759; box-shadow: 0 0 0 4px rgba(52,199,89,.16); }
 .casino-room-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; border-bottom: 1px solid #e8e8ed; background: #e8e8ed; }
 .casino-room-meta > div { display: grid; gap: 5px; padding: 16px 20px; background: #fff; }
-.casino-room-meta small { color: #86868b; font-size: 9px; font-weight: 700; }
-.casino-room-meta strong { font-size: 15px; letter-spacing: -.02em; }
+.casino-room-meta small { color: #5f6066; font-size: 11px; font-weight: 700; }
+.casino-room-meta strong { font-size: 17px; letter-spacing: -.02em; }
 .room-entry-panel, .joined-room-panel { margin: 18px; padding: 18px; border: 1px solid #dedee3; border-radius: 16px; background: #f7f7f9; }
 .room-entry-panel { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 16px; }
 .room-entry-panel.tournament-entry-panel { grid-template-columns: minmax(190px, .75fr) minmax(0, 1.25fr); }
-.room-fee-field { display: grid; gap: 7px; color: #515154; font-size: 10px; font-weight: 800; }
+.room-fee-field { display: grid; gap: 7px; color: #3d3d42; font-size: 12px; font-weight: 800; }
 .room-fee-field > div { display: flex; align-items: center; max-width: 260px; overflow: hidden; border: 1px solid #c7c7cc; border-radius: 12px; background: #fff; }
 .room-fee-field > div:focus-within { border-color: #0071e3; box-shadow: 0 0 0 3px rgba(0,113,227,.12); }
 .room-fee-field b { padding-left: 12px; color: #86868b; font-size: 12px; }
 .room-fee-field input { width: 100%; min-height: 44px; padding: 0 12px 0 6px; border: 0; outline: 0; background: transparent; color: #1d1d1f; font: 750 18px -apple-system, BlinkMacSystemFont, sans-serif; }
-.room-fee-field small, .room-ready-copy small, .joined-room-copy small { color: #86868b; font-size: 10px; font-weight: 500; line-height: 1.45; }
+.room-fee-field small, .room-ready-copy small, .joined-room-copy small { color: #5f6066; font-size: 11px; font-weight: 500; line-height: 1.5; }
 .room-ready-copy, .joined-room-copy { display: grid; gap: 5px; }
-.room-ready-copy span, .joined-room-copy span { color: #0071e3; font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-.room-ready-copy strong, .joined-room-copy strong { font-size: 16px; letter-spacing: -.02em; }
+.room-ready-copy span, .joined-room-copy span { color: #005bb5; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.room-ready-copy strong, .joined-room-copy strong { font-size: 18px; letter-spacing: -.02em; }
 .casino-primary { min-height: 44px; padding: 0 20px; border: 0; border-radius: 999px; background: #0071e3; color: #fff; font-weight: 800; white-space: nowrap; }
 .casino-primary:hover:not(:disabled) { background: #0077ed; transform: translateY(-1px); }
 .casino-primary:disabled, .tournament-game-options button:disabled { background: #d2d2d7; color: #86868b; cursor: not-allowed; }
@@ -1001,27 +1011,27 @@ body {
 .bingo-card span { display: grid; aspect-ratio: 1; place-items: center; border: 1px solid #d2d2d7; border-radius: 13px; background: #fff; font-size: 15px; font-weight: 800; box-shadow: 0 2px 8px rgba(0,0,0,.04); }
 .bingo-card span.marked { border-color: #0071e3; background: linear-gradient(145deg, #1688f8, #0066cc); color: #fff; box-shadow: 0 5px 14px rgba(0,113,227,.25); }
 .casino-player-list { margin: 0 18px 18px; overflow: hidden; border: 1px solid #e1e1e5; border-radius: 15px; }
-.casino-player-list > header { display: flex; justify-content: space-between; padding: 11px 13px; background: #f5f5f7; color: #515154; font-size: 10px; }
+.casino-player-list > header { display: flex; justify-content: space-between; padding: 11px 13px; background: #f5f5f7; color: #3d3d42; font-size: 12px; }
 .casino-player-list > header span { color: #86868b; }
 .casino-player-list > div { display: flex; align-items: center; gap: 11px; padding: 11px 13px; border-top: 1px solid #eeeeF0; }
 .casino-player-list > div > b { display: grid; flex: 0 0 27px; height: 27px; place-items: center; border-radius: 50%; background: #eaf4ff; color: #0071e3; font-size: 10px; }
 .casino-player-list > div > span { display: grid; flex: 1; gap: 3px; min-width: 0; }
 .casino-player-list > div > span strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.casino-player-list > div small { color: #86868b; font-size: 9px; }
-.casino-player-list > div em { color: #0071e3; font-size: 10px; font-style: normal; font-weight: 800; }
+.casino-player-list > div small { color: #5f6066; font-size: 11px; }
+.casino-player-list > div em { color: #005bb5; font-size: 12px; font-style: normal; font-weight: 800; }
 .casino-player-list > p { margin: 0; padding: 22px; color: #86868b; text-align: center; font-size: 11px; }
-.prize-split { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin: 16px 18px 0; color: #6e6e73; font-size: 9px; }
+.prize-split { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin: 16px 18px 0; color: #5f6066; font-size: 11px; }
 .prize-split > span { font-weight: 800; }
-.prize-split b { padding: 5px 8px; border-radius: 999px; background: #fff5d9; color: #8a6200; }
+.prize-split b { padding: 5px 8px; border-radius: 999px; background: #fff5d9; color: #4f3a00; font-size: 11px; }
 .prize-split small { margin-left: auto; }
 .tournament-game-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
 .tournament-game-options button { display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 10px 12px; border: 1px solid #d5d5da; border-radius: 14px; background: #fff; color: #1d1d1f; text-align: left; }
 .tournament-game-options button:hover:not(:disabled) { border-color: #78b9f6; background: #f2f8ff; }
 .tournament-game-options button > b { display: grid; flex: 0 0 34px; height: 34px; place-items: center; border-radius: 10px; background: #eaf4ff; color: #0071e3; font-size: 14px; }
 .tournament-game-options button span { display: grid; gap: 3px; }
-.tournament-game-options button small { color: #86868b; font-size: 8px; line-height: 1.35; }
+.tournament-game-options button small { color: #5f6066; font-size: 10px; line-height: 1.45; }
 .tournament-game-options .join-existing-room { grid-column: 1 / -1; border-color: #8fc4f7; }
-.tournament-result { margin: 16px 18px; padding: 12px 14px; border-radius: 12px; background: #edf6ff; color: #0066cc; font-size: 11px; }
+.tournament-result { margin: 16px 18px; padding: 13px 14px; border-radius: 12px; background: #edf6ff; color: #005aa8; font-size: 13px; line-height: 1.55; }
 .tournament-rankings { display: block; }
 
 button:focus-visible,
@@ -1134,7 +1144,7 @@ input:focus-visible { outline: 3px solid rgba(0, 113, 227, .38); outline-offset:
   .social-casino-table > header { padding: 19px 17px; }
   .social-casino-table > header h3 { font-size: 20px; }
   .casino-room-meta > div { padding: 13px 11px; }
-  .casino-room-meta strong { font-size: 13px; }
+  .casino-room-meta strong { font-size: 15px; }
   .room-entry-panel,
   .room-entry-panel.tournament-entry-panel,
   .joined-room-panel,
@@ -1148,6 +1158,8 @@ input:focus-visible { outline: 3px solid rgba(0, 113, 227, .38); outline-offset:
   .prize-split small { width: 100%; margin-left: 0; }
   .tournament-game-options { grid-template-columns: 1fr; }
   .tournament-game-options .join-existing-room { grid-column: auto; }
+  .table-confirm-card { padding: 24px 20px; }
+  .table-confirm-actions { grid-template-columns: 1fr; }
   .casino-seats {
     width: 100%;
     grid-template-columns: repeat(5, minmax(80px, 1fr));
