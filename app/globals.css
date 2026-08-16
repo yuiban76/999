@@ -878,7 +878,9 @@ body {
 .player-transfer-actions { display: flex; gap: 6px; margin-top: 8px; }
 .player-transfer-actions button { min-height: 28px; padding: 0 10px; border: 0; border-radius: 999px; background: #0071e3; color: #fff; font-size: 10px; font-weight: 800; }
 .player-transfer-actions button.scam { background: #6e5a86; }
+.player-transfer-actions button.medical { background: #16835c; }
 .player-transfer-actions button:disabled { background: #d2d2d7; color: #86868b; }
+.hospital-discount-note { grid-column: 1 / -1; margin: -2px 0 4px; color: #16835c; font-size: 12px; font-weight: 700; }
 .feed-heading { grid-column: 2; grid-row: 1; margin: 0; }
 .feed-list {
   grid-column: 2;

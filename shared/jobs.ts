@@ -1,6 +1,6 @@
 export const JOB_CATEGORIES = [
   { id: "office", label: "一般職場", jobs: ["行政助理", "行政專員", "資深行政專員", "行政主管"] },
-  { id: "medical", label: "醫療照護", jobs: ["醫師", "護理師", "藥師", "心理師", "獸醫", "長照人員"] },
+  { id: "medical", label: "醫療照護", jobs: ["診所助理", "護理師", "資深護理師", "護理長"] },
   { id: "finance", label: "商業金融", jobs: ["銀行員", "投資人", "保險顧問", "房仲", "企業家", "創投合夥人"] },
   { id: "creative", label: "創意娛樂", jobs: ["作家", "畫家", "設計師", "演員", "歌手", "導演", "實況主", "網紅"] },
   { id: "hospitality", label: "餐飲服務", jobs: ["廚師", "咖啡師", "調酒師", "餐廳老闆", "旅館經理", "導遊"] },
@@ -49,7 +49,38 @@ export const CAREER_WORK_SPECIALS = {
   "行政專員": { name: "爆肝", hours: 11, minutes: 5 },
   "資深行政專員": { name: "摸魚", hours: 8, minutes: 3 },
   "行政主管": { name: "準時下班", hours: 8, minutes: 2 },
+  "診所助理": { name: "基本照護", hours: 8, minutes: 2 },
+  "護理師": { name: "輪班津貼", hours: 9, minutes: 3 },
+  "資深護理師": { name: "臨床專注", hours: 8, minutes: 3 },
+  "護理長": { name: "準時交班", hours: 8, minutes: 2 },
 } as const;
+
+export const MEDICAL_HOSPITAL_DISCOUNTS = {
+  "診所助理": 0.05,
+  "護理師": 0.10,
+  "資深護理師": 0.15,
+  "護理長": 0.20,
+} as const;
+
+export const MEDICAL_TREATMENT_SERVICES = {
+  "護理師": { name: "護理師照護", health: 20, price: 300, minutes: 15 },
+  "資深護理師": { name: "資深護理照護", health: 35, price: 600, minutes: 20 },
+  "護理長": { name: "護理長照護", health: 50, price: 900, minutes: 25 },
+} as const;
+
+export const MEDICAL_WORK_HEALTH_BONUS = 6;
+
+export function medicalHospitalDiscountFor(job: string) {
+  return MEDICAL_HOSPITAL_DISCOUNTS[job as keyof typeof MEDICAL_HOSPITAL_DISCOUNTS] ?? 0;
+}
+
+export function medicalTreatmentFor(job: string) {
+  return MEDICAL_TREATMENT_SERVICES[job as keyof typeof MEDICAL_TREATMENT_SERVICES] ?? null;
+}
+
+export function medicalWorkHealthBonusFor(job: string) {
+  return jobInfo(job)?.categoryId === "medical" ? MEDICAL_WORK_HEALTH_BONUS : 0;
+}
 
 export function careerWorkSpecialFor(job: string, hours?: number) {
   const special = CAREER_WORK_SPECIALS[job as keyof typeof CAREER_WORK_SPECIALS];
@@ -68,6 +99,15 @@ export function careerRequirements(categoryId: string, index: number): Partial<A
   const profile = CAREER_ABILITY_PROFILE[categoryId];
   if (!profile) return {};
   if (index === 0) return { [profile[0]]: 0, [profile[1]]: 0 };
+  if (categoryId === "medical") {
+    const requirements: Partial<Abilities>[] = [
+      { intelligence: 0, social: 0 },
+      { intelligence: 40, social: 20 },
+      { intelligence: 80, social: 40 },
+      { intelligence: 140, social: 70 },
+    ];
+    return requirements[index] ?? requirements.at(-1)!;
+  }
   const tier = normalizedCareerTier(categoryId, index);
   return {
     [profile[0]]: PRIMARY_REQUIREMENTS[tier] ?? PRIMARY_REQUIREMENTS.at(-1),
@@ -82,6 +122,7 @@ function normalizedCareerTier(categoryId: string, index: number) {
 }
 
 export function careerThresholdForCategory(categoryId: string, index: number) {
+  if (categoryId === "medical") return [0, 100, 250, 500][index] ?? 500;
   return CAREER_THRESHOLDS[normalizedCareerTier(categoryId, index)] ?? CAREER_THRESHOLDS.at(-1)!;
 }
 

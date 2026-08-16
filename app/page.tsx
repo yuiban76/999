@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ABILITY_LABELS, ACADEMIES, careerForCategory, careerRequirements, careerThresholdForCategory, careerWorkSpecialFor, categoryInfo, JOB_CATEGORIES, jobInfo, meetsCareerRequirements, nextCareerForCategory, type Abilities } from "../shared/jobs";
+import { ABILITY_LABELS, ACADEMIES, careerForCategory, careerRequirements, careerThresholdForCategory, careerWorkSpecialFor, categoryInfo, JOB_CATEGORIES, jobInfo, medicalHospitalDiscountFor, medicalTreatmentFor, medicalWorkHealthBonusFor, meetsCareerRequirements, nextCareerForCategory, type Abilities } from "../shared/jobs";
 import { CITY_EVENTS, STORY_CHAPTERS, TALENTS } from "../shared/progression";
 import { isHospitalRegularOpen, isLocationOpen, worldMinutes } from "../shared/world";
 import { CAREER_PREVIEW_ROUTES } from "../shared/careerPreview";
@@ -60,6 +60,8 @@ type OnlinePlayer = {
   location: LocationId;
   cash: number;
   loanBalance: number;
+  currentJob: string;
+  jobCategory: string;
   updatedAt: number;
   avatarUrl: string | null;
 };
@@ -76,6 +78,16 @@ type FeedItem = {
 type TransferRequest = {
   id: string;
   senderName: string;
+  amount: number;
+  expiresAt: number;
+};
+
+type MedicalRequest = {
+  id: string;
+  patientName: string;
+  providerName: string;
+  providerJob: string;
+  healthGain: number;
   amount: number;
   expiresAt: number;
 };
@@ -139,6 +151,7 @@ type Bootstrap = {
   tournament?: TournamentState;
   cityMemory?: CityMemory;
   transferRequests?: TransferRequest[];
+  medicalRequests?: MedicalRequest[];
 };
 
 type CityMemory = {
@@ -397,12 +410,13 @@ function guestAction(current: Player, action: string, payload: Record<string, un
     if (next.energy < hours * 5) return fail("體力不足，先回家休息吧。");
     const previousCareer = careerForCategory(next.jobCategory, next.jobExp, next.currentJob, abilitiesFor(next));
     const income = hours * previousCareer.hourlyPay;
-    next.cash += income; next.energy = Math.max(0, next.energy - hours * 5); next.health = Math.max(0, next.health - Math.ceil(hours / 2)); next.mood = Math.max(0, next.mood - Math.ceil(hours * .9)); next.hunger = Math.max(0, next.hunger - hours * 2); next.jobExp += hours * 4; minutes = hours === 1 ? 30 : hours === 4 ? 120 : 240;
+    next.cash += income; next.energy = Math.max(0, next.energy - hours * 5); next.health = Math.max(0, Math.min(100, next.health - Math.ceil(hours / 2) + medicalWorkHealthBonusFor(next.currentJob))); next.mood = Math.max(0, next.mood - Math.ceil(hours * .9)); next.hunger = Math.max(0, next.hunger - hours * 2); next.jobExp += hours * 4; minutes = hours === 1 ? 30 : hours === 4 ? 120 : 240;
     if (workSpecial) minutes = workSpecial.minutes;
     const newCareer = careerForCategory(next.jobCategory, next.jobExp, next.currentJob, abilitiesFor(next));
     next.currentJob = newCareer.title;
     title = newCareer.title !== previousCareer.title ? `升遷為${newCareer.title}` : workSpecial ? `${workSpecial.name} ${hours} 小時` : `工作 ${hours} 小時`;
-    message = `${workSpecial ? `完成「${workSpecial.name}」` : `工作 ${hours} 小時`}：收入 +NT$${income}、工作經驗 +${hours * 4}。${newCareer.title !== previousCareer.title ? `恭喜升遷為${newCareer.title}！` : ""}`;
+    const medicalHealthBonus = medicalWorkHealthBonusFor(previousCareer.title);
+    message = `${workSpecial ? `完成「${workSpecial.name}」` : `工作 ${hours} 小時`}：收入 +NT$${income}、工作經驗 +${hours * 4}${medicalHealthBonus ? `、健康 +${medicalHealthBonus}` : ""}。${newCareer.title !== previousCareer.title ? `恭喜升遷為${newCareer.title}！` : ""}`;
   } else if (action === "study") {
     if (next.location !== "school") return fail("請先前往未來學院。");
     if (!isLocationOpen("school", sharedMinutes)) return fail("未來學院開放時間為 07:00～23:00。");
@@ -441,11 +455,12 @@ function guestAction(current: Player, action: string, payload: Record<string, un
   } else if (action === "hospital") {
     if (next.location !== "hospital") return fail("請先前往市立醫院。");
     if (payload.kind !== "emergency" && !((((sharedMinutes % 1440) + 1440) % 1440) >= 7 * 60 && (((sharedMinutes % 1440) + 1440) % 1440) < 23 * 60)) return fail("一般門診與完整治療時間為 07:00～23:00；急診 24 小時開放。");
+    const careDiscount = 1 - medicalHospitalDiscountFor(next.currentJob);
     const care = payload.kind === "clinic"
-      ? { name: "一般門診", price: 600, health: Math.min(100, next.health + 25), energy: Math.min(100, next.energy + 10), minutes: 15 }
+      ? { name: "一般門診", price: Math.floor(600 * careDiscount), health: Math.min(100, next.health + 25), energy: Math.min(100, next.energy + 10), minutes: 15 }
       : payload.kind === "treatment"
-        ? { name: "完整治療", price: 1500, health: Math.max(80, next.health), energy: Math.min(100, next.energy + 30), minutes: 30 }
-        : { name: "急診治療", price: 2500, health: Math.max(70, next.health), energy: Math.min(100, next.energy + 20), minutes: 20 };
+        ? { name: "完整治療", price: Math.floor(1500 * careDiscount), health: Math.max(80, next.health), energy: Math.min(100, next.energy + 30), minutes: 30 }
+        : { name: "急診治療", price: Math.floor(2500 * careDiscount), health: Math.max(70, next.health), energy: Math.min(100, next.energy + 20), minutes: 20 };
     if (next.cash < care.price) return fail("醫療費不足。");
     const previousIllness = next.illness;
     next.cash -= care.price; next.health = care.health; next.energy = care.energy; next.illness = ""; minutes = care.minutes;
@@ -531,6 +546,7 @@ function GameHome() {
   const [scratchResult, setScratchResult] = useState<{ price: number; prize: number } | null>(null);
   const [enlargedPlayer, setEnlargedPlayer] = useState<OnlinePlayer | null>(null);
   const [transferRequests, setTransferRequests] = useState<TransferRequest[]>([]);
+  const [medicalRequests, setMedicalRequests] = useState<MedicalRequest[]>([]);
   const [transferTarget, setTransferTarget] = useState<{ player: OnlinePlayer; kind: "gift" | "scam" } | null>(null);
   const [transferAmount, setTransferAmount] = useState("");
   const [jobCategory, setJobCategory] = useState<string>(JOB_CATEGORIES[0].id);
@@ -555,6 +571,8 @@ function GameHome() {
   const housingLabel = player.ownsHome ? "自有住宅 · 城市小宅" : rentalDaysLeft ? `租屋 · ${player.rentalName}（剩 ${rentalDaysLeft} 天）` : "目前沒有住所";
   const selectedJobCategory = JOB_CATEGORIES.find((category) => category.id === jobCategory) ?? JOB_CATEGORIES[0];
   const workSpecial = careerWorkSpecialFor(player.currentJob);
+  const medicalWorkHealth = medicalWorkHealthBonusFor(player.currentJob);
+  const medicalWorkLabel = medicalWorkHealth ? ` · 工作後健康 +${medicalWorkHealth}` : "";
   const longWorkMinutes = workSpecial?.hours === 8 ? workSpecial.minutes : 240;
   const longWorkTitle = workSpecial?.hours === 8 ? `${workSpecial.name} 8 小時` : "長班 8 小時";
   const longWorkButton = workSpecial?.hours === 8 ? `開始${workSpecial.name}` : "開始工作";
@@ -564,6 +582,7 @@ function GameHome() {
   const shoppingOpen = isLocationOpen("shopping", sharedMinutes);
   const schoolOpen = isLocationOpen("school", sharedMinutes);
   const hospitalRegularOpen = isHospitalRegularOpen(sharedMinutes);
+  const medicalHospitalDiscount = medicalHospitalDiscountFor(player.currentJob);
   const actionSecondsLeft = Math.max(0, Math.ceil((player.actionAvailableAt - Date.now()) / 1000));
   const actionLocked = actionSecondsLeft > 0;
   const actionBusy = busy || actionLocked;
@@ -572,6 +591,7 @@ function GameHome() {
   const nextStoryDebt = nextStoryChapter ? Math.round(250_000 * nextStoryChapter.remainingRatio) : 0;
   const storyProgress = Math.min(100, Math.max(0, ((250_000 - player.loanBalance) / 250_000) * 100));
   const pendingTransfer = transferRequests[0] ?? null;
+  const pendingMedical = medicalRequests[0] ?? null;
 
   const loadWorld = useCallback(async (quiet = false) => {
     try {
@@ -590,6 +610,7 @@ function GameHome() {
       if (data.tournament) setTournament(data.tournament);
       if (data.cityMemory) setCityMemory(data.cityMemory);
       setTransferRequests(data.transferRequests ?? []);
+      setMedicalRequests(data.medicalRequests ?? []);
       if (!quiet) {
         setNotice(data.authenticated ? `歡迎回來，${data.profile?.displayName}。進度已同步。` : "目前是訪客試玩；登入後即可永久保存並加入多人世界。");
       }
@@ -637,10 +658,10 @@ function GameHome() {
 
   async function act(action: string, payload: Record<string, unknown> = {}) {
     if (busy) return;
-    const canActDuringWait = ["move", "reset", "city_event", "bank", "transfer_request", "transfer_response"].includes(action)
+    const canActDuringWait = ["move", "reset", "city_event", "bank", "transfer_request", "transfer_response", "medical_request", "medical_response"].includes(action)
       || action.startsWith("casino_") || action.startsWith("poker_") || action.startsWith("bingo_") || action.startsWith("tournament_");
     if (actionLocked && !canActDuringWait) {
-      setNotice(`${player.actionLabel || "目前的行動"}尚未完成，請等待 ${actionSecondsLeft} 秒；期間可移動、使用銀行、處理贈送／詐騙邀請，或前往賭場遊玩。`);
+      setNotice(`${player.actionLabel || "目前的行動"}尚未完成，請等待 ${actionSecondsLeft} 秒；期間可移動、使用銀行、處理贈送／詐騙／治療請求，或前往賭場遊玩。`);
       return;
     }
     setBusy(true);
@@ -662,7 +683,7 @@ function GameHome() {
         headers: apiHeaders(true),
         body: JSON.stringify({ action: action.startsWith("casino_") ? action.slice(7) : action.startsWith("poker_") ? action.slice(6) : action.startsWith("bingo_") ? action.slice(6) : action.startsWith("tournament_") ? action.slice(11) : action, ...payload }),
       });
-      const data = await response.json() as { player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; bingo?: BingoState; tournament?: TournamentState; cityMemory?: CityMemory; transferRequests?: TransferRequest[]; scratch?: { price: number; prize: number } | null; message?: string };
+      const data = await response.json() as { player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; bingo?: BingoState; tournament?: TournamentState; cityMemory?: CityMemory; transferRequests?: TransferRequest[]; medicalRequests?: MedicalRequest[]; scratch?: { price: number; prize: number } | null; message?: string };
       if (!response.ok || !data.player) throw new Error(data.message || "行動失敗");
       setPlayer(data.player);
       if (data.online) setOnline(data.online);
@@ -673,6 +694,7 @@ function GameHome() {
       if (data.tournament) setTournament(data.tournament);
       if (data.cityMemory) setCityMemory(data.cityMemory);
       if (data.transferRequests) setTransferRequests(data.transferRequests);
+      if (data.medicalRequests) setMedicalRequests(data.medicalRequests);
       if (data.scratch) setScratchResult(data.scratch);
       setNotice(data.message || "行動完成");
     } catch (error) {
@@ -686,6 +708,12 @@ function GameHome() {
     if (!profile || playerTarget.id === profile.id) return;
     setTransferTarget({ player: playerTarget, kind });
     setTransferAmount("");
+  }
+
+  function requestMedicalTreatment(playerTarget: OnlinePlayer) {
+    const service = medicalTreatmentFor(playerTarget.currentJob);
+    if (!profile || !service || playerTarget.id === profile.id || player.health >= 100) return;
+    void act("medical_request", { targetId: playerTarget.id });
   }
 
   async function submitTransfer(event: React.FormEvent<HTMLFormElement>) {
@@ -756,7 +784,7 @@ function GameHome() {
   async function logout() {
     try { await fetch(`${API_ORIGIN}/api/auth/logout`, { method: "POST", headers: apiHeaders() }); } catch { /* local logout still works */ }
     window.localStorage.removeItem(TOKEN_KEY);
-    setProfile(null); setNameOpen(false); setOnline([]); setFeed([]); setTransferRequests([]); setTransferTarget(null); setCasino({ capacity: 5, activeCount: 0, seats: [], hand: null }); setPlayer(INITIAL_PLAYER);
+    setProfile(null); setNameOpen(false); setOnline([]); setFeed([]); setTransferRequests([]); setMedicalRequests([]); setTransferTarget(null); setCasino({ capacity: 5, activeCount: 0, seats: [], hand: null }); setPlayer(INITIAL_PLAYER);
     setNotice("已登出；目前為訪客試玩模式。");
   }
 
@@ -845,12 +873,12 @@ function GameHome() {
               {player.location === "home" && <ActionCard icon="☾" title="睡眠 8 小時" meta="現實等待 2 分鐘 · 體力全滿 · 健康 +5" button="好好休息" onClick={() => void act("sleep")} disabled={actionBusy} />}
               {player.location === "realtor" && <><ActionCard icon="01" title="城市小套房 · 1 天" meta="每日 NT$350 · 租金 NT$350" button="租 1 天" onClick={() => void act("housing", { kind: "rent", days: 1 })} disabled={actionBusy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /><ActionCard icon="07" title="城市小套房 · 7 天" meta="每日 NT$350 · 租金 NT$2,450" button="租 7 天" onClick={() => void act("housing", { kind: "rent", days: 7 })} featured disabled={actionBusy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /><ActionCard icon="買" title="購買城市小宅" meta="NT$50,000 · 永久住所 · 買房後仍可查看租屋" button={player.ownsHome ? "已擁有，仍可看租屋" : "購買房屋"} onClick={() => void act("housing", { kind: "buy" })} disabled={actionBusy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /></>}
               {player.location === "bank" && <BankPanel player={player} busy={busy || !bankOpen} closed={!bankOpen} onAction={(kind, amount) => void act("bank", { kind, amount })} />}
-              {player.location === "business" && <><ActionCard icon="職" title="找工作" meta="第一階工作免能力門檻 · 7 條產業路線 · 換工作立即完成" button="打開產業列表" onClick={() => setJobOpen(true)} featured disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="01" title="短班 1 小時" meta={`現實等待 30 秒 · 收入 NT$${formatMoney(career.hourlyPay)} · EXP +4`} button="開始工作" onClick={() => void act("work", { hours: 1 })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="04" title="標準班 4 小時" meta={`現實等待 2 分鐘 · 收入 NT$${formatMoney(career.hourlyPay * 4)} · EXP +16`} button="開始工作" onClick={() => void act("work", { hours: 4 })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="08" title={longWorkTitle} meta={`${workSpecial?.hours === 8 ? "特殊能力 · " : ""}現實等待 ${formatWaitMinutes(longWorkMinutes)} · 收入 NT$${formatMoney(career.hourlyPay * 8)} · EXP +32`} button={longWorkButton} onClick={() => void act("work", { hours: 8 })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} />{workSpecial && workSpecial.hours !== 8 && <ActionCard icon={String(workSpecial.hours)} title={`${workSpecial.name} ${workSpecial.hours} 小時`} meta={`特殊能力 · 現實等待 ${formatWaitMinutes(workSpecial.minutes)} · 收入 NT$${formatMoney(career.hourlyPay * workSpecial.hours)} · EXP +${workSpecial.hours * 4}`} button={`開始${workSpecial.name}`} onClick={() => void act("work", { hours: workSpecial.hours })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} />}</>}
+              {player.location === "business" && <><ActionCard icon="職" title="找工作" meta="第一階工作免能力門檻 · 7 條產業路線 · 換工作立即完成" button="打開產業列表" onClick={() => setJobOpen(true)} featured disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="01" title="短班 1 小時" meta={`現實等待 30 秒 · 收入 NT$${formatMoney(career.hourlyPay)} · EXP +4${medicalWorkLabel}`} button="開始工作" onClick={() => void act("work", { hours: 1 })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="04" title="標準班 4 小時" meta={`現實等待 2 分鐘 · 收入 NT$${formatMoney(career.hourlyPay * 4)} · EXP +16${medicalWorkLabel}`} button="開始工作" onClick={() => void act("work", { hours: 4 })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /><ActionCard icon="08" title={longWorkTitle} meta={`${workSpecial?.hours === 8 ? "特殊能力 · " : ""}現實等待 ${formatWaitMinutes(longWorkMinutes)} · 收入 NT$${formatMoney(career.hourlyPay * 8)} · EXP +32${medicalWorkLabel}`} button={longWorkButton} onClick={() => void act("work", { hours: 8 })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} />{workSpecial && workSpecial.hours !== 8 && <ActionCard icon={String(workSpecial.hours)} title={`${workSpecial.name} ${workSpecial.hours} 小時`} meta={`特殊能力 · 現實等待 ${formatWaitMinutes(workSpecial.minutes)} · 收入 NT$${formatMoney(career.hourlyPay * workSpecial.hours)} · EXP +${workSpecial.hours * 4}${medicalWorkLabel}`} button={`開始${workSpecial.name}`} onClick={() => void act("work", { hours: workSpecial.hours })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} />}</>}
               {player.location === "shopping" && <><ActionCard icon="刮" title="幸運刮刮樂" meta="每張 NT$100 · 最高獎金 NT$50,000" button="購買並刮開" onClick={() => void act("scratch")} featured disabled={actionBusy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="飯" title="巷口飯糰" meta="NT$45 · 飽足 +20" button="買來吃" onClick={() => void act("eat", { kind: "rice" })} disabled={actionBusy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="餐" title="豐盛便當" meta="NT$100 · 飽足 +45 · 心情 +3" button="享用便當" onClick={() => void act("eat", { kind: "bento" })} disabled={actionBusy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /></>}
               {player.location === "hotel" && <><ActionCard icon="工" title="旅店臨時工 · 30 秒" meta="現實等待 30 秒 · 收入 NT$100 · 不扣體力、飽足、健康 · 無職業經驗" button="開始打工" onClick={() => void act("hotel", { kind: "work" })} featured disabled={actionBusy} /><ActionCard icon="宿" title="旅店住宿一晚" meta="NT$1,200 · 現實等待 2 分鐘 · 體力全滿" button="辦理入住" onClick={() => void act("hotel", { kind: "stay" })} disabled={actionBusy || player.ownsHome || rentalDaysLeft > 0} disabledLabel={player.ownsHome || rentalDaysLeft > 0 ? "已有住所" : undefined} /><ActionCard icon="餐" title="24 小時旅店餐" meta="NT$250 · 飽足 +45 · 立即完成" button="購買旅店餐" onClick={() => void act("hotel", { kind: "meal" })} disabled={actionBusy} /><ActionCard icon="豪" title="24 小時豪華餐" meta="NT$500 · 飽足 +80 · 立即完成" button="購買豪華餐" onClick={() => void act("hotel", { kind: "luxury" })} disabled={actionBusy} /></>}
                 {player.location === "casino" && <div className="casino-games"><div className="casino-game-tabs"><button className={casinoGame === "blackjack" ? "active" : ""} onClick={() => setCasinoGame("blackjack")}>二十一點 · 真實牌靴</button><button className={casinoGame === "poker" ? "active" : ""} onClick={() => setCasinoGame("poker")}>德州撲克 · 完整下注</button><button className={casinoGame === "bingo" ? "active" : ""} onClick={() => setCasinoGame("bingo")}>賓果 · 公開開獎</button><button className={casinoGame === "tournament" ? "active" : ""} onClick={() => setCasinoGame("tournament")}>錦標賽 · 積分賽</button></div>{casinoGame === "blackjack" ? <CasinoTable state={casino} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`casino_${action}`, payload)} /> : casinoGame === "poker" ? <PokerTable state={poker} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`poker_${action}`, payload)} /> : casinoGame === "bingo" ? <BingoTable state={bingo} signedIn={Boolean(profile)} busy={busy} onAction={(action, entryFee) => void act(`bingo_${action}`, { entryFee })} /> : <TournamentTable state={tournament} signedIn={Boolean(profile)} busy={busy} onAction={(action, payload) => void act(`tournament_${action}`, payload)} />}</div>}
               {player.location === "school" && ACADEMIES.map((academy, index) => <ActionCard key={academy.id} icon={academy.icon} title={academy.name} meta={`NT$500 · 現實等待 1 分鐘 · ${formatRequirements(academy.gains)}`} button="報名上課" onClick={() => void act("study", { academy: academy.id })} featured={index === 0} disabled={actionBusy || !schoolOpen} disabledLabel={!schoolOpen ? "已關門" : undefined} />)}
-              {player.location === "hospital" && <><ActionCard icon="急" title="24 小時急診" meta="NT$2,500 · 等待 20 秒 · 健康至少恢復至 70" button="前往急診" onClick={() => void act("hospital", { kind: "emergency" })} featured disabled={actionBusy} /><ActionCard icon="診" title="一般門診" meta="07:00～23:00 · NT$600 · 等待 15 秒 · 健康 +25" button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /><ActionCard icon="療" title="完整治療" meta="07:00～23:00 · NT$1,500 · 等待 30 秒 · 健康至少恢復至 80" button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /></>}
+              {player.location === "hospital" && <><ActionCard icon="急" title="24 小時急診" meta={`NT$${formatMoney(Math.floor(2500 * (1 - medicalHospitalDiscount)))} · 等待 20 秒 · 健康至少恢復至 70`} button="前往急診" onClick={() => void act("hospital", { kind: "emergency" })} featured disabled={actionBusy} /><ActionCard icon="診" title="一般門診" meta={`07:00～23:00 · NT$${formatMoney(Math.floor(600 * (1 - medicalHospitalDiscount)))} · 等待 15 秒 · 健康 +25`} button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /><ActionCard icon="療" title="完整治療" meta={`07:00～23:00 · NT$${formatMoney(Math.floor(1500 * (1 - medicalHospitalDiscount)))} · 等待 30 秒 · 健康至少恢復至 80`} button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} />{medicalHospitalDiscount > 0 && <p className="hospital-discount-note">醫療照護職業折抵 {Math.round(medicalHospitalDiscount * 100)}%（與城市健康警報折扣取較高者）</p>}</>}
             </div>
           </div>
           <footer className="world-footer"><span>只有上線時計入個人遊玩天數 · 城市時間全服同步</span><button onClick={() => void act("reset")} disabled={busy}>重新開始人生</button></footer>
@@ -860,7 +888,7 @@ function GameHome() {
           <div className="section-heading story-title"><span>多人世界</span><small>LIVE LOBBY</small></div>
           <div className="online-summary"><strong><i />{online.length} 位在線</strong><span>每 5 秒同步</span></div>
           <ul className="online-list">
-            {online.length ? online.slice(0, 8).map((item) => <li key={item.id}><button type="button" className={`mini-avatar ${item.avatarUrl ? "has-photo" : ""}`} aria-label={`放大查看${item.displayName}的大頭貼`} onClick={() => setEnlargedPlayer(item)}>{item.avatarUrl ? <img src={`${API_ORIGIN}${item.avatarUrl}`} alt="" /> : item.displayName.slice(0, 1)}</button><div><strong>{item.displayName}{item.id === profile?.id ? "（你）" : ""}</strong><small>正在 {locationName(item.location)}</small><span className="online-finance">現金 NT${formatMoney(item.cash)} · 貸款 NT${formatMoney(item.loanBalance)}</span>{profile && item.id !== profile.id && <span className="player-transfer-actions"><button type="button" onClick={() => openTransfer(item, "gift")} disabled={busy || player.cash < 1}>贈送</button><button type="button" className="scam" onClick={() => openTransfer(item, "scam")} disabled={busy || player.cash < 2}>詐騙</button></span>}</div></li>) : <li className="empty-online">登入後，你會在這裡遇見其他玩家。</li>}
+            {online.length ? online.slice(0, 8).map((item) => { const service = medicalTreatmentFor(item.currentJob); return <li key={item.id}><button type="button" className={`mini-avatar ${item.avatarUrl ? "has-photo" : ""}`} aria-label={`放大查看${item.displayName}的大頭貼`} onClick={() => setEnlargedPlayer(item)}>{item.avatarUrl ? <img src={`${API_ORIGIN}${item.avatarUrl}`} alt="" /> : item.displayName.slice(0, 1)}</button><div><strong>{item.displayName}{item.id === profile?.id ? "（你）" : ""}</strong><small>正在 {locationName(item.location)} · {item.currentJob === "待業者" ? "待業者" : item.currentJob}</small><span className="online-finance">現金 NT${formatMoney(item.cash)} · 貸款 NT${formatMoney(item.loanBalance)}</span>{profile && item.id !== profile.id && <span className="player-transfer-actions"><button type="button" onClick={() => openTransfer(item, "gift")} disabled={busy || player.cash < 1}>贈送</button><button type="button" className="scam" onClick={() => openTransfer(item, "scam")} disabled={busy || player.cash < 2}>詐騙</button>{service && <button type="button" className="medical" onClick={() => requestMedicalTreatment(item)} disabled={busy || player.health >= 100}>請求治療 · NT${formatMoney(service.price)}</button>}</span>}</div></li>; }) : <li className="empty-online">登入後，你會在這裡遇見其他玩家。</li>}
           </ul>
           <div className="section-heading feed-heading"><span>城市動態</span><small>ACTIVITY</small></div>
           <ol className="feed-list">
@@ -880,6 +908,7 @@ function GameHome() {
       {profile && pendingCityEvent && <div className="auth-overlay city-event-overlay" role="dialog" aria-modal="true" aria-labelledby="city-event-title"><section className="city-event-card"><span>THE CITY FOUND YOU</span><h2 id="city-event-title">{pendingCityEvent.title}</h2><p>{pendingCityEvent.text}</p><div>{pendingCityEvent.choices.map((choice) => { const unavailable = "requires" in choice && choice.requires && !player.talents.includes(choice.requires); return <button key={choice.id} disabled={busy || Boolean(unavailable)} onClick={() => void act("city_event", { choice: choice.id })}>{choice.label}{unavailable ? <small>需要談判能力</small> : null}</button>; })}</div></section></div>}
       {transferTarget && <div className="auth-overlay transfer-overlay" role="dialog" aria-modal="true" aria-labelledby="transfer-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setTransferTarget(null); }}><form className="transfer-card" onSubmit={submitTransfer}><button className="auth-close" type="button" aria-label="關閉" onClick={() => setTransferTarget(null)}>×</button><span className="panel-kicker">PLAYER TO PLAYER</span><h2 id="transfer-title">{transferTarget.kind === "gift" ? "贈送現金" : "發送詐騙邀請"}</h2><p>{transferTarget.kind === "gift" ? `向 ${transferTarget.player.displayName} 贈送現金；對方接受後才會完成轉帳。` : `向 ${transferTarget.player.displayName} 發送與贈送相同外觀的現金邀請。對方接受時，有 50% 機率被騙走填寫金額的一半。`}</p><label>金額（最多 NT${formatMoney(player.cash)}）<input inputMode="numeric" type="number" min={transferTarget.kind === "scam" ? 2 : 1} max={player.cash} step="1" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} autoFocus required /></label><small>{transferTarget.kind === "scam" ? "詐騙金額以你手上的現金為上限；成功時對方失去此金額的一半。" : "送出邀請後，請等待對方接受或拒絕。"}</small><button className="transfer-submit" disabled={busy || player.cash < (transferTarget.kind === "scam" ? 2 : 1)}>{transferTarget.kind === "gift" ? "送出贈送邀請" : "送出現金邀請"}</button></form></div>}
       {profile && pendingTransfer && <div className="auth-overlay transfer-overlay" role="dialog" aria-modal="true" aria-labelledby="incoming-transfer-title"><section className="transfer-card incoming-transfer"><span className="panel-kicker">CASH INVITATION</span><h2 id="incoming-transfer-title">現金邀請</h2><p><strong>{pendingTransfer.senderName}</strong> 想送給你 NT${formatMoney(pendingTransfer.amount)}，要接受這筆現金嗎？</p><small>接受後將立即處理；你也可以直接拒絕。</small><div className="transfer-response"><button type="button" className="decline" disabled={busy} onClick={() => void act("transfer_response", { requestId: pendingTransfer.id, kind: "decline" })}>拒絕</button><button type="button" disabled={busy} onClick={() => void act("transfer_response", { requestId: pendingTransfer.id, kind: "accept" })}>接受</button></div></section></div>}
+      {profile && pendingMedical && <div className="auth-overlay transfer-overlay" role="dialog" aria-modal="true" aria-labelledby="incoming-medical-title"><section className="transfer-card incoming-transfer medical-request-card"><span className="panel-kicker">PLAYER MEDICAL CARE</span><h2 id="incoming-medical-title">玩家治療請求</h2><p><strong>{pendingMedical.patientName}</strong> 請求你的「{pendingMedical.providerJob}」治療。</p><small>恢復健康 +{pendingMedical.healthGain} · 收費 NT${formatMoney(pendingMedical.amount)} · 30 秒內回覆；雙方必須保持在線。</small><div className="transfer-response"><button type="button" className="decline" disabled={busy} onClick={() => void act("medical_response", { medicalRequestId: pendingMedical.id, kind: "decline" })}>拒絕</button><button type="button" disabled={busy} onClick={() => void act("medical_response", { medicalRequestId: pendingMedical.id, kind: "accept" })}>接受治療</button></div></section></div>}
       {enlargedPlayer && <div className="avatar-lightbox" role="dialog" aria-modal="true" aria-labelledby="avatar-lightbox-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setEnlargedPlayer(null); }}>
         <section><button className="auth-close" type="button" aria-label="關閉大頭貼" onClick={() => setEnlargedPlayer(null)}>×</button><div className={`enlarged-avatar ${enlargedPlayer.avatarUrl ? "has-photo" : ""}`}>{enlargedPlayer.avatarUrl ? <img src={`${API_ORIGIN}${enlargedPlayer.avatarUrl}`} alt={`${enlargedPlayer.displayName}的大頭貼`} /> : enlargedPlayer.displayName.slice(0, 1)}</div><h2 id="avatar-lightbox-title">{enlargedPlayer.displayName}</h2><p>現金 NT${formatMoney(enlargedPlayer.cash)} · 貸款 NT${formatMoney(enlargedPlayer.loanBalance)}</p></section>
       </div>}

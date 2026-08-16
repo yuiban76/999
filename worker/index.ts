@@ -1,4 +1,4 @@
-import { ABILITY_LABELS, ACADEMIES, careerForCategory, careerRequirements, careerWorkSpecialFor, categoryInfo, jobInfo, meetsCareerRequirements, type Abilities } from "../shared/jobs";
+import { ABILITY_LABELS, ACADEMIES, careerForCategory, careerRequirements, careerWorkSpecialFor, categoryInfo, jobInfo, medicalHospitalDiscountFor, medicalTreatmentFor, medicalWorkHealthBonusFor, meetsCareerRequirements, type Abilities } from "../shared/jobs";
 import { CITY_EVENTS, STORY_CHAPTERS, storyChapterForDebt, talentInfo } from "../shared/progression";
 import { isHospitalRegularOpen, isLocationOpen, minuteOfDay, OPENING_HOURS, worldMinutes } from "../shared/world";
 
@@ -53,6 +53,7 @@ type TournamentStateRow = { round_no: number; current_round: number; game: "blac
 type ProgressRow = { user_id: string; talent_exp: number; talents: string; story_chapter: number; last_event_day: number; pending_event: string; updated_at: number };
 type MemoryRow = { cycle_day: number; work_count: number; hospital_count: number; housing_count: number; casino_count: number; study_count: number; event_count: number };
 type TransferRequestRow = { id: string; sender_id: string; sender_name: string; recipient_id: string; kind: "gift" | "scam"; amount: number; status: string; outcome: string; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
+type MedicalTreatmentRequestRow = { id: string; patient_id: string; patient_name: string; provider_id: string; provider_name: string; provider_job: string; health_gain: number; amount: number; status: string; outcome: string; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
 
 const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "bank", "business", "shopping", "hotel", "casino", "school", "hospital"]);
 // Persist at most one idle heartbeat every ten seconds. Only a short,
@@ -60,6 +61,7 @@ const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "bank", "busines
 const HEARTBEAT_WRITE_INTERVAL_MS = 10_000;
 const ONLINE_HEARTBEAT_GRACE_MS = 30_000;
 const TRANSFER_REQUEST_TIMEOUT_MS = 60_000;
+const MEDICAL_REQUEST_TIMEOUT_MS = 30_000;
 const clamp = (value: number) => Math.max(0, Math.min(100, value));
 const abilitiesFor = (player: PlayerRow): Abilities => ({
   physical: player.fitness_exp,
@@ -261,6 +263,14 @@ async function ensureSchema(db: D1Database) {
       resolution_token TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL,
       expires_at INTEGER NOT NULL, resolved_at INTEGER
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS player_medical_requests (
+      id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, patient_name TEXT NOT NULL,
+      provider_id TEXT NOT NULL, provider_name TEXT NOT NULL, provider_job TEXT NOT NULL,
+      health_gain INTEGER NOT NULL, amount INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending', outcome TEXT NOT NULL DEFAULT '',
+      resolution_token TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL, resolved_at INTEGER
+    )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS casino_bingo_state (
       id TEXT PRIMARY KEY, round_no INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL DEFAULT 'lobby',
       host_user_id TEXT NOT NULL DEFAULT '', entry_fee INTEGER NOT NULL DEFAULT 100, drawn_numbers TEXT NOT NULL DEFAULT '[]', next_draw_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL
@@ -305,6 +315,7 @@ async function ensureSchema(db: D1Database) {
     db.prepare("CREATE INDEX IF NOT EXISTS idx_city_memory_cycle ON city_memory_contributions(cycle_day)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_mystery_clues_key ON mystery_clues(clue_key)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_transfer_requests_recipient_status ON player_transfer_requests(recipient_id, status, expires_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_medical_requests_provider_status ON player_medical_requests(provider_id, status, expires_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_bingo_entries_round ON casino_bingo_entries(round_no)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_tournament_entries_round ON casino_tournament_entries(tournament_no)"),
   ]);
@@ -451,14 +462,14 @@ async function maybeFindMysteryClue(db: D1Database, userId: string, location: Lo
 async function multiplayer(db: D1Database) {
   const since = Date.now() - 30_000;
   const [players, events] = await Promise.all([
-    db.prepare(`SELECT p.user_id, p.display_name, p.location, p.cash, p.loan_balance, p.last_seen_at,
+    db.prepare(`SELECT p.user_id, p.display_name, p.location, p.cash, p.loan_balance, p.current_job, p.job_category, p.last_seen_at,
       a.avatar_data IS NOT NULL AS has_avatar, a.avatar_updated_at
       FROM players p JOIN accounts a ON a.id = p.user_id
-      WHERE p.last_seen_at >= ? ORDER BY p.last_seen_at DESC LIMIT 24`).bind(since).all<{ user_id: string; display_name: string; location: LocationId; cash: number; loan_balance: number; last_seen_at: number; has_avatar: number; avatar_updated_at: number | null }>(),
+      WHERE p.last_seen_at >= ? ORDER BY p.last_seen_at DESC LIMIT 24`).bind(since).all<{ user_id: string; display_name: string; location: LocationId; cash: number; loan_balance: number; current_job: string; job_category: string; last_seen_at: number; has_avatar: number; avatar_updated_at: number | null }>(),
     db.prepare("SELECT id, player_name, title, detail, tone, game_time FROM game_events WHERE room_id = 'lobby-01' AND title NOT IN ('前往新地點', '移動完成') ORDER BY created_at DESC LIMIT 12").all<{ id: string; player_name: string; title: string; detail: string; tone: "good" | "neutral" | "warn"; game_time: string }>(),
   ]);
   return {
-    online: players.results.map((row) => ({ id: row.user_id, displayName: row.display_name, location: row.location, cash: row.cash, loanBalance: row.loan_balance, updatedAt: row.last_seen_at, avatarUrl: row.has_avatar ? `/api/avatar/${row.user_id}?v=${row.avatar_updated_at ?? 0}` : null })),
+    online: players.results.map((row) => ({ id: row.user_id, displayName: row.display_name, location: row.location, cash: row.cash, loanBalance: row.loan_balance, currentJob: row.current_job, jobCategory: row.job_category, updatedAt: row.last_seen_at, avatarUrl: row.has_avatar ? `/api/avatar/${row.user_id}?v=${row.avatar_updated_at ?? 0}` : null })),
     feed: events.results.map((row) => ({ id: row.id, playerName: row.player_name, title: row.title, detail: row.detail, tone: row.tone, time: row.game_time })),
   };
 }
@@ -471,9 +482,32 @@ async function pendingTransferRequests(db: D1Database, recipientId: string) {
   return requests.results.map((request) => ({ id: request.id, senderName: request.sender_name, amount: request.amount, expiresAt: request.expires_at }));
 }
 
+async function pendingMedicalRequests(db: D1Database, providerId: string) {
+  const now = Date.now();
+  await db.batch([
+    db.prepare("UPDATE player_medical_requests SET status='cancelled', outcome='expired', resolved_at=? WHERE status='pending' AND expires_at<=?").bind(now, now),
+    db.prepare(`UPDATE player_medical_requests SET status='cancelled', outcome='provider_unavailable', resolved_at=?
+      WHERE provider_id=? AND status='pending' AND NOT EXISTS (
+        SELECT 1 FROM players p
+        WHERE p.user_id=player_medical_requests.provider_id AND p.last_seen_at>=?
+          AND p.current_job=player_medical_requests.provider_job AND p.game_over='' AND p.main_story<>'unselected'
+      )`).bind(now, providerId, now - ONLINE_HEARTBEAT_GRACE_MS),
+    db.prepare(`UPDATE player_medical_requests SET status='cancelled', outcome='patient_unavailable', resolved_at=?
+      WHERE provider_id=? AND status='pending' AND NOT EXISTS (
+        SELECT 1 FROM players p
+        WHERE p.user_id=player_medical_requests.patient_id AND p.last_seen_at>=? AND p.game_over='' AND p.main_story<>'unselected'
+      )`).bind(now, providerId, now - ONLINE_HEARTBEAT_GRACE_MS),
+  ]);
+  const requests = await db.prepare(`SELECT id, patient_id, patient_name, provider_id, provider_name, provider_job, health_gain, amount, status, outcome, resolution_token, created_at, expires_at, resolved_at
+    FROM player_medical_requests
+    WHERE provider_id=? AND status='pending' AND expires_at>?
+    ORDER BY created_at ASC LIMIT 1`).bind(providerId, now).all<MedicalTreatmentRequestRow>();
+  return requests.results.map((request) => ({ id: request.id, patientName: request.patient_name, providerName: request.provider_name, providerJob: request.provider_job, healthGain: request.health_gain, amount: request.amount, expiresAt: request.expires_at }));
+}
+
 async function transferActionResponse(db: D1Database, user: AuthUser, player: PlayerRow, progress: ProgressRow, message: string) {
-  const [world, transfers] = await Promise.all([multiplayer(db), pendingTransferRequests(db, user.userId)]);
-  return json({ player: serializePlayer(player, progress), message, transferRequests: transfers, ...world });
+  const [world, transfers, medicalRequests] = await Promise.all([multiplayer(db), pendingTransferRequests(db, user.userId), pendingMedicalRequests(db, user.userId)]);
+  return json({ player: serializePlayer(player, progress), message, transferRequests: transfers, medicalRequests, ...world });
 }
 
 async function recordTransferEvent(db: D1Database, senderId: string, senderName: string, title: string, detail: string, tone: "good" | "neutral" | "warn" = "neutral") {
@@ -1332,6 +1366,8 @@ async function updateDisplayName(request: Request, env: Env) {
     env.DB.prepare("UPDATE casino_bingo_entries SET player_name=? WHERE user_id=?").bind(displayName, user.userId),
     env.DB.prepare("UPDATE casino_tournament_entries SET player_name=? WHERE user_id=?").bind(displayName, user.userId),
     env.DB.prepare("UPDATE player_transfer_requests SET sender_name=? WHERE sender_id=?").bind(displayName, user.userId),
+    env.DB.prepare("UPDATE player_medical_requests SET patient_name=? WHERE patient_id=?").bind(displayName, user.userId),
+    env.DB.prepare("UPDATE player_medical_requests SET provider_name=? WHERE provider_id=?").bind(displayName, user.userId),
   ]);
   const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
   if (!saved) return json({ message: "玩家資料更新後無法載入。" }, 500);
@@ -1356,7 +1392,7 @@ async function getAvatar(userId: string, env: Env) {
 
 async function bootstrap(request: Request, env: Env) {
   const user = await identity(request, env.DB);
-  if (!user || !env.DB) return json({ authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [], casino: { capacity: 5, activeCount: 0, seats: [], hand: null }, poker: { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 }, bingo: { status: "lobby", players: [], drawn: [] }, tournament: { status: "lobby", players: [] } });
+  if (!user || !env.DB) return json({ authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [], casino: { capacity: 5, activeCount: 0, seats: [], hand: null }, poker: { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 }, bingo: { status: "lobby", players: [], drawn: [] }, tournament: { status: "lobby", players: [] }, medicalRequests: [] });
   await ensureSchemaOnce(env.DB);
   const row = await upsertPlayer(env.DB, user);
   if (!row) return json({ message: "無法載入玩家資料" }, 500);
@@ -1364,15 +1400,16 @@ async function bootstrap(request: Request, env: Env) {
   const world = await multiplayer(env.DB);
   const emptyCasino = { capacity: 5, activeCount: 0, seats: [], hand: null };
   const emptyPoker = { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 };
-  const [casino, poker, memory, transferRequests, bingo, tournament] = await Promise.all([
+  const [casino, poker, memory, transferRequests, medicalRequests, bingo, tournament] = await Promise.all([
     row.location === "casino" ? casinoState(env.DB, user.userId) : Promise.resolve(emptyCasino),
     row.location === "casino" ? pokerState(env.DB, user.userId) : Promise.resolve(emptyPoker),
     cityMemory(env.DB),
     pendingTransferRequests(env.DB, user.userId),
+    pendingMedicalRequests(env.DB, user.userId),
     row.location === "casino" ? bingoState(env.DB, user.userId) : Promise.resolve({ status: "lobby", players: [], drawn: [] }),
     row.location === "casino" ? tournamentState(env.DB, user.userId) : Promise.resolve({ status: "lobby", players: [] }),
   ]);
-  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress), room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, bingo, tournament, cityMemory: memory, transferRequests });
+  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress), room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, bingo, tournament, cityMemory: memory, transferRequests, medicalRequests });
 }
 
 async function takeAction(request: Request, env: Env) {
@@ -1386,11 +1423,11 @@ async function takeAction(request: Request, env: Env) {
   let talents = new Set(parseList(progress.talents));
   const clampEnergy = (value: number) => Math.max(0, Math.min(talents.has("strong_body") ? 120 : 100, value));
 
-  let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; academy?: string; story?: string; talent?: string; choice?: string; targetId?: string; requestId?: string };
+  let body: { action?: string; location?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; academy?: string; story?: string; talent?: string; choice?: string; targetId?: string; requestId?: string; medicalRequestId?: string };
   try { body = await request.json(); } catch { return json({ message: "行動資料格式錯誤。" }, 400); }
   if (current.game_over && body.action !== "reset") return json({ message: "這段人生已經結束，請重新開始。" }, 409);
   if (current.main_story === "unselected" && body.action !== "choose_story") return json({ message: "請先選擇人生主線。" }, 409);
-  if (!["move", "choose_story", "reset", "city_event", "bank", "transfer_request", "transfer_response"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
+  if (!["move", "choose_story", "reset", "city_event", "bank", "transfer_request", "transfer_response", "medical_request", "medical_response"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
   const next = { ...current };
   const sharedMinutes = worldMinutes();
   const memoryBefore = await cityMemory(env.DB);
@@ -1472,6 +1509,69 @@ async function takeAction(request: Request, env: Env) {
       const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
       await recordTransferEvent(env.DB, request.sender_id, request.sender_name, "詐騙成功", `成功取得了 NT$${stolen}。`, "warn");
       return transferActionResponse(env.DB, user, saved ?? current, progress, `你遭到詐騙，NT$${stolen} 已被對方取走。`);
+    }
+    case "medical_request": {
+      if (!body.targetId || body.targetId === user.userId) return json({ message: "請選擇其他玩家作為治療者。" }, 400);
+      if (current.health >= 100) return json({ message: "健康已滿 100，現在不需要請求治療。" }, 400);
+      const target = await env.DB.prepare(`SELECT user_id, display_name, current_job, job_category, last_seen_at, main_story, game_over
+        FROM players WHERE user_id=?`).bind(body.targetId).first<{ user_id: string; display_name: string; current_job: string; job_category: string; last_seen_at: number; main_story: string; game_over: string }>();
+      const service = target ? medicalTreatmentFor(target.current_job) : null;
+      if (!target || !service || target.job_category !== "medical" || target.last_seen_at < Date.now() - ONLINE_HEARTBEAT_GRACE_MS) return json({ message: "這位玩家目前無法提供線上治療。" }, 409);
+      if (target.main_story === "unselected" || target.game_over) return json({ message: "這位玩家目前無法處理治療請求。" }, 409);
+      const existing = await env.DB.prepare("SELECT id FROM player_medical_requests WHERE patient_id=? AND provider_id=? AND status='pending' AND expires_at>? LIMIT 1")
+        .bind(user.userId, target.user_id, Date.now()).first<{ id: string }>();
+      if (existing) return json({ message: "你已向這位玩家送出治療請求，請等待回覆。" }, 409);
+      const now = Date.now();
+      await env.DB.prepare(`INSERT INTO player_medical_requests (id, patient_id, patient_name, provider_id, provider_name, provider_job, health_gain, amount, status, outcome, resolution_token, created_at, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', '', '', ?, ?)`).bind(
+        crypto.randomUUID(), user.userId, user.displayName.slice(0, 40), target.user_id, target.display_name.slice(0, 40), target.current_job, service.health, service.price, now, now + MEDICAL_REQUEST_TIMEOUT_MS,
+      ).run();
+      return transferActionResponse(env.DB, user, current, progress, `已向${target.display_name}送出治療請求，等待對方在 30 秒內回覆。`);
+    }
+    case "medical_response": {
+      const requestId = body.medicalRequestId ?? body.requestId;
+      if (!requestId || !["accept", "decline"].includes(body.kind || "")) return json({ message: "治療請求回覆不正確。" }, 400);
+      const token = crypto.randomUUID();
+      const medicalRequest = await env.DB.prepare(`UPDATE player_medical_requests
+        SET status='processing', resolution_token=?
+        WHERE id=? AND provider_id=? AND status='pending' AND expires_at>?
+        RETURNING id, patient_id, patient_name, provider_id, provider_name, provider_job, health_gain, amount, status, outcome, resolution_token, created_at, expires_at, resolved_at`)
+        .bind(token, requestId, user.userId, Date.now()).first<MedicalTreatmentRequestRow>();
+      if (!medicalRequest) return transferActionResponse(env.DB, user, current, progress, "這個治療請求已失效或已被處理。");
+      if (body.kind === "decline") {
+        await env.DB.prepare("UPDATE player_medical_requests SET status='declined', outcome='declined', resolved_at=? WHERE id=? AND resolution_token=?")
+          .bind(Date.now(), medicalRequest.id, token).run();
+        return transferActionResponse(env.DB, user, current, progress, "你已拒絕這次玩家治療請求。");
+      }
+      const now = Date.now();
+      const db = env.DB;
+      if (!db) return json({ message: "遊戲資料庫尚未連接。" }, 503);
+      const provider = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
+      const patient = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(medicalRequest.patient_id).first<PlayerRow>();
+      const cancel = async (outcome: string, responseMessage: string) => {
+        await db.prepare("UPDATE player_medical_requests SET status='cancelled', outcome=?, resolved_at=? WHERE id=? AND resolution_token=?")
+          .bind(outcome, Date.now(), medicalRequest.id, token).run();
+        return transferActionResponse(db, user, provider ?? current, progress, responseMessage);
+      };
+      if (!provider || provider.last_seen_at < now - ONLINE_HEARTBEAT_GRACE_MS || provider.game_over || provider.main_story === "unselected" || provider.current_job !== medicalRequest.provider_job || !medicalTreatmentFor(provider.current_job)) {
+        return cancel("provider_unavailable", "你的職業或在線狀態已變更，這次治療請求已失效。");
+      }
+      if (!patient || patient.last_seen_at < now - ONLINE_HEARTBEAT_GRACE_MS || patient.game_over || patient.main_story === "unselected") return cancel("patient_unavailable", "病人目前不在線上或無法接受治療。");
+      if (patient.health >= 100) return cancel("patient_full", "病人健康已滿 100，這次治療請求已取消。");
+      if (patient.cash < medicalRequest.amount) return cancel("patient_insufficient", "病人現金不足，無法接受治療。");
+      const service = medicalTreatmentFor(provider.current_job);
+      if (!service) return cancel("provider_unavailable", "目前職業無法提供治療，請求已失效。");
+      const settlement = await env.DB.batch([
+        env.DB.prepare(`UPDATE players SET cash=cash-?, health=MIN(100, health+?), action_available_at=CASE WHEN action_available_at>? THEN action_available_at ELSE ? END, action_label=?
+          WHERE user_id=? AND cash>=? AND health<100 AND last_seen_at>=? AND game_over=''`).bind(medicalRequest.amount, medicalRequest.health_gain, now, now + service.minutes * 1_000, `接受${medicalRequest.provider_job}玩家治療`, medicalRequest.patient_id, medicalRequest.amount, now - ONLINE_HEARTBEAT_GRACE_MS),
+        env.DB.prepare("UPDATE players SET cash=cash+? WHERE user_id=? AND current_job=? AND last_seen_at>=? AND game_over=''").bind(medicalRequest.amount, medicalRequest.provider_id, medicalRequest.provider_job, now - ONLINE_HEARTBEAT_GRACE_MS),
+      ]);
+      if ((settlement[0]?.results?.length ?? 0) !== 1 || (settlement[1]?.results?.length ?? 0) !== 1) return cancel("settlement_failed", "治療條件在結算時已變更，這次治療沒有完成。");
+      await env.DB.prepare("UPDATE player_medical_requests SET status='accepted', outcome='treated', resolved_at=? WHERE id=? AND resolution_token=?")
+        .bind(Date.now(), medicalRequest.id, token).run();
+      await recordTransferEvent(env.DB, medicalRequest.provider_id, medicalRequest.provider_name, "玩家治療", `為${medicalRequest.patient_name}提供${medicalRequest.provider_job}，收取 NT$${medicalRequest.amount}。`, "good");
+      const savedProvider = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
+      return transferActionResponse(env.DB, user, savedProvider ?? provider, progress, `治療完成：${medicalRequest.patient_name}健康 +${medicalRequest.health_gain}，已收到 NT$${medicalRequest.amount}。`);
     }
     case "talent": {
       if (body.kind === "reset") {
@@ -1608,6 +1708,7 @@ async function takeAction(request: Request, env: Env) {
       if (category.id !== "unfixed" && selected.job !== category.jobs[0]) return json({ message: `進入${category.label}必須從${category.jobs[0]}開始。` }, 400);
       const entryRequirements = careerRequirements(category.id, 0);
       if (category.id !== "unfixed" && !meetsCareerRequirements(abilitiesFor(next), entryRequirements)) return json({ message: `進入${category.label}需要${formatRequirements(entryRequirements)}。` }, 400);
+      await env.DB.prepare("UPDATE player_medical_requests SET status='cancelled', outcome='provider_job_changed', resolved_at=? WHERE provider_id=? AND status='pending'").bind(Date.now(), user.userId).run();
       next.current_job = selected.job; next.job_category = selected.categoryId; next.job_exp = 0;
       title = category.id === "unfixed" ? `狀態變更：${selected.job}` : `進入${selected.categoryLabel}`;
       message = category.id === "unfixed" ? `目前狀態已改為${selected.job}。` : `成功進入「${selected.categoryLabel}」，從${selected.job}開始發展；產業升遷經驗從 0 開始。`; break;
@@ -1626,14 +1727,15 @@ async function takeAction(request: Request, env: Env) {
       const income = Math.floor(hours * previousCareer.hourlyPay * incomeMultiplier);
       const energyCost = Math.ceil(hours * 5 * (talents.has("endurance") ? .85 : 1));
       const jobGain = Math.ceil(hours * 4 * (talents.has("skilled") ? 1.15 : 1));
-      next.cash += income; next.energy = Math.max(0, next.energy - energyCost); next.health = clamp(next.health - Math.ceil(hours / 2)); next.mood = clamp(next.mood - Math.ceil(hours * .9)); next.hunger = clamp(next.hunger - hours * 2); next.job_exp += jobGain; minutes = hours === 1 ? 30 : hours === 4 ? 120 : 240;
+      next.cash += income; next.energy = Math.max(0, next.energy - energyCost); next.health = clamp(next.health - Math.ceil(hours / 2) + medicalWorkHealthBonusFor(next.current_job)); next.mood = clamp(next.mood - Math.ceil(hours * .9)); next.hunger = clamp(next.hunger - hours * 2); next.job_exp += jobGain; minutes = hours === 1 ? 30 : hours === 4 ? 120 : 240;
       if (workSpecial) minutes = workSpecial.minutes;
       if (talents.has("workaholic_2")) minutes = Math.ceil(minutes * .9);
       const newCareer = careerForCategory(next.job_category, next.job_exp, next.current_job, abilitiesFor(next));
       next.current_job = newCareer.title;
       if (newCareer.title !== previousCareer.title) talentExpGain += 10;
       title = newCareer.title !== previousCareer.title ? `升遷為${newCareer.title}` : workSpecial ? `${workSpecial.name} ${hours} 小時` : `工作 ${hours} 小時`;
-      message = `以${previousCareer.title}完成${workSpecial ? `「${workSpecial.name}」` : "工作"}，收入 +NT$${income}，職業經驗 +${jobGain}。${newCareer.title !== previousCareer.title ? ` 恭喜升遷為${newCareer.title}！` : ""}`; break;
+      const medicalHealthBonus = medicalWorkHealthBonusFor(previousCareer.title);
+      message = `以${previousCareer.title}完成${workSpecial ? `「${workSpecial.name}」` : "工作"}，收入 +NT$${income}，職業經驗 +${jobGain}${medicalHealthBonus ? `，健康 +${medicalHealthBonus}` : ""}。${newCareer.title !== previousCareer.title ? ` 恭喜升遷為${newCareer.title}！` : ""}`; break;
     }
     case "study": {
       if (next.location !== "school") return json({ message: "請先前往未來學院。" }, 400);
@@ -1684,7 +1786,9 @@ async function takeAction(request: Request, env: Env) {
     case "hospital": {
       if (next.location !== "hospital") return json({ message: "請先前往市立醫院。" }, 400);
       if (body.kind !== "emergency" && !isHospitalRegularOpen(sharedMinutes)) return json({ message: "一般門診與完整治療時間為 07:00～23:00；急診 24 小時開放。" }, 400);
-      const careDiscount = memoryBefore.state.name === "健康警報" ? .8 : 1;
+      const careerDiscount = medicalHospitalDiscountFor(next.current_job);
+      const memoryDiscount = memoryBefore.state.name === "健康警報" ? .2 : 0;
+      const careDiscount = 1 - Math.max(careerDiscount, memoryDiscount);
       const energyMax = talents.has("strong_body") ? 120 : 100;
       const care = body.kind === "clinic"
         ? { name: "一般門診", price: Math.floor(600 * careDiscount), minutes: 15, health: Math.min(100, next.health + 25), energy: Math.min(energyMax, next.energy + 10) }
@@ -1701,6 +1805,7 @@ async function takeAction(request: Request, env: Env) {
       message = `${care.name}完成，支付 NT$${care.price}，健康恢復至 ${next.health}${previousIllness ? `，${previousIllness}已痊癒` : ""}。`; break;
     }
     case "reset":
+      await env.DB.prepare("UPDATE player_medical_requests SET status='cancelled', outcome='provider_reset', resolved_at=? WHERE provider_id=? AND status='pending'").bind(Date.now(), user.userId).run();
       Object.assign(next, { cash: next.main_story === "prodigal_return" ? 37 : 10000, bank_balance: 0, loan_balance: next.main_story === "prodigal_return" ? 250_000 : 0, finance_day: 1, daily_minimum_payment: next.main_story === "prodigal_return" ? 750 : 0, daily_payment_made: 0, missed_payment_days: 0, game_over: "", energy: 100, health: 100, mood: 80, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", elapsed_minutes: 0, location: "realtor" });
       await env.DB.prepare("UPDATE player_progress SET talent_exp=0, talents='[]', story_chapter=0, last_event_day=0, pending_event='', updated_at=? WHERE user_id=?").bind(Date.now(), user.userId).run();
       progress = { ...progress, talent_exp: 0, talents: "[]", story_chapter: 0, last_event_day: 0, pending_event: "" }; talents = new Set();

@@ -158,6 +158,23 @@ export const playerTransferRequests = sqliteTable("player_transfer_requests", {
   resolvedAt: integer("resolved_at"),
 }, (table) => [index("idx_transfer_requests_recipient_status").on(table.recipientId, table.status, table.expiresAt)]);
 
+export const playerMedicalRequests = sqliteTable("player_medical_requests", {
+  id: text("id").primaryKey(),
+  patientId: text("patient_id").notNull(),
+  patientName: text("patient_name").notNull(),
+  providerId: text("provider_id").notNull(),
+  providerName: text("provider_name").notNull(),
+  providerJob: text("provider_job").notNull(),
+  healthGain: integer("health_gain").notNull(),
+  amount: integer("amount").notNull(),
+  status: text("status").notNull().default("pending"),
+  outcome: text("outcome").notNull().default(""),
+  resolutionToken: text("resolution_token").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+  resolvedAt: integer("resolved_at"),
+}, (table) => [index("idx_medical_requests_provider_status").on(table.providerId, table.status, table.expiresAt)]);
+
 export const casinoBingoState = sqliteTable("casino_bingo_state", {
   id: text("id").primaryKey(), roundNo: integer("round_no").notNull().default(1), status: text("status").notNull().default("lobby"),
   hostUserId: text("host_user_id").notNull().default(""), entryFee: integer("entry_fee").notNull().default(100), drawnNumbers: text("drawn_numbers").notNull().default("[]"), nextDrawAt: integer("next_draw_at").notNull().default(0), updatedAt: integer("updated_at").notNull(),

@@ -72,7 +72,7 @@ test("longer opening hours are consistent in rules, interface, and worker respon
   assert.match(world, /shopping: \{ open: 6 \* 60, close: 24 \* 60, label: "06:00～24:00" \}/);
   assert.match(world, /school: \{ open: 7 \* 60, close: 23 \* 60, label: "07:00～23:00" \}/);
   assert.match(world, /return current >= 7 \* 60 && current < 23 \* 60/);
-  assert.match(page, /meta="07:00～23:00 · NT\$600/);
+  assert.match(page, /Math\.floor\(600 \* \(1 - medicalHospitalDiscount\)\)/);
   assert.match(worker, /一般門診與完整治療時間為 07:00～23:00/);
   assert.doesNotMatch(source, /09:00～18:00|09:00～17:00|08:00～18:00|10:00～22:00|08:00～21:00|08:00～20:00/);
 });
@@ -161,9 +161,9 @@ test("administrative actions are instant and gameplay waits stay shortened", asy
   assert.match(page, /睡眠 8 小時" meta="現實等待 2 分鐘/);
   assert.match(page, /旅店臨時工 · 30 秒/);
   assert.match(page, /不扣體力、飽足、健康/);
-  assert.match(page, /const canActDuringWait = \["move", "reset", "city_event", "bank", "transfer_request", "transfer_response"\]/);
-  assert.match(worker, /\["move", "choose_story", "reset", "city_event", "bank", "transfer_request", "transfer_response"\]/);
-  assert.match(page, /期間可移動、使用銀行、處理贈送／詐騙邀請，或前往賭場遊玩/);
+  assert.match(page, /const canActDuringWait = \["move", "reset", "city_event", "bank", "transfer_request", "transfer_response", "medical_request", "medical_response"\]/);
+  assert.match(worker, /\["move", "choose_story", "reset", "city_event", "bank", "transfer_request", "transfer_response", "medical_request", "medical_response"\]/);
+  assert.match(page, /期間可移動、使用銀行、處理贈送／詐騙／治療請求，或前往賭場遊玩/);
   assert.match(page, /BankPanel player=\{player\} busy=\{busy \|\| !bankOpen\}/);
   assert.match(page, /<CasinoTable state=\{casino\} signedIn=\{Boolean\(profile\)\} busy=\{busy\}/);
   assert.match(page, /<PokerTable state=\{poker\} signedIn=\{Boolean\(profile\)\} busy=\{busy\}/);
@@ -183,6 +183,34 @@ test("general office career has four ranks and role-specific work specials", asy
   assert.match(worker, /careerWorkSpecialFor\(next\.current_job, hours\)/);
   assert.match(page, /title=\{longWorkTitle\}/);
   assert.match(page, /workSpecial && workSpecial\.hours !== 8/);
+});
+
+test("medical career adds health support, hospital discounts, and guarded player treatment", async () => {
+  const jobs = await readFile(new URL("shared/jobs.ts", root), "utf8");
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const schema = await readFile(new URL("db/schema.ts", root), "utf8");
+  const migration = await readFile(new URL("drizzle/0020_old_starfox.sql", root), "utf8");
+
+  assert.match(jobs, /jobs: \["診所助理", "護理師", "資深護理師", "護理長"\]/);
+  assert.match(jobs, /"護理師": \{ name: "輪班津貼", hours: 9, minutes: 3 \}/);
+  assert.match(jobs, /"診所助理": 0\.05/);
+  assert.match(jobs, /"護理師": \{ name: "護理師照護", health: 20, price: 300, minutes: 15 \}/);
+  assert.match(worker, /MEDICAL_REQUEST_TIMEOUT_MS = 30_000/);
+  assert.match(worker, /case "medical_request"/);
+  assert.match(worker, /case "medical_response"/);
+  assert.match(worker, /current\.health >= 100/);
+  assert.match(worker, /expires_at>\?/);
+  assert.match(worker, /provider\.current_job !== medicalRequest\.provider_job/);
+  assert.match(worker, /patient\.cash < medicalRequest\.amount/);
+  assert.match(worker, /medicalWorkHealthBonusFor\(next\.current_job\)/);
+  assert.match(worker, /Math\.max\(careerDiscount, memoryDiscount\)/);
+  assert.match(page, /請求治療/);
+  assert.match(page, /玩家治療請求/);
+  assert.match(page, /medical_response/);
+  assert.match(schema, /playerMedicalRequests = sqliteTable\("player_medical_requests"/);
+  assert.match(migration, /CREATE TABLE `player_medical_requests`/);
+  assert.match(migration, /idx_medical_requests_provider_status/);
 });
 
 test("story, talents, city memory, events, and hidden mystery are wired", async () => {
