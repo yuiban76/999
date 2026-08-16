@@ -1039,6 +1039,7 @@ body {
 .casino-primary:disabled, .tournament-game-options button:disabled { background: #d2d2d7; color: #86868b; cursor: not-allowed; }
 .joined-room-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 250px); align-items: center; gap: 20px; }
 .joined-room-panel.compact { grid-template-columns: minmax(0, 1fr) auto; }
+.tournament-lobby-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
 .joined-room-panel:not(.compact) .room-leave-button { grid-column: 1 / -1; justify-self: center; }
 .room-leave-button { min-height: 40px; padding: 0 15px; border: 1px solid #d2d2d7; border-radius: 999px; background: #fff; color: #515154; font-weight: 750; }
 .room-leave-button:hover:not(:disabled) { border-color: #ffb1ac; background: #fff4f3; color: #c9342c; }
@@ -1191,6 +1192,8 @@ input:focus-visible { outline: 3px solid rgba(0, 113, 227, .38); outline-offset:
   .room-entry-panel.tournament-entry-panel,
   .joined-room-panel,
   .joined-room-panel.compact { grid-template-columns: 1fr; margin: 14px; padding: 15px; }
+  .tournament-lobby-actions { justify-content: stretch; }
+  .tournament-lobby-actions > * { flex: 1 1 100%; width: 100%; }
   .room-fee-field > div { max-width: none; }
   .casino-primary,
   .room-leave-button { width: 100%; min-height: 46px; }

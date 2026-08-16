@@ -183,8 +183,14 @@ test("recovery, special-shift waits, synchronized time, and tournament all-in ar
   assert.match(worker, /serverNow: Date\.now\(\)/);
   assert.match(page, /setServerTimeOffsetMs\(data\.serverNow - currentWallClockMs\(\)\)/);
   assert.match(worker, /const gameplayActions = \["hit", "stand", "check", "call", "raise", "all_in", "fold"\]/);
+  assert.match(worker, /\["join", "leave", "start", \.\.\.gameplayActions\]/);
+  assert.match(worker, /status='playing', next_round_at=\?, updated_at=\?/);
   assert.match(worker, /status='all_in'/);
   assert.match(page, /onAction\("all_in"\)/);
+  assert.match(page, /onAction\("start"\)/);
+  assert.match(page, /const TOURNAMENT_STARTING_STACK = 100/);
+  assert.match(page, /className="leave"/);
+  assert.match(page, /onAction\("fold"\)/);
   assert.match(page, /任何職位都能換職/);
 });
 

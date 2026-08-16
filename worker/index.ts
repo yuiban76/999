@@ -992,7 +992,7 @@ async function tournamentAction(request: Request, env: Env) {
   if (!player || player.location !== "casino" || player.game_over) return json({ message: "請先前往賭場，並確認人生仍在進行。" }, 400);
   const body = await request.json() as { action?: string; game?: string; entryFee?: number; amount?: number };
   const gameplayActions = ["hit", "stand", "check", "call", "raise", "all_in", "fold"];
-  if (!body.action || (!["join", "leave", ...gameplayActions].includes(body.action))) return json({ message: "未知的錦標賽行動。" }, 400);
+  if (!body.action || (!["join", "leave", "start", ...gameplayActions].includes(body.action))) return json({ message: "未知的錦標賽行動。" }, 400);
   if (body.action === "join" && !["blackjack", "poker"].includes(body.game || "")) return json({ message: "請選擇二十一點或德州撲克錦標賽。" }, 400);
   let state = await tournamentState(env.DB, user.userId);
   if (body.action === "leave") {
@@ -1008,6 +1008,17 @@ async function tournamentAction(request: Request, env: Env) {
     if (state.players.some((entry) => entry.id === user.userId)) return json({ message: "錦標賽已經開始，無法離開座位。" }, 409);
     const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>(); const progress = await ensureProgress(env.DB, saved!);
     return json({ player: serializePlayer(saved!, progress), tournament: state, message: `已離開錦標賽，退還 NT$${leavingFee.toLocaleString()}。` });
+  }
+  if (body.action === "start") {
+    if (state.status !== "lobby") return json({ message: "這場錦標賽已經開始或已結束。" }, 409);
+    if (state.hostUserId !== user.userId) return json({ message: "只有開房的玩家可以開始錦標賽。" }, 403);
+    if (state.players.length < 2) return json({ message: "至少需要 2 位玩家加入後才能開始。" }, 409);
+    const now = Date.now();
+    await env.DB.prepare("UPDATE casino_tournament_state SET status='playing', next_round_at=?, updated_at=? WHERE id='tournament-01' AND status='lobby' AND host_user_id=?").bind(now, now, user.userId).run();
+    state = await tournamentState(env.DB, user.userId);
+    if (state.status !== "playing") return json({ message: "錦標賽尚未成功開始，請重新整理後再試。" }, 409);
+    const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>(); const progress = await ensureProgress(env.DB, saved!);
+    return json({ player: serializePlayer(saved!, progress), tournament: state, message: "房主已開始錦標賽，第一局牌局已開桌。" });
   }
   if (body.action === "join") {
     if (state.status === "completed") { await env.DB.prepare("UPDATE casino_tournament_state SET round_no=round_no+1, current_round=0, game=?, status='lobby', host_user_id='', entry_fee=?, round_limit=?, next_round_at=0, latest_result='', updated_at=? WHERE id='tournament-01'").bind(body.game, TOURNAMENT_ENTRY_FEE, TOURNAMENT_ROUNDS, Date.now()).run(); state = await tournamentState(env.DB, user.userId); }
@@ -1029,9 +1040,8 @@ async function tournamentAction(request: Request, env: Env) {
       throw error;
     }
     const joinedState = await tournamentState(env.DB, user.userId);
-    if (joinedState.status === "lobby" && joinedState.players.length >= 2) await env.DB.prepare("UPDATE casino_tournament_state SET status='playing', next_round_at=?, updated_at=? WHERE id='tournament-01' AND status='lobby'").bind(Date.now() + TOURNAMENT_START_DELAY_MS, Date.now()).run();
     const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>(); const progress = await ensureProgress(env.DB, saved!);
-    return json({ player: serializePlayer(saved!, progress), tournament: await tournamentState(env.DB, user.userId), message: joinedState.players.length >= 2 ? "錦標賽即將開始：每局都要實際操作牌局，五局後依名次分配獎金。" : "報名完成，等待至少一位玩家加入。" });
+    return json({ player: serializePlayer(saved!, progress), tournament: joinedState, message: joinedState.players.length >= 2 ? "已滿足開賽條件，請房主按開始；每局都要實際操作牌局。" : "報名完成，等待至少一位玩家加入。" });
   }
   const dbState = await env.DB.prepare("SELECT * FROM casino_tournament_state WHERE id='tournament-01'").first<TournamentStateRow>();
   if (!dbState || dbState.status !== "playing") return json({ message: "目前沒有進行中的錦標賽牌局。" }, 409);
