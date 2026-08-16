@@ -107,6 +107,11 @@ function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 }
 
+const hasControlCharacters = (value: string) => Array.from(value).some((character) => {
+  const codePoint = character.codePointAt(0) ?? 0;
+  return codePoint < 32 || codePoint === 127;
+});
+
 function actionWaitMessage(player: PlayerRow, now = Date.now()) {
   const seconds = Math.max(1, Math.ceil((player.action_available_at - now) / 1000));
   return `${player.action_label || "目前的行動"}尚未完成，請等待 ${seconds} 秒；移動不受限制。`;
@@ -852,8 +857,8 @@ async function settleTournamentRound(db: D1Database, state: TournamentStateRow, 
   const now = Date.now();
   const points = new Map<string, number>();
   const handResults = new Map<string, string>();
-  let dealerCards = parseCards(round.dealer_cards);
-  let deck = parseCards(round.deck);
+  const dealerCards = parseCards(round.dealer_cards);
+  const deck = parseCards(round.deck);
   if (round.game === "blackjack") {
     while (handScore(dealerCards) < 17 && deck.length) dealerCards.push(deck.pop()!);
     const dealerScore = handScore(dealerCards);
@@ -902,7 +907,7 @@ async function settleTournamentRound(db: D1Database, state: TournamentStateRow, 
 async function advanceTournamentRound(db: D1Database, state: TournamentStateRow) {
   if (state.status !== "playing") return;
   const now = Date.now();
-  let round = await db.prepare("SELECT * FROM casino_tournament_rounds WHERE tournament_no=? AND round_no=?").bind(state.round_no, state.current_round + 1).first<TournamentRoundRow>();
+  const round = await db.prepare("SELECT * FROM casino_tournament_rounds WHERE tournament_no=? AND round_no=?").bind(state.round_no, state.current_round + 1).first<TournamentRoundRow>();
   if (!round) { if (state.next_round_at <= now) await startTournamentRound(db, state); return; }
   if (round.status !== "playing") return;
   let hands = (await db.prepare("SELECT * FROM casino_tournament_hands WHERE tournament_no=? AND round_no=? ORDER BY seat_no").bind(state.round_no, round.round_no).all<TournamentHandRow>()).results;
@@ -1586,7 +1591,7 @@ async function updateDisplayName(request: Request, env: Env) {
   let body: { displayName?: string };
   try { body = await request.json(); } catch { return json({ message: "資料格式錯誤。" }, 400); }
   const displayName = typeof body.displayName === "string" ? body.displayName.trim().replace(/\s+/g, " ") : "";
-  if (displayName.length < 2 || displayName.length > 24 || /[\u0000-\u001f\u007f]/.test(displayName)) {
+  if (displayName.length < 2 || displayName.length > 24 || hasControlCharacters(displayName)) {
     return json({ message: "玩家名字需為 2～24 個字元，不能是空白或控制字元。" }, 400);
   }
   const current = await upsertPlayer(env.DB, user, true);

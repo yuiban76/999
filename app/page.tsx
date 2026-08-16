@@ -1,5 +1,8 @@
 "use client";
 
+/* eslint-disable jsx-a11y/no-noninteractive-element-interactions -- modal backdrops intentionally close when the pointer lands outside the dialog. */
+/* eslint-disable @next/next/no-img-element -- avatar images come from runtime Cloudflare asset URLs. */
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ABILITY_LABELS, ACADEMIES, BANK_LOAN_RATE_BP, careerForCategory, careerRequirements, careerThresholdForCategory, careerWorkSpecialFor, categoryInfo, crimeArrestChanceFor, crimeSentenceMinutesFor, financeDepositRateFor, financeLoanTermsFor, HACK_DAILY_LIMIT, HACK_MAX_STEAL, HACK_STEAL_RATE, HACK_SUCCESS_CHANCE, hospitalitySpecialHungerFor, JOB_CATEGORIES, jobInfo, medicalHospitalDiscountFor, medicalTreatmentFor, medicalWorkHealthBonusFor, meetsCareerRequirements, nextCareerForCategory, RESTAURANT_DAILY_NET, RESTAURANT_PURCHASE_PRICE, TERRITORY_DAILY_CAP, TERRITORY_VISIT_REWARD, WRITER_DAILY_FAN_RATE, WRITER_DAILY_WRITING_LIMIT, WRITER_MAX_ACTIVE_BOOKS, WRITER_MAX_PURCHASES_PER_BOOK, writerBookPriceFor, writerFanRangeFor, type Abilities } from "../shared/jobs";
 import { CITY_EVENTS, STORY_CHAPTERS, TALENTS } from "../shared/progression";
@@ -338,6 +341,10 @@ const statMeta: Array<{ key: StatKey; icon: string; label: string }> = [
 const locationName = (id: LocationId) => locations.find((item) => item.id === id)?.name ?? id;
 const formatMoney = (value: number) => new Intl.NumberFormat("zh-TW").format(value);
 const currentWallClockMs = () => new Date().getTime();
+const hasControlCharacters = (value: string) => Array.from(value).some((character) => {
+  const codePoint = character.codePointAt(0) ?? 0;
+  return codePoint < 32 || codePoint === 127;
+});
 const formatWaitMinutes = (value: number) => value >= 60 && value % 60 === 0 ? `${value / 60} 分鐘` : `${value} 分鐘`;
 const level = (exp: number) => exp >= 900 ? 5 : exp >= 500 ? 4 : exp >= 250 ? 3 : exp >= 100 ? 2 : 1;
 const levelProgress = (exp: number) => {
@@ -680,7 +687,6 @@ function GameHome() {
   const crimeSentence = isCrime ? Math.ceil(crimeSentenceMinutesFor(player.currentJob) / 60) : 0;
   const restaurantSpecialHunger = hospitalitySpecialHungerFor(player.currentJob);
   const writerRange = writerFanRangeFor(player.currentJob);
-  const writerBookPrice = writerBookPriceFor(player.currentJob);
   const writerWritesLeft = Math.max(0, WRITER_DAILY_WRITING_LIMIT - player.writingUses);
   const realtorOpen = isLocationOpen("realtor", sharedMinutes);
   const bankOpen = isLocationOpen("bank", sharedMinutes);
@@ -734,7 +740,8 @@ function GameHome() {
   }, []);
 
   useEffect(() => {
-    void loadWorld();
+    const timer = window.setTimeout(() => { void loadWorld(); }, 0);
+    return () => window.clearTimeout(timer);
   }, [loadWorld]);
 
   useEffect(() => {
@@ -892,7 +899,7 @@ function GameHome() {
     event.preventDefault();
     if (!profile) return;
     const displayName = nameDraft.trim().replace(/\s+/g, " ");
-    if (displayName.length < 2 || displayName.length > 24 || /[\u0000-\u001f\u007f]/.test(displayName)) {
+    if (displayName.length < 2 || displayName.length > 24 || hasControlCharacters(displayName)) {
       setNameError("玩家名字需為 2～24 個字元，不能是空白或控制字元。");
       return;
     }
@@ -1058,8 +1065,8 @@ function GameHome() {
       </div>}
       {talentOpen && <div className="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="talent-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setTalentOpen(false); }}><section className="talent-board"><button className="auth-close" type="button" aria-label="關閉天賦樹" onClick={() => setTalentOpen(false)}>×</button><span className="panel-kicker">LIFE TALENTS</span><h2 id="talent-title">天賦樹</h2><p>等級 {player.talentLevel} · 可用 {player.talentPoints} 點 · 每 100 經驗獲得 1 點。天賦不會改變賭場或刮刮樂機率。</p><div className="talent-branches">{["職涯", "生存", "財務", "機會"].map((branch) => <section key={branch}><h3>{branch}</h3>{TALENTS.filter((talent) => talent.branch === branch).map((talent) => { const owned = player.talents.includes(talent.id); const locked = talent.requires.some((required) => !player.talents.includes(required)); return <button className={owned ? "owned" : ""} key={talent.id} disabled={busy || owned || locked || player.talentPoints < 1} onClick={() => void act("talent", { talent: talent.id })}><strong>{talent.name}</strong><small>{talent.description}</small><em>{owned ? "已解鎖" : locked ? "需要前置天賦" : "使用 1 點"}</em></button>; })}</section>)}</div><button className="talent-reset" disabled={busy || !player.talents.length || player.cash < 2_000} onClick={() => void act("talent", { kind: "reset" })}>支付 NT$2,000 重置天賦</button></section></div>}
       {profile && pendingCityEvent && <div className="auth-overlay city-event-overlay" role="dialog" aria-modal="true" aria-labelledby="city-event-title"><section className="city-event-card"><span>THE CITY FOUND YOU</span><h2 id="city-event-title">{pendingCityEvent.title}</h2><p>{pendingCityEvent.text}</p><div>{pendingCityEvent.choices.map((choice) => { const unavailable = "requires" in choice && choice.requires && !player.talents.includes(choice.requires); return <button key={choice.id} disabled={busy || Boolean(unavailable)} onClick={() => void act("city_event", { choice: choice.id })}>{choice.label}{unavailable ? <small>需要談判能力</small> : null}</button>; })}</div></section></div>}
-      {transferTarget && <div className="auth-overlay transfer-overlay" role="dialog" aria-modal="true" aria-labelledby="transfer-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setTransferTarget(null); }}><form className="transfer-card" onSubmit={submitTransfer}><button className="auth-close" type="button" aria-label="關閉" onClick={() => setTransferTarget(null)}>×</button><span className="panel-kicker">PLAYER TO PLAYER</span><h2 id="transfer-title">{transferTarget.kind === "gift" ? "贈送現金" : "發送詐騙邀請"}</h2><p>{transferTarget.kind === "gift" ? `向 ${transferTarget.player.displayName} 贈送現金；對方接受後才會完成轉帳。` : `向 ${transferTarget.player.displayName} 發送與贈送相同外觀的現金邀請。對方接受時，有 50% 機率被騙走填寫金額的一半。`}</p><label>金額（最多 NT${formatMoney(player.cash)}）<input inputMode="numeric" type="number" min={transferTarget.kind === "scam" ? 2 : 1} max={player.cash} step="1" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} autoFocus required /></label><small>{transferTarget.kind === "scam" ? "詐騙金額以你手上的現金為上限；成功時對方失去此金額的一半。" : "送出邀請後，請等待對方接受或拒絕。"}</small><button className="transfer-submit" disabled={busy || player.cash < (transferTarget.kind === "scam" ? 2 : 1)}>{transferTarget.kind === "gift" ? "送出贈送邀請" : "送出現金邀請"}</button></form></div>}
-      {loanTarget && <div className="auth-overlay transfer-overlay" role="dialog" aria-modal="true" aria-labelledby="loan-request-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setLoanTarget(null); }}><form className="transfer-card loan-request-card" onSubmit={submitLoanRequest}><button className="auth-close" type="button" aria-label="關閉貸款申請" onClick={() => setLoanTarget(null)}>×</button><span className="panel-kicker">PLAYER LOAN DESK</span><h2 id="loan-request-title">申請玩家貸款</h2><p>向 <strong>{loanTarget.displayName}</strong>（{loanTarget.currentJob}）申請由銀行撥款的優惠貸款。</p>{(() => { const terms = financeLoanTermsFor(loanTarget.currentJob); return terms ? <small>每日利率 {(terms.rateBp / 100).toFixed(2)}% · 金融玩家每日獲得 {(terms.spreadBp / 100).toFixed(2)}% 利差 · 最高 NT$50,000</small> : null; })()}<label>申請金額<input inputMode="numeric" type="number" min="1" max="50000" step="1" value={loanAmount} onChange={(event) => setLoanAmount(event.target.value)} autoFocus required /></label><small>本金由銀行撥入你的現金，不會扣除對方現金；接受後會建立一筆一般貸款。</small><button className="transfer-submit finance-submit" disabled={busy || player.loanBalance > 0}>送出貸款申請</button></form></div>}
+      {transferTarget && <div className="auth-overlay transfer-overlay" role="dialog" aria-modal="true" aria-labelledby="transfer-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setTransferTarget(null); }}><form className="transfer-card" onSubmit={submitTransfer}><button className="auth-close" type="button" aria-label="關閉" onClick={() => setTransferTarget(null)}>×</button><span className="panel-kicker">PLAYER TO PLAYER</span><h2 id="transfer-title">{transferTarget.kind === "gift" ? "贈送現金" : "發送詐騙邀請"}</h2><p>{transferTarget.kind === "gift" ? `向 ${transferTarget.player.displayName} 贈送現金；對方接受後才會完成轉帳。` : `向 ${transferTarget.player.displayName} 發送與贈送相同外觀的現金邀請。對方接受時，有 50% 機率被騙走填寫金額的一半。`}</p><label>金額（最多 NT${formatMoney(player.cash)}）<input inputMode="numeric" type="number" min={transferTarget.kind === "scam" ? 2 : 1} max={player.cash} step="1" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} required /></label><small>{transferTarget.kind === "scam" ? "詐騙金額以你手上的現金為上限；成功時對方失去此金額的一半。" : "送出邀請後，請等待對方接受或拒絕。"}</small><button className="transfer-submit" disabled={busy || player.cash < (transferTarget.kind === "scam" ? 2 : 1)}>{transferTarget.kind === "gift" ? "送出贈送邀請" : "送出現金邀請"}</button></form></div>}
+      {loanTarget && <div className="auth-overlay transfer-overlay" role="dialog" aria-modal="true" aria-labelledby="loan-request-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setLoanTarget(null); }}><form className="transfer-card loan-request-card" onSubmit={submitLoanRequest}><button className="auth-close" type="button" aria-label="關閉貸款申請" onClick={() => setLoanTarget(null)}>×</button><span className="panel-kicker">PLAYER LOAN DESK</span><h2 id="loan-request-title">申請玩家貸款</h2><p>向 <strong>{loanTarget.displayName}</strong>（{loanTarget.currentJob}）申請由銀行撥款的優惠貸款。</p>{(() => { const terms = financeLoanTermsFor(loanTarget.currentJob); return terms ? <small>每日利率 {(terms.rateBp / 100).toFixed(2)}% · 金融玩家每日獲得 {(terms.spreadBp / 100).toFixed(2)}% 利差 · 最高 NT$50,000</small> : null; })()}<label>申請金額<input inputMode="numeric" type="number" min="1" max="50000" step="1" value={loanAmount} onChange={(event) => setLoanAmount(event.target.value)} required /></label><small>本金由銀行撥入你的現金，不會扣除對方現金；接受後會建立一筆一般貸款。</small><button className="transfer-submit finance-submit" disabled={busy || player.loanBalance > 0}>送出貸款申請</button></form></div>}
       {profile && pendingTransfer && <div className="auth-overlay transfer-overlay" role="dialog" aria-modal="true" aria-labelledby="incoming-transfer-title"><section className="transfer-card incoming-transfer"><span className="panel-kicker">CASH INVITATION</span><h2 id="incoming-transfer-title">現金邀請</h2><p><strong>{pendingTransfer.senderName}</strong> 想送給你 NT${formatMoney(pendingTransfer.amount)}，要接受這筆現金嗎？</p><small>接受後將立即處理；你也可以直接拒絕。</small><div className="transfer-response"><button type="button" className="decline" disabled={busy} onClick={() => void act("transfer_response", { requestId: pendingTransfer.id, kind: "decline" })}>拒絕</button><button type="button" disabled={busy} onClick={() => void act("transfer_response", { requestId: pendingTransfer.id, kind: "accept" })}>接受</button></div></section></div>}
       {profile && pendingMedical && <div className="auth-overlay transfer-overlay" role="dialog" aria-modal="true" aria-labelledby="incoming-medical-title"><section className="transfer-card incoming-transfer medical-request-card"><span className="panel-kicker">PLAYER MEDICAL CARE</span><h2 id="incoming-medical-title">玩家治療請求</h2><p><strong>{pendingMedical.patientName}</strong> 請求你的「{pendingMedical.providerJob}」治療。</p><small>恢復健康 +{pendingMedical.healthGain} · 收費 NT${formatMoney(pendingMedical.amount)} · 30 秒內回覆；雙方必須保持在線。</small><div className="transfer-response"><button type="button" className="decline" disabled={busy} onClick={() => void act("medical_response", { medicalRequestId: pendingMedical.id, kind: "decline" })}>拒絕</button><button type="button" disabled={busy} onClick={() => void act("medical_response", { medicalRequestId: pendingMedical.id, kind: "accept" })}>接受治療</button></div></section></div>}
       {profile && pendingLoan && <div className="auth-overlay transfer-overlay" role="dialog" aria-modal="true" aria-labelledby="incoming-loan-title"><section className="transfer-card incoming-transfer loan-request-card"><span className="panel-kicker">PLAYER LOAN DESK</span><h2 id="incoming-loan-title">玩家貸款申請</h2><p><strong>{pendingLoan.borrowerName}</strong> 申請 NT${formatMoney(pendingLoan.amount)} 的「{pendingLoan.providerJob}」優惠貸款。</p><small>借款者每日支付 {(pendingLoan.interestRateBp / 100).toFixed(2)}% · 你每日獲得 {(pendingLoan.spreadBp / 100).toFixed(2)}% 利差 · 銀行撥款 · 30 秒內回覆</small><div className="transfer-response"><button type="button" className="decline" disabled={busy} onClick={() => void act("loan_response", { loanRequestId: pendingLoan.id, kind: "decline" })}>拒絕</button><button type="button" className="finance-accept" disabled={busy} onClick={() => void act("loan_response", { loanRequestId: pendingLoan.id, kind: "accept" })}>接受貸款</button></div></section></div>}
@@ -1111,7 +1118,7 @@ function GameHome() {
           <span className="panel-kicker">PLAYER PROFILE</span>
           <h2 id="name-title">更改玩家名字</h2>
           <p>新名字會立即套用到多人世界、牌桌名單與之後的城市動態。</p>
-          <label>玩家名字<input value={nameDraft} onChange={(event) => setNameDraft(event.target.value)} minLength={2} maxLength={24} autoComplete="nickname" autoFocus required /></label>
+          <label>玩家名字<input value={nameDraft} onChange={(event) => setNameDraft(event.target.value)} minLength={2} maxLength={24} autoComplete="nickname" required /></label>
           {nameError && <p className="auth-error" role="alert">{nameError}</p>}
           <button className="auth-submit" disabled={busy}>{busy ? "儲存中…" : "儲存新名字"}</button>
         </form>
@@ -1249,7 +1256,7 @@ function CasinoTable({ state, signedIn, busy, maxBet, onAction }: { state: Casin
   const [leaveConfirm, setLeaveConfirm] = useState(false);
   const requestLeave = () => setLeaveConfirm(true);
   const confirmLeave = () => { setLeaveConfirm(false); onAction("leave"); };
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(0);
   const active = state.hand && ["seated", "waiting", "playing", "stood", "settling"].includes(state.hand.status);
   const playing = state.hand?.status === "playing";
   const waiting = state.phase === "waiting";
@@ -1257,8 +1264,7 @@ function CasinoTable({ state, signedIn, busy, maxBet, onAction }: { state: Casin
   const remaining = waiting ? Math.max(0, Math.ceil(((state.revealAt ?? 0) - now) / 1000)) : 0;
   useEffect(() => {
     if (!waiting) return;
-    setNow(Date.now());
-    const timer = window.setInterval(() => setNow(Date.now()), 200);
+    const timer = window.setInterval(() => setNow(currentWallClockMs()), 200);
     return () => window.clearInterval(timer);
   }, [waiting, state.revealAt]);
   const submitBet = (event: React.FormEvent) => {
