@@ -346,11 +346,9 @@ const hasControlCharacters = (value: string) => Array.from(value).some((characte
   return codePoint < 32 || codePoint === 127;
 });
 const formatWaitMinutes = (value: number) => value >= 60 && value % 60 === 0 ? `${value / 60} 分鐘` : `${value} 分鐘`;
-const level = (exp: number) => exp >= 900 ? 5 : exp >= 500 ? 4 : exp >= 250 ? 3 : exp >= 100 ? 2 : 1;
+const ABILITY_MAX = 1500;
 const levelProgress = (exp: number) => {
-  const thresholds = [0, 100, 250, 500, 900, 1500];
-  const current = level(exp);
-  return Math.min(100, ((exp - thresholds[current - 1]) / (thresholds[current] - thresholds[current - 1])) * 100);
+  return Math.min(100, Math.max(0, (exp / ABILITY_MAX) * 100));
 };
 const abilitiesFor = (player: Player): Abilities => ({
   physical: player.physicalExp,
@@ -1000,7 +998,7 @@ function GameHome() {
           <div className="stat-list">
             {statMeta.map((item) => <div className="stat-row" key={item.key}><span className="stat-label"><span>{item.icon}</span>{item.label}</span><div className="stat-track"><i style={{ width: `${Math.min(100, player[item.key] / (item.key === "energy" && player.talents.includes("strong_body") ? 120 : 100) * 100)}%` }} /></div><strong>{player[item.key]}</strong></div>)}
           </div>
-          <div className="skills-block"><div className="section-heading"><span>能力履歷</span><small>SKILLS</small></div><Skill name="體力" exp={player.physicalExp} /><Skill name="智力" exp={player.intelligenceExp} /><Skill name="創造力" exp={player.creativityExp} /><Skill name="社交" exp={player.socialExp} /><Skill name="魅力" exp={player.charismaExp} /></div>
+          <div className="skills-block"><div className="section-heading"><span>能力履歷</span><small>能力值 / 上限 {ABILITY_MAX}</small></div><Skill name="體力" exp={player.physicalExp} /><Skill name="智力" exp={player.intelligenceExp} /><Skill name="創造力" exp={player.creativityExp} /><Skill name="社交" exp={player.socialExp} /><Skill name="魅力" exp={player.charismaExp} /></div>
         </aside>
 
         <section className="world-panel panel">
@@ -1128,7 +1126,7 @@ function GameHome() {
 }
 
 function Skill({ name, exp }: { name: string; exp: number }) {
-  return <div className="skill-row"><div><span>{name}</span><strong>Lv.{level(exp)}</strong></div><div className="skill-track"><i style={{ width: `${levelProgress(exp)}%` }} /></div></div>;
+  return <div className="skill-row"><div><span>{name}</span><strong>{exp} / {ABILITY_MAX}</strong></div><div className="skill-track"><i style={{ width: `${levelProgress(exp)}%` }} /></div></div>;
 }
 
 function ActionCard({ icon, title, meta, button, featured = false, disabled, disabledLabel, onClick }: { icon: string; title: string; meta: string; button: string; featured?: boolean; disabled: boolean; disabledLabel?: string; onClick: () => void }) {

@@ -385,6 +385,15 @@ test("story objective replaces career milestone and promotion details live in bu
   assert.match(page, /player\.location === "business"/);
 });
 
+test("ability history shows numeric progress and its display cap", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+
+  assert.match(page, /能力值 \/ 上限 \{ABILITY_MAX\}/);
+  assert.match(page, /<strong>\{exp\} \/ \{ABILITY_MAX\}<\/strong>/);
+  assert.match(page, /const ABILITY_MAX = 1500/);
+  assert.doesNotMatch(page, /<strong>Lv\.\{level\(exp\)\}<\/strong>/);
+});
+
 test("placeholder weather and age labels are not shown", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
 
