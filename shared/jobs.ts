@@ -46,26 +46,26 @@ const SECONDARY_REQUIREMENTS = [5, 20, 40, 70, 110, 160, 220, 300] as const;
 export const ALL_JOBS = JOB_CATEGORIES.flatMap((category) => category.jobs.map((job) => ({ job, categoryId: category.id, categoryLabel: category.label })));
 
 export const CAREER_WORK_SPECIALS = {
-  "行政助理": { name: "超長班", hours: 10, minutes: 5 },
-  "行政專員": { name: "爆肝", hours: 11, minutes: 5 },
-  "資深行政專員": { name: "摸魚", hours: 8, minutes: 3 },
-  "行政主管": { name: "準時下班", hours: 8, minutes: 2 },
-  "銀行員": { name: "櫃檯加班", hours: 9, minutes: 3 },
-  "理財專員": { name: "客戶開發", hours: 10, minutes: 4 },
-  "投資顧問": { name: "市場研判", hours: 8, minutes: 3 },
-  "分行經理": { name: "準時關帳", hours: 8, minutes: 2 },
-  "診所助理": { name: "基本照護", hours: 8, minutes: 2 },
-  "護理師": { name: "輪班津貼", hours: 9, minutes: 3 },
-  "資深護理師": { name: "臨床專注", hours: 8, minutes: 3 },
-  "護理長": { name: "準時交班", hours: 8, minutes: 2 },
-  "廚房助理": { name: "備料班", hours: 4, minutes: 2 },
-  "廚師": { name: "出餐高峰班", hours: 6, minutes: 3 },
-  "主廚": { name: "品質監修班", hours: 8, minutes: 4 },
-  "餐廳老闆": { name: "餐廳營運班", hours: 8, minutes: 4 },
-  "詐騙犯": { name: "話術行動", hours: 4, minutes: 2 },
-  "駭客": { name: "系統入侵", hours: 6, minutes: 3 },
-  "走私者": { name: "地下運貨", hours: 8, minutes: 4 },
-  "大橋頭營運長": { name: "地盤巡查", hours: 8, minutes: 4 },
+  "行政助理": { name: "超長班", hours: 10, waitSeconds: 5 },
+  "行政專員": { name: "爆肝", hours: 11, waitSeconds: 5 },
+  "資深行政專員": { name: "摸魚", hours: 8, waitSeconds: 5 },
+  "行政主管": { name: "準時下班", hours: 8, waitSeconds: 5 },
+  "銀行員": { name: "櫃檯加班", hours: 9, waitSeconds: 5 },
+  "理財專員": { name: "客戶開發", hours: 10, waitSeconds: 5 },
+  "投資顧問": { name: "市場研判", hours: 8, waitSeconds: 5 },
+  "分行經理": { name: "準時關帳", hours: 8, waitSeconds: 5 },
+  "診所助理": { name: "基本照護", hours: 8, waitSeconds: 5 },
+  "護理師": { name: "輪班津貼", hours: 9, waitSeconds: 5 },
+  "資深護理師": { name: "臨床專注", hours: 8, waitSeconds: 5 },
+  "護理長": { name: "準時交班", hours: 8, waitSeconds: 5 },
+  "廚房助理": { name: "備料班", hours: 4, waitSeconds: 5 },
+  "廚師": { name: "出餐高峰班", hours: 6, waitSeconds: 5 },
+  "主廚": { name: "品質監修班", hours: 8, waitSeconds: 5 },
+  "餐廳老闆": { name: "餐廳營運班", hours: 8, waitSeconds: 5 },
+  "詐騙犯": { name: "話術行動", hours: 4, waitSeconds: 5 },
+  "駭客": { name: "系統入侵", hours: 6, waitSeconds: 5 },
+  "走私者": { name: "地下運貨", hours: 8, waitSeconds: 5 },
+  "大橋頭營運長": { name: "地盤巡查", hours: 8, waitSeconds: 5 },
 } as const;
 
 export const HOSPITALITY_SPECIAL_HUNGER = {
@@ -194,14 +194,14 @@ export function careerWorkSpecialFor(job: string, hours?: number) {
 }
 
 /**
- * Return the real-world wait for a work action. Special-shift `minutes` are
- * real minutes (2–5); ordinary shifts use the intentionally shortened waits.
+ * Return the real-world wait for a work action. Special shifts intentionally
+ * use a five-second playtest wait; ordinary shifts keep their shortened waits.
  * Keeping this conversion shared prevents the worker and UI from drifting.
  */
 export function careerWorkWaitSeconds(job: string, hours: number, workaholic = false) {
   const special = careerWorkSpecialFor(job, hours);
   const baseSeconds = special
-    ? special.minutes * 60
+    ? special.waitSeconds
     : hours === 1 ? 30 : hours === 4 ? 120 : hours === 8 ? 240 : 0;
   return workaholic ? Math.ceil(baseSeconds * .9) : baseSeconds;
 }

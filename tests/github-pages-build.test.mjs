@@ -217,11 +217,11 @@ test("every defined special shift has one shared real-time wait", async () => {
   const jobs = await readFile(new URL("shared/jobs.ts", root), "utf8");
   const worker = await readFile(new URL("worker/index.ts", root), "utf8");
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
-  const entries = [...jobs.matchAll(/"([^"]+)": \{ name: "[^"]+", hours: (\d+), minutes: (\d+) \}/g)];
+  const entries = [...jobs.matchAll(/"([^"]+)": \{ name: "[^"]+", hours: (\d+), waitSeconds: (\d+) \}/g)];
   assert.equal(entries.length, 20);
-  for (const [, job, hours, minutes] of entries) {
+  for (const [, job, hours, waitSeconds] of entries) {
     assert.ok(Number(hours) >= 1 && Number(hours) <= 11, `${job} has an invalid special-shift length`);
-    assert.ok(Number(minutes) >= 2 && Number(minutes) <= 5, `${job} has an invalid real wait`);
+    assert.equal(Number(waitSeconds), 5, `${job} must use the five-second special-shift wait`);
   }
   assert.match(jobs, /export function careerWorkWaitSeconds/);
   assert.match(worker, /minutes = careerWorkWaitSeconds\(next\.current_job, hours/);
@@ -237,8 +237,8 @@ test("hospitality career has four ranks, hunger specials, and a daily-settled re
   const migration = await readFile(new URL("drizzle/0023_restaurant_owner.sql", root), "utf8");
 
   assert.match(jobs, /jobs: \["廚房助理", "廚師", "主廚", "餐廳老闆"\]/);
-  assert.match(jobs, /"廚房助理": \{ name: "備料班", hours: 4, minutes: 2 \}/);
-  assert.match(jobs, /"廚師": \{ name: "出餐高峰班", hours: 6, minutes: 3 \}/);
+  assert.match(jobs, /"廚房助理": \{ name: "備料班", hours: 4, waitSeconds: 5 \}/);
+  assert.match(jobs, /"廚師": \{ name: "出餐高峰班", hours: 6, waitSeconds: 5 \}/);
   assert.match(jobs, /HOSPITALITY_SPECIAL_HUNGER/);
   assert.match(jobs, /RESTAURANT_PURCHASE_PRICE = 400_000/);
   assert.match(jobs, /RESTAURANT_DAILY_NET = RESTAURANT_DAILY_GROSS - RESTAURANT_DAILY_COST/);
@@ -304,7 +304,7 @@ test("medical career adds health support, hospital discounts, and guarded player
   const migration = await readFile(new URL("drizzle/0020_old_starfox.sql", root), "utf8");
 
   assert.match(jobs, /jobs: \["診所助理", "護理師", "資深護理師", "護理長"\]/);
-  assert.match(jobs, /"護理師": \{ name: "輪班津貼", hours: 9, minutes: 3 \}/);
+  assert.match(jobs, /"護理師": \{ name: "輪班津貼", hours: 9, waitSeconds: 5 \}/);
   assert.match(jobs, /"診所助理": 0\.05/);
   assert.match(jobs, /"護理師": \{ name: "護理師照護", health: 20, price: 300, minutes: 15 \}/);
   assert.match(worker, /MEDICAL_REQUEST_TIMEOUT_MS = 30_000/);
