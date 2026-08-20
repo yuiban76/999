@@ -3,8 +3,8 @@
 /* eslint-disable jsx-a11y/no-noninteractive-element-interactions -- modal backdrops intentionally close when the pointer lands outside the dialog. */
 /* eslint-disable @next/next/no-img-element -- avatar images come from runtime Cloudflare asset URLs. */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ABILITY_LABELS, ACADEMIES, BANK_LOAN_RATE_BP, careerForCategory, careerRequirements, careerThresholdForCategory, careerWorkSpecialFor, categoryInfo, crimeArrestChanceFor, crimeSentenceMinutesFor, financeDepositRateFor, financeLoanTermsFor, HACK_DAILY_LIMIT, HACK_MAX_STEAL, HACK_STEAL_RATE, HACK_SUCCESS_CHANCE, hospitalitySpecialHungerFor, JOB_CATEGORIES, jobInfo, medicalHospitalDiscountFor, medicalTreatmentFor, medicalWorkHealthBonusFor, meetsCareerRequirements, nextCareerForCategory, RESTAURANT_DAILY_NET, RESTAURANT_PURCHASE_PRICE, TERRITORY_DAILY_CAP, TERRITORY_VISIT_REWARD, WRITER_DAILY_FAN_RATE, WRITER_DAILY_WRITING_LIMIT, WRITER_MAX_ACTIVE_BOOKS, WRITER_MAX_PURCHASES_PER_BOOK, writerBookPriceFor, writerFanRangeFor, type Abilities } from "../shared/jobs";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ABILITY_LABELS, ABILITY_MAX, ACADEMIES, BANK_LOAN_RATE_BP, careerForCategory, careerRequirements, careerThresholdForCategory, careerWorkSpecialFor, categoryInfo, crimeArrestChanceFor, crimeSentenceMinutesFor, financeDepositRateFor, financeLoanTermsFor, HACK_DAILY_LIMIT, HACK_MAX_STEAL, HACK_STEAL_RATE, HACK_SUCCESS_CHANCE, hospitalitySpecialHungerFor, JOB_CATEGORIES, jobInfo, medicalHospitalDiscountFor, medicalTreatmentFor, medicalWorkHealthBonusFor, meetsCareerRequirements, nextCareerForCategory, RESTAURANT_DAILY_NET, RESTAURANT_PURCHASE_PRICE, TERRITORY_DAILY_CAP, TERRITORY_VISIT_REWARD, WRITER_DAILY_FAN_RATE, WRITER_DAILY_WRITING_LIMIT, WRITER_MAX_ACTIVE_BOOKS, WRITER_MAX_PURCHASES_PER_BOOK, writerBookPriceFor, writerFanRangeFor, type Abilities } from "../shared/jobs";
 import { CITY_EVENTS, STORY_CHAPTERS, TALENTS } from "../shared/progression";
 import { isHospitalRegularOpen, isLocationOpen, worldMinutes } from "../shared/world";
 import { CAREER_PREVIEW_ROUTES } from "../shared/careerPreview";
@@ -167,6 +167,7 @@ type PokerState = {
   street?: string;
   currentBet?: number;
   turnSeat?: number;
+  nextActionAt?: number;
   seats: Array<{ id: string; displayName: string; seatNo: number; status: string; bet: number; streetBet?: number; cards: string[]; result: string; isMine: boolean }>;
   hand: null | { cards: string[]; bet: number; streetBet?: number; seatNo: number | null; status: string; result: string; isTurn?: boolean };
 };
@@ -326,7 +327,7 @@ const locations: Array<{ id: LocationId; emoji: string; image?: string; name: st
   { id: "shopping", emoji: "◇", name: "購物街", caption: "補充飽足，偶爾也犒賞一下自己", hours: "06:00～24:00" },
   { id: "bookstore", emoji: "書", name: "城市書店", caption: "閱讀與出版作品的地方", hours: "07:00～23:00" },
   { id: "hotel", emoji: "旅", name: "不夜旅店", caption: "沒有住所也能住宿，餐點較貴但全天供應", hours: "24 小時" },
-  { id: "casino", emoji: "♠", image: "./casino-icon.png", name: "幸運賭場", caption: "最多五位玩家同桌，各自挑戰二十一點莊家", hours: "24 小時" },
+  { id: "casino", emoji: "♠", image: "./casino-icon.png", name: "幸運賭場", caption: "最多五人同桌遊玩二十一點、德州撲克、賓果與錦標賽", hours: "24 小時" },
   { id: "school", emoji: "▤", name: "未來學院", caption: "投資自己，讓選擇越來越多", hours: "07:00～23:00" },
   { id: "hospital", emoji: "✚", name: "市立醫院", caption: "一般診療 07:00～23:00，急診全天開放", hours: "急診 24 小時" },
   { id: "prison", emoji: "▥", name: "監獄", caption: "違法行為被捕後服刑的地方", hours: "24 小時" },
@@ -347,7 +348,6 @@ const hasControlCharacters = (value: string) => Array.from(value).some((characte
 });
 const formatWaitMinutes = (value: number) => value >= 60 && value % 60 === 0 ? `${value / 60} 分鐘` : `${value} 分鐘`;
 const TOURNAMENT_STARTING_STACK = 100;
-const ABILITY_MAX = 1500;
 const levelProgress = (exp: number) => {
   return Math.min(100, Math.max(0, (exp / ABILITY_MAX) * 100));
 };
@@ -358,6 +358,7 @@ const abilitiesFor = (player: Player): Abilities => ({
   social: player.socialExp,
   charisma: player.charismaExp,
 });
+const displayJobName = (job: string) => job === "unemployed" ? "待業者" : job;
 const formatRequirements = (requirements: Partial<Abilities>) => Object.entries(requirements)
   .map(([key, value]) => `${ABILITY_LABELS[key as keyof Abilities]} ${value}`)
   .join("、");
@@ -655,8 +656,16 @@ function GameHome() {
   const [notice, setNotice] = useState("正在連接人生世界……");
   const [serverTimeOffsetMs, setServerTimeOffsetMs] = useState(0);
   const [sharedMinutes, setSharedMinutes] = useState(worldMinutes());
+  const [displayElapsedMinutes, setDisplayElapsedMinutes] = useState(INITIAL_PLAYER.elapsedMinutes);
+  const lastSyncedElapsedRef = useRef(INITIAL_PLAYER.elapsedMinutes);
+  const syncPlayer = useCallback((nextPlayer: Player, resetClock = false) => {
+    const serverClockAdvanced = nextPlayer.elapsedMinutes !== lastSyncedElapsedRef.current;
+    lastSyncedElapsedRef.current = nextPlayer.elapsedMinutes;
+    setPlayer(nextPlayer);
+    setDisplayElapsedMinutes((displayedMinutes) => resetClock || serverClockAdvanced ? nextPlayer.elapsedMinutes : Math.max(displayedMinutes, nextPlayer.elapsedMinutes));
+  }, []);
   const gameClock = useMemo(() => clock(sharedMinutes), [sharedMinutes]);
-  const playClock = useMemo(() => clock(player.elapsedMinutes), [player.elapsedMinutes]);
+  const playClock = useMemo(() => clock(displayElapsedMinutes), [displayElapsedMinutes]);
   const currentLocation = locations.find((item) => item.id === player.location)!;
   const playerAbilities = abilitiesFor(player);
   const career = careerForCategory(player.jobCategory, player.jobExp, player.currentJob, playerAbilities);
@@ -664,7 +673,7 @@ function GameHome() {
   const nextCareerTitle = nextCareer?.title ?? "職涯最高階級";
   const careerProgress = nextCareer ? Math.max(0, Math.min(100, ((player.jobExp - career.threshold) / (nextCareer.threshold - career.threshold)) * 100)) : 100;
   const avatarSrc = profile?.avatarUrl ? `${API_ORIGIN}${profile.avatarUrl}` : "";
-  const rentalMinutesLeft = Math.max(0, player.rentedUntil - player.elapsedMinutes);
+  const rentalMinutesLeft = Math.max(0, player.rentedUntil - displayElapsedMinutes);
   const rentalDaysLeft = rentalMinutesLeft ? Math.ceil(rentalMinutesLeft / 1440) : 0;
   const housingLabel = player.ownsHome ? "自有住宅 · 城市小宅" : rentalDaysLeft ? `租屋 · ${player.rentalName}（剩 ${rentalDaysLeft} 天）` : "目前沒有住所";
   const selectedJobCategory = JOB_CATEGORIES.find((category) => category.id === jobCategory) ?? JOB_CATEGORIES[0];
@@ -695,6 +704,12 @@ function GameHome() {
   const schoolOpen = isLocationOpen("school", sharedMinutes);
   const hospitalRegularOpen = isHospitalRegularOpen(sharedMinutes);
   const medicalHospitalDiscount = medicalHospitalDiscountFor(player.currentJob);
+  const cityHospitalDiscount = cityMemory.state.name === "健康警報" ? 0.2 : 0;
+  const effectiveHospitalDiscount = Math.max(medicalHospitalDiscount, cityHospitalDiscount);
+  const dailyRent = player.talents.includes("rent_master") ? 315 : 350;
+  const mealDiscount = player.talents.includes("frugal") ? 0.9 : 1;
+  const mealPrice = (basePrice: number) => Math.floor(basePrice * mealDiscount);
+  const mealDiscountLabel = mealDiscount < 1 ? " · 精打細算 9 折" : "";
   const authoritativeNow = currentWallClockMs() + serverTimeOffsetMs;
   const actionSecondsLeft = Math.max(0, Math.ceil((player.actionAvailableAt - authoritativeNow) / 1000));
   const actionLocked = actionSecondsLeft > 0;
@@ -714,7 +729,7 @@ function GameHome() {
       const data = await response.json() as Bootstrap;
       if (typeof data.serverNow === "number") setServerTimeOffsetMs(data.serverNow - currentWallClockMs());
       if (data.authenticated || !quiet) {
-        setPlayer(data.player);
+        syncPlayer(data.player, !quiet);
         setProfile(data.profile);
       }
       setOnline(data.online);
@@ -736,7 +751,7 @@ function GameHome() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [syncPlayer]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadWorld(); }, 0);
@@ -760,6 +775,14 @@ function GameHome() {
     const timer = window.setInterval(updateClock, 1_000);
     return () => window.clearInterval(timer);
   }, [serverTimeOffsetMs]);
+
+  useEffect(() => {
+    if (!profile) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") setDisplayElapsedMinutes((minutes) => minutes + 1);
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, [profile]);
 
   useEffect(() => {
     if (!profile || ((!casino.phase || casino.phase === "idle") && (!poker.phase || poker.phase === "idle") && bingo.status !== "drawing" && tournament.status !== "playing")) return;
@@ -787,7 +810,7 @@ function GameHome() {
       const result = guestAction(player, action, payload, authoritativeNow);
       if ("error" in result) setNotice(result.error || "行動失敗。");
       else if (result.player) {
-        setPlayer(result.player);
+        syncPlayer(result.player, action === "reset");
         setNotice(`${result.message}（訪客進度不會儲存）`);
         const time = clock(result.player.elapsedMinutes).time;
         if (action !== "move") setFeed((items) => [{ id: crypto.randomUUID(), time, title: result.title || "完成行動", detail: result.message || "", tone: "neutral" as const }, ...items].slice(0, 6));
@@ -804,7 +827,7 @@ function GameHome() {
       const data = await response.json() as { serverNow?: number; player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; bingo?: BingoState; tournament?: TournamentState; bookStore?: BookStoreState; cityMemory?: CityMemory; transferRequests?: TransferRequest[]; medicalRequests?: MedicalRequest[]; loanRequests?: LoanRequest[]; scratch?: { price: number; prize: number } | null; message?: string };
       if (typeof data.serverNow === "number") setServerTimeOffsetMs(data.serverNow - currentWallClockMs());
       if (!response.ok || !data.player) throw new Error(data.message || "行動失敗");
-      setPlayer(data.player);
+      syncPlayer(data.player, action === "reset");
       if (data.online) setOnline(data.online);
       if (data.feed) setFeed(data.feed);
       if (data.casino) setCasino(data.casino);
@@ -908,7 +931,7 @@ function GameHome() {
       const data = await response.json() as { profile?: Profile; player?: Player; message?: string };
       if (!response.ok || !data.profile || !data.player) throw new Error(data.message || "玩家名字更新失敗。");
       setProfile(data.profile);
-      setPlayer(data.player);
+      syncPlayer(data.player);
       setOnline((items) => items.map((item) => item.id === data.profile!.id ? { ...item, displayName } : item));
       setNameOpen(false);
       setNotice(data.message || "玩家名字已更新。");
@@ -923,7 +946,7 @@ function GameHome() {
   async function logout() {
     try { await fetch(`${API_ORIGIN}/api/auth/logout`, { method: "POST", headers: apiHeaders() }); } catch { /* local logout still works */ }
     window.localStorage.removeItem(TOKEN_KEY);
-    setProfile(null); setNameOpen(false); setOnline([]); setFeed([]); setTransferRequests([]); setMedicalRequests([]); setLoanRequests([]); setTransferTarget(null); setLoanTarget(null); setBookTitle(""); setBookStore({ books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK }); setCasino({ capacity: 5, activeCount: 0, seats: [], hand: null }); setPlayer(INITIAL_PLAYER);
+    setProfile(null); setNameOpen(false); setOnline([]); setFeed([]); setTransferRequests([]); setMedicalRequests([]); setLoanRequests([]); setTransferTarget(null); setLoanTarget(null); setBookTitle(""); setBookStore({ books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK }); setCasino({ capacity: 5, activeCount: 0, seats: [], hand: null }); syncPlayer(INITIAL_PLAYER, true);
     setNotice("已登出；目前為訪客試玩模式。");
   }
 
@@ -1009,11 +1032,11 @@ function GameHome() {
           </nav>
           <div className="action-stage">
             <div className="stage-number">{String(locations.findIndex((item) => item.id === player.location) + 1).padStart(2, "0")}</div>
-            <div className="action-intro"><span>今天，想把時間花在哪裡？</span><h3>{actionTitle(player.location)}</h3><p>{actionLocked ? `${player.actionLabel || "目前的行動"}進行中，${actionSecondsLeft} 秒後可再次行動；期間可移動、換職、使用銀行、處理贈送／詐騙／治療／貸款邀請，或前往賭場遊玩。` : actionDescription(player.location)}</p></div>
+            <div className="action-intro"><span>今天，想把時間花在哪裡？</span><h3>{actionTitle(player.location)}</h3><p>{actionLocked ? `${player.actionLabel || "目前的行動"}進行中，${actionSecondsLeft} 秒後可再次行動；期間可移動、換職、使用銀行、處理贈送／詐騙／治療／貸款邀請，或前往賭場遊玩。` : actionDescription(player.location, dailyRent)}</p></div>
             <div className="action-cards">
               {player.location === "home" && <ActionCard icon="☾" title="睡眠 8 小時" meta="現實等待 2 分鐘 · 體力全滿 · 健康 +5" button="好好休息" onClick={() => void act("sleep")} disabled={actionBusy} />}
               {player.location === "prison" && isPrisoner && <ActionCard icon="▥" title="監獄服刑中" meta={`罪名：${player.prisonCrime || "違法行為"} · 剩餘在線遊玩約 ${prisonHoursLeft} 小時 · 其他玩家可查看紀錄`} button="等待服刑結束" onClick={() => undefined} disabled />}
-              {player.location === "realtor" && <><ActionCard icon="01" title="城市小套房 · 1 天" meta="每日 NT$350 · 租金 NT$350" button="租 1 天" onClick={() => void act("housing", { kind: "rent", days: 1 })} disabled={actionBusy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /><ActionCard icon="07" title="城市小套房 · 7 天" meta="每日 NT$350 · 租金 NT$2,450" button="租 7 天" onClick={() => void act("housing", { kind: "rent", days: 7 })} featured disabled={actionBusy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /><ActionCard icon="買" title="購買城市小宅" meta="NT$50,000 · 永久住所 · 買房後仍可查看租屋" button={player.ownsHome ? "已擁有，仍可看租屋" : "購買房屋"} onClick={() => void act("housing", { kind: "buy" })} disabled={actionBusy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /></>}
+              {player.location === "realtor" && <><ActionCard icon="01" title="城市小套房 · 1 天" meta={`每日 NT$${formatMoney(dailyRent)} · 租金 NT$${formatMoney(dailyRent)}${dailyRent < 350 ? " · 租屋高手 9 折" : ""}`} button="租 1 天" onClick={() => void act("housing", { kind: "rent", days: 1 })} disabled={actionBusy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /><ActionCard icon="07" title="城市小套房 · 7 天" meta={`每日 NT$${formatMoney(dailyRent)} · 租金 NT$${formatMoney(dailyRent * 7)}${dailyRent < 350 ? " · 租屋高手 9 折" : ""}`} button="租 7 天" onClick={() => void act("housing", { kind: "rent", days: 7 })} featured disabled={actionBusy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /><ActionCard icon="買" title="購買城市小宅" meta="NT$50,000 · 永久住所 · 買房後仍可查看租屋" button={player.ownsHome ? "已擁有，仍可看租屋" : "購買房屋"} onClick={() => void act("housing", { kind: "buy" })} disabled={actionBusy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /></>}
               {player.location === "bank" && <BankPanel player={player} busy={busy || !bankOpen} closed={!bankOpen} onAction={(kind, amount) => void act("bank", { kind, amount })} />}
               {player.location === "business" && <>
                 <ActionCard icon="職" title="找工作" meta="第一階工作免能力門檻 · 產業路線 · 任何職位都能換職" button="打開產業列表" onClick={() => setJobOpen(true)} featured disabled={busy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} />
@@ -1031,12 +1054,12 @@ function GameHome() {
                   </>}
                 </>}
               </>}
-              {player.location === "shopping" && <><ActionCard icon="刮" title="幸運刮刮樂" meta="每張 NT$100 · 最高獎金 NT$50,000" button="購買並刮開" onClick={() => void act("scratch")} featured disabled={actionBusy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="飯" title="巷口飯糰" meta="NT$45 · 飽足 +20" button="買來吃" onClick={() => void act("eat", { kind: "rice" })} disabled={actionBusy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="餐" title="豐盛便當" meta="NT$100 · 飽足 +45" button="享用便當" onClick={() => void act("eat", { kind: "bento" })} disabled={actionBusy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /></>}
+              {player.location === "shopping" && <><ActionCard icon="刮" title="幸運刮刮樂" meta="每張 NT$100 · 最高獎金 NT$50,000" button="購買並刮開" onClick={() => void act("scratch")} featured disabled={actionBusy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="飯" title="巷口飯糰" meta={`NT$${formatMoney(mealPrice(45))} · 飽足 +20${mealDiscountLabel}`} button="買來吃" onClick={() => void act("eat", { kind: "rice" })} disabled={actionBusy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /><ActionCard icon="餐" title="豐盛便當" meta={`NT$${formatMoney(mealPrice(100))} · 飽足 +45${mealDiscountLabel}`} button="享用便當" onClick={() => void act("eat", { kind: "bento" })} disabled={actionBusy || !shoppingOpen} disabledLabel={!shoppingOpen ? "已關門" : undefined} /></>}
               {player.location === "bookstore" && <BookStorePanel state={bookStore} currentJob={player.currentJob} signedIn={Boolean(profile)} busy={busy || !bookstoreOpen} closed={!bookstoreOpen} title={bookTitle} setTitle={setBookTitle} onAction={(action, payload) => void act(action, payload)} />}
-              {player.location === "hotel" && <><ActionCard icon="工" title="旅店臨時工 · 30 秒" meta="現實等待 30 秒 · 收入 NT$100 · 不扣體力、飽足、健康 · 無職業經驗" button="開始打工" onClick={() => void act("hotel", { kind: "work" })} featured disabled={actionBusy} /><ActionCard icon="宿" title="旅店住宿一晚" meta="NT$1,200 · 現實等待 2 分鐘 · 體力全滿" button="辦理入住" onClick={() => void act("hotel", { kind: "stay" })} disabled={actionBusy || player.ownsHome || rentalDaysLeft > 0} disabledLabel={player.ownsHome || rentalDaysLeft > 0 ? "已有住所" : undefined} /><ActionCard icon="餐" title="24 小時旅店餐" meta="NT$250 · 飽足 +45 · 立即完成" button="購買旅店餐" onClick={() => void act("hotel", { kind: "meal" })} disabled={actionBusy} /><ActionCard icon="豪" title="24 小時豪華餐" meta="NT$500 · 飽足 +80 · 立即完成" button="購買豪華餐" onClick={() => void act("hotel", { kind: "luxury" })} disabled={actionBusy} /></>}
+              {player.location === "hotel" && <><ActionCard icon="工" title="旅店臨時工 · 30 秒" meta="現實等待 30 秒 · 收入 NT$100 · 不扣體力、飽足、健康 · 無職業經驗" button="開始打工" onClick={() => void act("hotel", { kind: "work" })} featured disabled={actionBusy} /><ActionCard icon="宿" title="旅店住宿一晚" meta="NT$1,200 · 現實等待 2 分鐘 · 體力全滿" button="辦理入住" onClick={() => void act("hotel", { kind: "stay" })} disabled={actionBusy || player.ownsHome || rentalDaysLeft > 0} disabledLabel={player.ownsHome || rentalDaysLeft > 0 ? "已有住所" : undefined} /><ActionCard icon="餐" title="24 小時旅店餐" meta={`NT$${formatMoney(mealPrice(250))} · 飽足 +45 · 立即完成${mealDiscountLabel}`} button="購買旅店餐" onClick={() => void act("hotel", { kind: "meal" })} disabled={actionBusy} /><ActionCard icon="豪" title="24 小時豪華餐" meta={`NT$${formatMoney(mealPrice(500))} · 飽足 +80 · 立即完成${mealDiscountLabel}`} button="購買豪華餐" onClick={() => void act("hotel", { kind: "luxury" })} disabled={actionBusy} /></>}
                 {player.location === "casino" && <div className="casino-games"><div className="casino-game-tabs"><button className={casinoGame === "blackjack" ? "active" : ""} onClick={() => setCasinoGame("blackjack")}>二十一點 · 真實牌靴</button><button className={casinoGame === "poker" ? "active" : ""} onClick={() => setCasinoGame("poker")}>德州撲克 · 完整下注</button><button className={casinoGame === "bingo" ? "active" : ""} onClick={() => setCasinoGame("bingo")}>賓果 · 公開開獎</button><button className={casinoGame === "tournament" ? "active" : ""} onClick={() => setCasinoGame("tournament")}>錦標賽 · 積分賽</button></div>{casinoGame === "blackjack" ? <CasinoTable state={casino} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`casino_${action}`, payload)} /> : casinoGame === "poker" ? <PokerTable state={poker} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`poker_${action}`, payload)} /> : casinoGame === "bingo" ? <BingoTable state={bingo} signedIn={Boolean(profile)} busy={busy} onAction={(action, entryFee) => void act(`bingo_${action}`, { entryFee })} /> : <TournamentTable state={tournament} signedIn={Boolean(profile)} busy={busy} onAction={(action, payload) => void act(`tournament_${action}`, payload)} />}</div>}
               {player.location === "school" && ACADEMIES.map((academy, index) => <ActionCard key={academy.id} icon={academy.icon} title={academy.name} meta={`NT$500 · 現實等待 1 分鐘 · ${formatRequirements(academy.gains)}`} button="報名上課" onClick={() => void act("study", { academy: academy.id })} featured={index === 0} disabled={actionBusy || !schoolOpen} disabledLabel={!schoolOpen ? "已關門" : undefined} />)}
-              {player.location === "hospital" && <><ActionCard icon="急" title="24 小時急診" meta={`NT$${formatMoney(Math.floor(2500 * (1 - medicalHospitalDiscount)))} · 等待 20 秒 · 健康至少恢復至 70`} button="前往急診" onClick={() => void act("hospital", { kind: "emergency" })} featured disabled={actionBusy} /><ActionCard icon="診" title="一般門診" meta={`07:00～23:00 · NT$${formatMoney(Math.floor(600 * (1 - medicalHospitalDiscount)))} · 等待 15 秒 · 健康 +25`} button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /><ActionCard icon="療" title="完整治療" meta={`07:00～23:00 · NT$${formatMoney(Math.floor(1500 * (1 - medicalHospitalDiscount)))} · 等待 30 秒 · 健康至少恢復至 80`} button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} />{medicalHospitalDiscount > 0 && <p className="hospital-discount-note">醫療照護職業折抵 {Math.round(medicalHospitalDiscount * 100)}%（與城市健康警報折扣取較高者）</p>}</>}
+              {player.location === "hospital" && <><ActionCard icon="急" title="24 小時急診" meta={`NT$${formatMoney(Math.floor(2500 * (1 - effectiveHospitalDiscount)))} · 等待 20 秒 · 健康至少恢復至 70`} button="前往急診" onClick={() => void act("hospital", { kind: "emergency" })} featured disabled={actionBusy} /><ActionCard icon="診" title="一般門診" meta={`07:00～23:00 · NT$${formatMoney(Math.floor(600 * (1 - effectiveHospitalDiscount)))} · 等待 15 秒 · 健康 +25`} button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /><ActionCard icon="療" title="完整治療" meta={`07:00～23:00 · NT$${formatMoney(Math.floor(1500 * (1 - effectiveHospitalDiscount)))} · 等待 30 秒 · 健康至少恢復至 80`} button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} />{effectiveHospitalDiscount > 0 && <p className="hospital-discount-note">目前醫療費用折抵 {Math.round(effectiveHospitalDiscount * 100)}%（職業與城市效果取較高者）</p>}</>}
             </div>
           </div>
           <footer className="world-footer"><span>只有上線時計入個人遊玩天數 · 城市時間全服同步</span><button onClick={() => void act("reset")} disabled={busy}>重新開始人生</button></footer>
@@ -1046,7 +1069,7 @@ function GameHome() {
           <div className="section-heading story-title"><span>多人世界</span><small>LIVE LOBBY</small></div>
           <div className="online-summary"><strong><i />{online.length} 位在線</strong><span>每 5 秒同步</span></div>
           <ul className="online-list">
-            {online.length ? online.slice(0, 8).map((item) => { const service = medicalTreatmentFor(item.currentJob); const loanTerms = financeLoanTermsFor(item.currentJob); const isOther = Boolean(profile && item.id !== profile.id); const isPrisonPlayer = item.location === "prison"; return <li key={item.id}><button type="button" className={`mini-avatar ${item.avatarUrl ? "has-photo" : ""}`} aria-label={`放大查看${item.displayName}的大頭貼`} onClick={() => setEnlargedPlayer(item)}>{item.avatarUrl ? <img src={`${API_ORIGIN}${item.avatarUrl}`} alt="" /> : item.displayName.slice(0, 1)}</button><div><strong>{item.displayName}{item.id === profile?.id ? "（你）" : ""}</strong><small>{isPrisonPlayer ? `監獄服刑 · ${item.prisonCrime || "違法行為"}` : `正在 ${locationName(item.location)} · ${item.currentJob === "待業者" ? "待業者" : item.currentJob}`}</small><span className="online-finance">現金 NT${formatMoney(item.cash)} · 貸款 NT${formatMoney(item.loanBalance)}</span>{isOther && !isPrisoner && <span className="player-transfer-actions"><button type="button" onClick={() => openTransfer(item, "gift")} disabled={busy || player.cash < 1}>贈送</button>{player.currentJob === "詐騙犯" && !isPrisonPlayer && <button type="button" className="scam" onClick={() => openTransfer(item, "scam")} disabled={busy || player.cash < 2}>詐騙</button>}{player.currentJob === "駭客" && !isPrisonPlayer && <button type="button" className="crime" title={`每日最多 ${HACK_DAILY_LIMIT} 次 · 成功率 ${Math.round(HACK_SUCCESS_CHANCE * 100)}% · 竊取目標現金 ${Math.round(HACK_STEAL_RATE * 100)}%，單次上限 NT$${formatMoney(HACK_MAX_STEAL)}`} onClick={() => void act("crime_hack", { targetId: item.id })} disabled={busy || player.hackUses >= HACK_DAILY_LIMIT}>竊取現金</button>}{service && <button type="button" className="medical" onClick={() => requestMedicalTreatment(item)} disabled={busy || player.health >= 100}>請求治療 · NT${formatMoney(service.price)}</button>}{loanTerms && <button type="button" className="finance" onClick={() => openLoanRequest(item)} disabled={busy || player.loanBalance > 0}>借款方案</button>}</span>}</div></li>; }) : <li className="empty-online">登入後，你會在這裡遇見其他玩家。</li>}
+            {online.length ? online.slice(0, 8).map((item) => { const service = medicalTreatmentFor(item.currentJob); const loanTerms = financeLoanTermsFor(item.currentJob); const isOther = Boolean(profile && item.id !== profile.id); const isPrisonPlayer = item.location === "prison"; return <li key={item.id}><button type="button" className={`mini-avatar ${item.avatarUrl ? "has-photo" : ""}`} aria-label={`放大查看${item.displayName}的大頭貼`} onClick={() => setEnlargedPlayer(item)}>{item.avatarUrl ? <img src={`${API_ORIGIN}${item.avatarUrl}`} alt="" /> : item.displayName.slice(0, 1)}</button><div><strong>{item.displayName}{item.id === profile?.id ? "（你）" : ""}</strong><small>{isPrisonPlayer ? `監獄服刑 · ${item.prisonCrime || "違法行為"}` : `正在 ${locationName(item.location)} · ${displayJobName(item.currentJob)}`}</small><span className="online-finance">現金 NT${formatMoney(item.cash)} · 貸款 NT${formatMoney(item.loanBalance)}</span>{isOther && !isPrisoner && <span className="player-transfer-actions"><button type="button" onClick={() => openTransfer(item, "gift")} disabled={busy || player.cash < 1}>贈送</button>{player.currentJob === "詐騙犯" && !isPrisonPlayer && <button type="button" className="scam" onClick={() => openTransfer(item, "scam")} disabled={busy || player.cash < 2}>詐騙</button>}{player.currentJob === "駭客" && !isPrisonPlayer && <button type="button" className="crime" title={`每日最多 ${HACK_DAILY_LIMIT} 次 · 成功率 ${Math.round(HACK_SUCCESS_CHANCE * 100)}% · 竊取目標現金 ${Math.round(HACK_STEAL_RATE * 100)}%，單次上限 NT$${formatMoney(HACK_MAX_STEAL)}`} onClick={() => void act("crime_hack", { targetId: item.id })} disabled={busy || player.hackUses >= HACK_DAILY_LIMIT}>竊取現金</button>}{service && <button type="button" className="medical" onClick={() => requestMedicalTreatment(item)} disabled={busy || player.health >= 100}>請求治療 · NT${formatMoney(service.price)}</button>}{loanTerms && <button type="button" className="finance" onClick={() => openLoanRequest(item)} disabled={busy || player.loanBalance > 0}>借款方案</button>}</span>}</div></li>; }) : <li className="empty-online">登入後，你會在這裡遇見其他玩家。</li>}
           </ul>
           <div className="section-heading feed-heading"><span>城市動態</span><small>ACTIVITY</small></div>
           <ol className="feed-list">
@@ -1127,7 +1150,8 @@ function GameHome() {
 }
 
 function Skill({ name, exp }: { name: string; exp: number }) {
-  return <div className="skill-row"><div><span>{name}</span><strong>{exp} / {ABILITY_MAX}</strong></div><div className="skill-track"><i style={{ width: `${levelProgress(exp)}%` }} /></div></div>;
+  const displayedExp = Math.min(ABILITY_MAX, Math.max(0, exp));
+  return <div className="skill-row"><div><span>{name}</span><strong>{displayedExp} / {ABILITY_MAX}</strong></div><div className="skill-track"><i style={{ width: `${levelProgress(displayedExp)}%` }} /></div></div>;
 }
 
 function ActionCard({ icon, title, meta, button, featured = false, disabled, disabledLabel, onClick }: { icon: string; title: string; meta: string; button: string; featured?: boolean; disabled: boolean; disabledLabel?: string; onClick: () => void }) {
@@ -1139,11 +1163,12 @@ function BookStorePanel({ state, currentJob, signedIn, busy, closed, title, setT
   const canPublish = Boolean(signedIn && price);
   const ownBooks = state.books.filter((book) => book.isMine);
   const availableBooks = state.books.filter((book) => !book.isMine && book.status === "active");
+  const bookLimitReached = ownBooks.length >= state.maxActiveBooks;
   return <section className="bookstore-panel">
     <header><div><span>CITY BOOKSTORE</span><strong>作品與書架</strong></div><small>{closed ? "目前已關門" : "07:00～23:00 開放"}</small></header>
-    {canPublish ? <form className="book-publish-form" onSubmit={(event) => { event.preventDefault(); const clean = title.trim(); if (clean) { onAction("book_publish", { title: clean }); setTitle(""); } }}><label>建立書籍名稱 <small>簽約作家 NT${formatMoney(price!)} · 目前上架 {ownBooks.filter((book) => book.status === "active").length}/{state.maxActiveBooks}</small><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={40} placeholder="輸入書名即可" disabled={busy} required /></label><button type="submit" disabled={busy || closed || !title.trim() || ownBooks.filter((book) => book.status === "active").length >= state.maxActiveBooks}>上架作品</button></form> : <p className="bookstore-note">簽約作家後才能出版；目前可自由瀏覽其他玩家的作品。</p>}
-    <div className="bookstore-columns"><div><div className="section-heading"><span>書店架上</span><small>{availableBooks.length} 本</small></div>{availableBooks.length ? <div className="book-list">{availableBooks.map((book) => <article className="book-card" key={book.id}><div><strong>{book.title}</strong><small>{book.authorName} · NT${formatMoney(book.price)} · 已售 {book.salesCount}</small><em>你已購買 {book.ownedCount}/{state.maxPurchasesPerBook} 次</em></div><button onClick={() => onAction("book_buy", { bookId: book.id })} disabled={busy || closed || book.ownedCount >= state.maxPurchasesPerBook}> {book.ownedCount >= state.maxPurchasesPerBook ? "已達上限" : `購買 NT$${formatMoney(book.price)}`}</button></article>)}</div> : <p className="bookstore-empty">目前沒有其他玩家上架作品。</p>}</div><div><div className="section-heading"><span>我的作品</span><small>{ownBooks.length} 本</small></div>{ownBooks.length ? <div className="book-list">{ownBooks.map((book) => <article className="book-card mine" key={book.id}><div><strong>{book.title}</strong><small>定價 NT${formatMoney(book.price)} · 已售 {book.salesCount}</small><em>{book.status === "active" ? "架上販售中" : "已下架"}</em></div><button onClick={() => onAction("book_toggle", { bookId: book.id, status: book.status === "active" ? "hidden" : "active" })} disabled={busy || closed || (book.status !== "active" && ownBooks.filter((item) => item.status === "active").length >= state.maxActiveBooks)}>{book.status === "active" ? "下架" : "重新上架"}</button></article>)}</div> : <p className="bookstore-empty">尚未建立作品。</p>}</div></div>
-    <footer>每本書每位玩家最多購買 {state.maxPurchasesPerBook} 次；購買款項會立即存入作者手上現金。出版與上下架不消耗等待時間。</footer>
+    {canPublish ? <form className="book-publish-form" onSubmit={(event) => { event.preventDefault(); const clean = title.trim(); if (clean) { onAction("book_publish", { title: clean }); setTitle(""); } }}><label>建立書籍名稱 <small>簽約作家 NT${formatMoney(price!)} · 已建立 {ownBooks.length}/{state.maxActiveBooks} 本</small><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={40} placeholder="輸入書名即可" disabled={busy || bookLimitReached} required /></label><button type="submit" disabled={busy || closed || !title.trim() || bookLimitReached}>{bookLimitReached ? "已達十本上限" : "上架作品"}</button></form> : <p className="bookstore-note">簽約作家後才能出版；目前可自由瀏覽其他玩家的作品。</p>}
+    <div className="bookstore-columns"><div><div className="section-heading"><span>書店架上</span><small>{availableBooks.length} 本</small></div>{availableBooks.length ? <div className="book-list">{availableBooks.map((book) => <article className="book-card" key={book.id}><div><strong>{book.title}</strong><small>{book.authorName} · NT${formatMoney(book.price)} · 已售 {book.salesCount}</small><em>你已購買 {book.ownedCount}/{state.maxPurchasesPerBook} 次</em></div><button onClick={() => onAction("book_buy", { bookId: book.id })} disabled={busy || closed || book.ownedCount >= state.maxPurchasesPerBook}> {book.ownedCount >= state.maxPurchasesPerBook ? "已達上限" : `購買 NT$${formatMoney(book.price)}`}</button></article>)}</div> : <p className="bookstore-empty">目前沒有其他玩家上架作品。</p>}</div><div><div className="section-heading"><span>我的作品</span><small>{ownBooks.length}/{state.maxActiveBooks} 本</small></div>{ownBooks.length ? <div className="book-list">{ownBooks.map((book) => <article className="book-card mine" key={book.id}><div><strong>{book.title}</strong><small>定價 NT${formatMoney(book.price)} · 已售 {book.salesCount}</small><em>{book.status === "active" ? "架上販售中" : "已下架"}</em></div><button onClick={() => onAction("book_toggle", { bookId: book.id, status: book.status === "active" ? "hidden" : "active" })} disabled={busy || closed}>{book.status === "active" ? "下架" : "重新上架"}</button></article>)}</div> : <p className="bookstore-empty">尚未建立作品。</p>}</div></div>
+    <footer>每位作者最多建立 {state.maxActiveBooks} 本書；每本書每位玩家最多購買 {state.maxPurchasesPerBook} 次。購買款項會立即存入作者手上現金，出版與上下架不消耗等待時間。</footer>
   </section>;
 }
 
@@ -1314,10 +1339,17 @@ function PokerTable({ state, signedIn, busy, maxBet, onAction }: { state: PokerS
   const smallBlindSeat = state.seats.filter((seat) => seat.status === "ready").sort((left, right) => left.seatNo - right.seatNo)[0]?.seatNo;
   const isSmallBlind = Boolean(state.hand?.seatNo && smallBlindSeat === state.hand.seatNo);
   const playing = state.phase === "playing";
+  const [now, setNow] = useState(currentWallClockMs());
+  useEffect(() => {
+    if (!playing) return;
+    const timer = window.setInterval(() => setNow(currentWallClockMs()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [playing]);
+  const turnSeconds = playing && state.nextActionAt ? Math.max(0, Math.ceil((state.nextActionAt - now) / 1_000)) : 0;
   const callAmount = Math.max(0, (state.currentBet ?? 0) - (state.hand?.streetBet ?? 0));
   const streetLabel = ({ preflop: "翻牌前", flop: "翻牌圈", turn: "轉牌圈", river: "河牌圈", showdown: "攤牌" } as Record<string, string>)[state.street ?? ""] ?? "等待開局";
   return <section className="casino-table poker-table">
-    <header><div><span>TEXAS HOLD&apos;EM TABLE 01</span><h4>五人同步德州撲克</h4></div><strong>{state.activeCount} / {state.capacity} 位在座 · {playing ? `${streetLabel} · 輪到 ${state.turnSeat} 號` : "等待新局"}</strong></header>
+    <header><div><span>TEXAS HOLD&apos;EM TABLE 01</span><h4>五人同步德州撲克</h4></div><strong>{state.activeCount} / {state.capacity} 位在座 · {playing ? `${streetLabel} · 輪到 ${state.turnSeat} 號 · ${turnSeconds} 秒` : "等待新局"}</strong></header>
     <div className="casino-seats">{Array.from({ length: 5 }, (_, index) => {
       const seatNo = index + 1; const seat = state.seats.find((item) => item.seatNo === seatNo);
       return <div className={`${seat ? "occupied" : ""} ${seat?.isMine ? "mine" : ""}`} key={seatNo}>
@@ -1336,9 +1368,9 @@ function PokerTable({ state, signedIn, busy, maxBet, onAction }: { state: PokerS
     </div>}
     {!signedIn ? <p className="casino-message">登入後才能加入五人德州撲克牌桌。</p> : playing ? <div className="casino-round-actions">
       {state.hand?.isTurn ? <div className="casino-controls"><button onClick={() => onAction(callAmount ? "call" : "check")} disabled={busy || callAmount > maxBet}>{callAmount ? `跟注 NT$${formatMoney(callAmount)}` : "過牌"}</button><button onClick={() => onAction("raise", { amount: Number(raiseBy) })} disabled={busy || callAmount + Number(raiseBy) > maxBet}>加注</button><input aria-label="加注金額" type="number" min="10" step="10" value={raiseBy} onChange={(event) => setRaiseBy(event.target.value)} /><button className="all-in" onClick={() => onAction("all_in")} disabled={busy || maxBet <= 0}>全押 NT${formatMoney(maxBet)}</button><button className="leave" onClick={() => onAction("fold")} disabled={busy}>棄牌</button></div> : <p className="casino-message">{state.hand?.status === "folded" ? "你本局已棄牌，可繼續觀賽。" : state.hand?.status === "all_in" ? "你已全押，等待其他玩家完成牌局。" : `等待 ${state.turnSeat} 號玩家行動。`}</p>}
-    </div> : state.hand?.status === "seated" ? <div className="custom-bet"><p className="casino-message">按下準備才會加入下一局；未準備的玩家不會被收取盲注。</p><button onClick={() => onAction("ready")} disabled={busy}>準備參加下一局</button><button className="leave-seat" onClick={requestLeave} disabled={busy}>離開牌桌</button>{state.hand.result && <p className="casino-result">{state.hand.result}</p>}</div> : state.hand?.status === "ready" ? <div className="custom-bet"><label>已準備（目前 {readyCount} 人）<small>小盲：{smallBlindSeat ?? "待定"} 號 · 只有小盲可開局</small></label>{isSmallBlind ? <div><span>NT$</span><input type="number" min="10" max={Math.min(maxBet, 100000)} step="10" value={blind} onChange={(event) => setBlind(event.target.value)} /><button onClick={() => onAction("start", { bet: Number(blind) })} disabled={busy || readyCount < 2}>開始牌局</button></div> : <p className="casino-message">等待 {smallBlindSeat ?? "小盲"} 號玩家設定起始資金並開局。</p>}<button className="leave-seat" onClick={requestLeave} disabled={busy}>取消並離桌</button></div> : <p className="casino-message">請選擇空位加入；至少兩名玩家準備後才能開局。</p>}
+    </div> : state.hand?.status === "seated" ? <div className="custom-bet"><p className="casino-message">按下準備才會加入下一局；未準備的玩家不會被收取盲注。</p><button onClick={() => onAction("ready")} disabled={busy}>準備參加下一局</button><button className="leave-seat" onClick={requestLeave} disabled={busy}>離開牌桌</button>{state.hand.result && <p className="casino-result">{state.hand.result}</p>}</div> : state.hand?.status === "ready" ? <div className="custom-bet"><label>已準備（目前 {readyCount} 人）<small>小盲：{smallBlindSeat ?? "待定"} 號 · 只有小盲可開局</small></label>{isSmallBlind ? <div><span>大盲 NT$</span><input type="number" min="10" max={Math.min(maxBet, 100000)} step="10" value={blind} onChange={(event) => setBlind(event.target.value)} /><button onClick={() => onAction("start", { bet: Number(blind) })} disabled={busy || readyCount < 2}>開始牌局</button></div> : <p className="casino-message">等待 {smallBlindSeat ?? "小盲"} 號玩家設定大盲金額並開局。</p>}<button className="leave-seat" onClick={requestLeave} disabled={busy}>取消並離桌</button></div> : <p className="casino-message">請選擇空位加入；至少兩名玩家準備後才能開局。</p>}
     <LeaveConfirmDialog open={leaveConfirm} title="確定要離開德州撲克桌嗎？" detail="離開後會失去目前座位；牌局中的棄牌按鈕仍只代表棄牌，不會直接離桌。" onCancel={() => setLeaveConfirm(false)} onConfirm={confirmLeave} />
-    <footer>標準 52 張牌 · 小盲玩家開局 · 所有準備玩家須有足夠起始資金 · 連續 6 個遊戲小時未下注會自動離座 · 可全押並留到攤牌 · 勝者取得對應獎池</footer>
+    <footer>標準 52 張牌 · 小盲玩家設定大盲並開局 · 每次行動限時 90 秒，逾時自動棄牌 · 連續 6 個遊戲小時未下注會自動離座 · 可全押並留到攤牌 · 勝者取得對應獎池</footer>
   </section>;
 }
 
@@ -1354,6 +1386,6 @@ function actionTitle(location: LocationId) {
   return { home: "有一個落腳處，才有安心休息的地方", realtor: "先找到住所，再打造自己的生活", bank: "管理資產，也要衡量借貸成本", business: "累積經驗，向下一次升遷前進", shopping: "照顧日常，才能走得更遠", bookstore: "讓故事被看見，也讓作品流通", hotel: "沒有住所，也能有一晚落腳處", casino: "五人同桌，挑戰二十一點與德州撲克", school: "今天學會的，會成為明天的選項", hospital: "及早治療，才能繼續人生旅程", prison: "為違法行為付出時間代價" }[location];
 }
 
-function actionDescription(location: LocationId) {
-  return { home: "有效租約或自有住宅才能進入，全天 24 小時開放。睡一覺能恢復體力與健康。", realtor: "營業時間 07:00～23:00。租屋每日 NT$350；城市小宅售價 NT$50,000。", bank: "營業時間 07:00～23:00。存款收益依金融職位而定；一般貸款每日利息 0.5%；《浪子回頭》主線債務每日利息 0.2%。在線玩家也能申請金融玩家的銀行貸款方案。", business: "營業時間 06:00～24:00。第一階工作免能力門檻；各產業最高階時薪皆為 NT$1,300。犯罪路線的違法行動有被捕風險；詐騙犯可發起詐騙，駭客可嘗試竊取在線玩家現金。大橋頭營運長可設定一處地盤，每次有效進入記錄 NT$100，每日最多 NT$10,000。", shopping: "營業時間 06:00～24:00。用合理的花費補充飽足，也能購買刮刮樂。", bookstore: "營業時間 07:00～23:00。簽約作家起可建立書名並上架作品；其他玩家可以購買，每本每人最多十次。", hotel: "全天 24 小時營業。旅店臨時工等待 30 秒、收入 NT$100，不扣體力、飽足或健康，也不會獲得職業經驗；住宿與餐點也全天供應。", casino: "全天 24 小時開放。21 點每局使用同一副洗好的牌依序抽取；德州撲克有完整四輪下注。", school: "開放時間 07:00～23:00。五所學院分別培養體力、智力、創造力、社交與魅力。", hospital: "健康低於 50 時，行動後開始有機率生病。急診 24 小時開放；一般診療為 07:00～23:00。", prison: "服刑期間只計算你在線上遊玩的時間；其他玩家可在多人世界看到你的罪名與服刑狀態。" }[location];
+function actionDescription(location: LocationId, dailyRent = 350) {
+  return { home: "有效租約或自有住宅才能進入，全天 24 小時開放。睡一覺能恢復體力與健康。", realtor: `營業時間 07:00～23:00。租屋每日 NT$${formatMoney(dailyRent)}；城市小宅售價 NT$50,000。`, bank: "營業時間 07:00～23:00。存款收益依金融職位而定；一般貸款每日利息 0.5%；《浪子回頭》主線債務每日利息 0.2%。在線玩家也能申請金融玩家的銀行貸款方案。", business: "營業時間 06:00～24:00。第一階工作免能力門檻；各產業最高階時薪皆為 NT$1,300。犯罪路線的違法行動有被捕風險；詐騙犯可發起詐騙，駭客可嘗試竊取在線玩家現金。大橋頭營運長可設定一處地盤，每次有效進入記錄 NT$100，每日最多 NT$10,000。", shopping: "營業時間 06:00～24:00。用合理的花費補充飽足，也能購買刮刮樂。", bookstore: "營業時間 07:00～23:00。簽約作家起可建立書名並上架作品；其他玩家可以購買，每本每人最多十次。", hotel: "全天 24 小時營業。旅店臨時工等待 30 秒、收入 NT$100，不扣體力、飽足或健康，也不會獲得職業經驗；住宿與餐點也全天供應。", casino: "全天 24 小時開放。二十一點、德州撲克、多人賓果與五局錦標賽皆可實際同桌遊玩。", school: "開放時間 07:00～23:00。五所學院分別培養體力、智力、創造力、社交與魅力。", hospital: "健康低於 50 時，行動後開始有機率生病。急診 24 小時開放；一般診療為 07:00～23:00。", prison: "服刑期間只計算你在線上遊玩的時間；其他玩家可在多人世界看到你的罪名與服刑狀態。" }[location];
 }

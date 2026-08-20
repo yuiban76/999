@@ -29,14 +29,16 @@ test("personal finance time only advances during continuous online heartbeats", 
 
   assert.match(worker, /HEARTBEAT_WRITE_INTERVAL_MS = 10_000/);
   assert.match(worker, /ONLINE_HEARTBEAT_GRACE_MS = 30_000/);
-  assert.match(worker, /heartbeatGap <= ONLINE_HEARTBEAT_GRACE_MS/);
+  assert.match(worker, /elapsed_minutes=elapsed_minutes\+CASE/);
+  assert.match(worker, /action_available_at=CASE/);
+  assert.match(worker, /last_seen_at=MAX\(last_seen_at, \?\)/);
   assert.match(worker, /elapsedMinutes: row\.elapsed_minutes/);
   assert.match(worker, /Math\.floor\(row\.elapsed_minutes \/ 1440\) \+ 1/);
   assert.match(worker, /let cashBalance = row\.cash/);
   assert.match(worker, /const automaticPayment = Math\.min\(paymentShortfall, cashBalance \+ bankBalance\)/);
   assert.match(worker, /UPDATE players SET cash=\?, bank_balance=\?/);
   assert.doesNotMatch(worker, /next\.elapsed_minutes = worldMinutes\(\)/);
-  assert.match(page, /player\.rentedUntil - player\.elapsedMinutes/);
+  assert.match(page, /player\.rentedUntil - displayElapsedMinutes/);
   assert.match(page, /每滿 24:00 結算/);
   assert.match(page, /<span>城市時間<\/span><strong>\{gameClock\.time\}<\/strong><span>\{playClock\.day\} · 玩家 \{playClock\.time\}/);
   assert.match(page, /僅在線時計時/);
@@ -52,7 +54,7 @@ test("idle clients do not create unnecessary Cloudflare reads and writes", async
   assert.doesNotMatch(worker, /\bscheduled\s*\(|\balarm\s*\(/);
   assert.doesNotMatch(wrangler, /"crons"|"triggers"/);
   assert.match(worker, /ensureSchemaOnce/);
-  assert.match(worker, /heartbeatGap >= HEARTBEAT_WRITE_INTERVAL_MS/);
+  assert.match(worker, /\(\?=1 OR \?-last_seen_at>=\?\)/);
   assert.match(worker, /row\.location === "casino" \? casinoState/);
   assert.match(worker, /needsIdleExpiry \|\| needsRoundReveal \|\| needsRoundExpiry/);
   assert.match(page, /if \(!profile\) return/);
@@ -72,7 +74,7 @@ test("longer opening hours are consistent in rules, interface, and worker respon
   assert.match(world, /shopping: \{ open: 6 \* 60, close: 24 \* 60, label: "06:00～24:00" \}/);
   assert.match(world, /school: \{ open: 7 \* 60, close: 23 \* 60, label: "07:00～23:00" \}/);
   assert.match(world, /return current >= 7 \* 60 && current < 23 \* 60/);
-  assert.match(page, /Math\.floor\(600 \* \(1 - medicalHospitalDiscount\)\)/);
+  assert.match(page, /Math\.floor\(600 \* \(1 - effectiveHospitalDiscount\)\)/);
   assert.match(worker, /一般門診與完整治療時間為 07:00～23:00/);
   assert.doesNotMatch(source, /09:00～18:00|09:00～17:00|08:00～18:00|10:00～22:00|08:00～21:00|08:00～20:00/);
 });
@@ -393,11 +395,36 @@ test("story objective replaces career milestone and promotion details live in bu
 
 test("ability history shows numeric progress and its display cap", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const jobs = await readFile(new URL("shared/jobs.ts", root), "utf8");
 
   assert.match(page, /能力值 \/ 上限 \{ABILITY_MAX\}/);
-  assert.match(page, /<strong>\{exp\} \/ \{ABILITY_MAX\}<\/strong>/);
-  assert.match(page, /const ABILITY_MAX = 1500/);
+  assert.match(page, /<strong>\{displayedExp\} \/ \{ABILITY_MAX\}<\/strong>/);
+  assert.match(jobs, /export const ABILITY_MAX = 1500/);
+  assert.match(page, /Math\.min\(ABILITY_MAX, Math\.max\(0, exp\)\)/);
   assert.doesNotMatch(page, /<strong>Lv\.\{level\(exp\)\}<\/strong>/);
+});
+
+test("critical multiplayer integrity fixes stay wired", async () => {
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+
+  assert.match(worker, /action_available_at\+\(\?-last_seen_at\)/);
+  assert.match(worker, /status='accepted', outcome='treated'.*RETURNING id/s);
+  assert.match(worker, /status='accepted' AND outcome='treated'.*RETURNING user_id/s);
+  assert.doesNotMatch(worker, /round\.pot \+ added/);
+  assert.match(worker, /POKER_ACTION_TIMEOUT_MS = 90_000/);
+  assert.match(worker, /async function resolveExpiredPokerTurn/);
+  assert.match(worker, /\["playing", "all_in", "folded", "settling"\]\.includes\(active\.status\)/);
+  assert.match(worker, /DELETE FROM writer_books WHERE author_id=\?/);
+  assert.match(worker, /DELETE FROM casino_tournament_entries WHERE user_id=\?/);
+  assert.match(worker, /provider_id='bank'.*spread_bp=0/);
+  assert.match(worker, /Math\.min\(ABILITY_MAX, next\.fitness_exp \+ gain\)/);
+  assert.match(worker, /cash=cash\+territory_pending, territory_pending=0/);
+  assert.match(worker, /status IN \('dealing','playing','drawing','stood','settling'\)/);
+  assert.match(worker, /INSERT INTO casino_bingo_entries[\s\S]*SELECT \?, \?, \?, \? WHERE/);
+  assert.match(worker, /INSERT INTO casino_tournament_entries[\s\S]*SELECT \?, \?, \? WHERE/);
+  assert.match(worker, /game_over='__resetting__'/);
+  assert.match(worker, /finance_day=\? AND updated_at=\? RETURNING user_id/);
+  assert.doesNotMatch(worker, /UPDATE players SET cash=cash\+\?, updated_at=\?, last_seen_at=\? WHERE user_id=\?/);
 });
 
 test("placeholder weather and age labels are not shown", async () => {

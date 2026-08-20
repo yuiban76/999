@@ -18,6 +18,7 @@ export const ABILITY_LABELS = {
   social: "社交",
   charisma: "魅力",
 } as const;
+export const ABILITY_MAX = 1500;
 
 export type AbilityKey = keyof typeof ABILITY_LABELS;
 export type Abilities = Record<AbilityKey, number>;
