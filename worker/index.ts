@@ -1,4 +1,4 @@
-import { ABILITY_LABELS, ABILITY_MAX, ACADEMIES, BANK_LOAN_RATE_BP, careerForCategory, careerRequirements, careerWorkSpecialFor, categoryInfo, crimeArrestChanceFor, crimeSentenceMinutesFor, financeDepositRateFor, financeLoanTermsFor, HACK_DAILY_LIMIT, HACK_MAX_STEAL, HACK_STEAL_RATE, HACK_SUCCESS_CHANCE, hospitalitySpecialHungerFor, jobInfo, medicalHospitalDiscountFor, medicalTreatmentFor, medicalWorkHealthBonusFor, meetsCareerRequirements, RESTAURANT_DAILY_NET, RESTAURANT_PURCHASE_PRICE, TERRITORY_DAILY_CAP, TERRITORY_VISIT_COOLDOWN_MINUTES, TERRITORY_VISIT_REWARD, WRITER_DAILY_FAN_RATE, WRITER_DAILY_WRITING_LIMIT, WRITER_MAX_ACTIVE_BOOKS, WRITER_MAX_PURCHASES_PER_BOOK, writerBookPriceFor, writerFanRangeFor, type Abilities } from "../shared/jobs";
+import { ABILITY_LABELS, ABILITY_MAX, ACADEMIES, BANK_LOAN_RATE_BP, careerForCategory, careerRequirements, careerWorkSpecialFor, careerWorkWaitSeconds, categoryInfo, crimeArrestChanceFor, crimeSentenceMinutesFor, financeDepositRateFor, financeLoanTermsFor, HACK_DAILY_LIMIT, HACK_MAX_STEAL, HACK_STEAL_RATE, HACK_SUCCESS_CHANCE, hospitalitySpecialHungerFor, jobInfo, medicalHospitalDiscountFor, medicalTreatmentFor, medicalWorkHealthBonusFor, meetsCareerRequirements, RESTAURANT_DAILY_NET, RESTAURANT_PURCHASE_PRICE, TERRITORY_DAILY_CAP, TERRITORY_VISIT_COOLDOWN_MINUTES, TERRITORY_VISIT_REWARD, WRITER_DAILY_FAN_RATE, WRITER_DAILY_WRITING_LIMIT, WRITER_MAX_ACTIVE_BOOKS, WRITER_MAX_PURCHASES_PER_BOOK, writerBookPriceFor, writerFanRangeFor, type Abilities } from "../shared/jobs";
 import { CITY_EVENTS, STORY_CHAPTERS, storyChapterForDebt, talentInfo } from "../shared/progression";
 import { isHospitalRegularOpen, isLocationOpen, minuteOfDay, OPENING_HOURS, worldMinutes } from "../shared/world";
 
@@ -480,9 +480,9 @@ async function upsertPlayer(db: D1Database, user: AuthUser, forceHeartbeat = fal
     // heartbeat perform finance/territory side effects while that marker is
     // present; the reset handler will either finish or recover it.
     if (row.reset_game_over || row.game_over === "__resetting__") return row;
-    // Calculate the heartbeat from the database's current last_seen_at inside
-    // one statement. Multiple tabs can no longer credit the same seconds or
-    // move last_seen/action_available_at backwards with a stale snapshot.
+    // Calculate the online-only player clock from the database's current
+    // last_seen_at inside one statement. Action waits are wall-clock timers:
+    // going offline must not extend a work/sleep/class wait that already began.
     const heartbeat = await db.prepare(`UPDATE players SET
       display_name=?, email=?,
       elapsed_minutes=elapsed_minutes+CASE
@@ -491,16 +491,12 @@ async function upsertPlayer(db: D1Database, user: AuthUser, forceHeartbeat = fal
       elapsed_remainder_ms=CASE
         WHEN ?>=last_seen_at AND ?-last_seen_at<=? THEN (elapsed_remainder_ms+(?-last_seen_at))%1000
         ELSE elapsed_remainder_ms END,
-      action_available_at=CASE
-        WHEN ?-last_seen_at>? AND action_available_at>last_seen_at THEN action_available_at+(?-last_seen_at)
-        ELSE action_available_at END,
       last_seen_at=MAX(last_seen_at, ?)
       WHERE user_id=? AND (?=1 OR ?-last_seen_at>=?)
       RETURNING *`).bind(
         user.displayName.slice(0, 40), user.email,
         now, now, ONLINE_HEARTBEAT_GRACE_MS, now,
         now, now, ONLINE_HEARTBEAT_GRACE_MS, now,
-        now, ONLINE_HEARTBEAT_GRACE_MS, now,
         now, user.userId, forceHeartbeat ? 1 : 0, now, HEARTBEAT_WRITE_INTERVAL_MS,
       ).first<PlayerRow>();
     if (heartbeat) row = heartbeat;
@@ -2765,11 +2761,8 @@ async function takeAction(request: Request, env: Env) {
       }
       const jobGain = Math.ceil(hours * 4 * (talents.has("skilled") ? 1.15 : 1));
       const hungerGain = workSpecial && next.job_category === "hospitality" ? hospitalitySpecialHungerFor(next.current_job) : 0;
-      next.cash += income; next.energy = Math.max(0, next.energy - energyCost); next.health = clamp(next.health - Math.ceil(hours / 2) + medicalWorkHealthBonusFor(next.current_job)); next.hunger = clamp(next.hunger - hours * 2 + hungerGain); next.job_exp += jobGain; minutes = hours === 1 ? 30 : hours === 4 ? 120 : 240;
-      // Special shifts are defined in real minutes (the UI shows the same unit),
-      // while ordinary actions use seconds. Convert them before writing the wait.
-      if (workSpecial) minutes = workSpecial.minutes * 60;
-      if (talents.has("workaholic_2")) minutes = Math.ceil(minutes * .9);
+      next.cash += income; next.energy = Math.max(0, next.energy - energyCost); next.health = clamp(next.health - Math.ceil(hours / 2) + medicalWorkHealthBonusFor(next.current_job)); next.hunger = clamp(next.hunger - hours * 2 + hungerGain); next.job_exp += jobGain;
+      minutes = careerWorkWaitSeconds(next.current_job, hours, talents.has("workaholic_2"));
       const newCareer = careerForCategory(next.job_category, next.job_exp, next.current_job, abilitiesFor(next));
       next.current_job = newCareer.title;
       if (newCareer.title !== previousCareer.title) talentExpGain += 10;

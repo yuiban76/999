@@ -193,6 +193,19 @@ export function careerWorkSpecialFor(job: string, hours?: number) {
   return special && (hours === undefined || special.hours === hours) ? special : null;
 }
 
+/**
+ * Return the real-world wait for a work action. Special-shift `minutes` are
+ * real minutes (2–5); ordinary shifts use the intentionally shortened waits.
+ * Keeping this conversion shared prevents the worker and UI from drifting.
+ */
+export function careerWorkWaitSeconds(job: string, hours: number, workaholic = false) {
+  const special = careerWorkSpecialFor(job, hours);
+  const baseSeconds = special
+    ? special.minutes * 60
+    : hours === 1 ? 30 : hours === 4 ? 120 : hours === 8 ? 240 : 0;
+  return workaholic ? Math.ceil(baseSeconds * .9) : baseSeconds;
+}
+
 export function categoryInfo(categoryId: string) {
   return JOB_CATEGORIES.find((category) => category.id === categoryId) ?? null;
 }

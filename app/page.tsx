@@ -4,7 +4,7 @@
 /* eslint-disable @next/next/no-img-element -- avatar images come from runtime Cloudflare asset URLs. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ABILITY_LABELS, ABILITY_MAX, ACADEMIES, BANK_LOAN_RATE_BP, careerForCategory, careerRequirements, careerThresholdForCategory, careerWorkSpecialFor, categoryInfo, crimeArrestChanceFor, crimeSentenceMinutesFor, financeDepositRateFor, financeLoanTermsFor, HACK_DAILY_LIMIT, HACK_MAX_STEAL, HACK_STEAL_RATE, HACK_SUCCESS_CHANCE, hospitalitySpecialHungerFor, JOB_CATEGORIES, jobInfo, medicalHospitalDiscountFor, medicalTreatmentFor, medicalWorkHealthBonusFor, meetsCareerRequirements, nextCareerForCategory, RESTAURANT_DAILY_NET, RESTAURANT_PURCHASE_PRICE, TERRITORY_DAILY_CAP, TERRITORY_VISIT_REWARD, WRITER_DAILY_FAN_RATE, WRITER_DAILY_WRITING_LIMIT, WRITER_MAX_ACTIVE_BOOKS, WRITER_MAX_PURCHASES_PER_BOOK, writerBookPriceFor, writerFanRangeFor, type Abilities } from "../shared/jobs";
+import { ABILITY_LABELS, ABILITY_MAX, ACADEMIES, BANK_LOAN_RATE_BP, careerForCategory, careerRequirements, careerThresholdForCategory, careerWorkSpecialFor, careerWorkWaitSeconds, categoryInfo, crimeArrestChanceFor, crimeSentenceMinutesFor, financeDepositRateFor, financeLoanTermsFor, HACK_DAILY_LIMIT, HACK_MAX_STEAL, HACK_STEAL_RATE, HACK_SUCCESS_CHANCE, hospitalitySpecialHungerFor, JOB_CATEGORIES, jobInfo, medicalHospitalDiscountFor, medicalTreatmentFor, medicalWorkHealthBonusFor, meetsCareerRequirements, nextCareerForCategory, RESTAURANT_DAILY_NET, RESTAURANT_PURCHASE_PRICE, TERRITORY_DAILY_CAP, TERRITORY_VISIT_REWARD, WRITER_DAILY_FAN_RATE, WRITER_DAILY_WRITING_LIMIT, WRITER_MAX_ACTIVE_BOOKS, WRITER_MAX_PURCHASES_PER_BOOK, writerBookPriceFor, writerFanRangeFor, type Abilities } from "../shared/jobs";
 import { CITY_EVENTS, STORY_CHAPTERS, TALENTS } from "../shared/progression";
 import { isHospitalRegularOpen, isLocationOpen, worldMinutes } from "../shared/world";
 import { CAREER_PREVIEW_ROUTES } from "../shared/careerPreview";
@@ -346,7 +346,7 @@ const hasControlCharacters = (value: string) => Array.from(value).some((characte
   const codePoint = character.codePointAt(0) ?? 0;
   return codePoint < 32 || codePoint === 127;
 });
-const formatWaitMinutes = (value: number) => value >= 60 && value % 60 === 0 ? `${value / 60} 分鐘` : `${value} 分鐘`;
+const formatWaitMinutes = (value: number) => value < 1 ? `${Math.round(value * 60)} 秒` : value >= 60 && value % 60 === 0 ? `${value / 60} 分鐘` : `${value} 分鐘`;
 const TOURNAMENT_STARTING_STACK = 100;
 const levelProgress = (exp: number) => {
   return Math.min(100, Math.max(0, (exp / ABILITY_MAX) * 100));
@@ -500,8 +500,7 @@ function guestAction(current: Player, action: string, payload: Record<string, un
     const income = hours * previousCareer.hourlyPay;
     const hungerGain = workSpecial && next.jobCategory === "hospitality" ? hospitalitySpecialHungerFor(next.currentJob) : 0;
     const effectiveIncome = restaurantOwner ? 0 : income;
-    next.cash += effectiveIncome; next.energy = Math.max(0, next.energy - hours * 5); next.health = Math.max(0, Math.min(100, next.health - Math.ceil(hours / 2) + medicalWorkHealthBonusFor(next.currentJob))); next.hunger = Math.max(0, Math.min(100, next.hunger - hours * 2 + hungerGain)); next.jobExp += hours * 4; minutes = hours === 1 ? 30 : hours === 4 ? 120 : 240;
-    if (workSpecial) minutes = workSpecial.minutes * 60;
+    next.cash += effectiveIncome; next.energy = Math.max(0, next.energy - hours * 5); next.health = Math.max(0, Math.min(100, next.health - Math.ceil(hours / 2) + medicalWorkHealthBonusFor(next.currentJob))); next.hunger = Math.max(0, Math.min(100, next.hunger - hours * 2 + hungerGain)); next.jobExp += hours * 4; minutes = careerWorkWaitSeconds(next.currentJob, hours, next.talents.includes("workaholic_2"));
     const newCareer = careerForCategory(next.jobCategory, next.jobExp, next.currentJob, abilitiesFor(next));
     next.currentJob = newCareer.title;
     title = newCareer.title !== previousCareer.title ? `升遷為${newCareer.title}` : workSpecial ? `${workSpecial.name} ${hours} 小時` : `工作 ${hours} 小時`;
@@ -680,7 +679,8 @@ function GameHome() {
   const workSpecial = careerWorkSpecialFor(player.currentJob);
   const medicalWorkHealth = medicalWorkHealthBonusFor(player.currentJob);
   const medicalWorkLabel = medicalWorkHealth ? ` · 工作後健康 +${medicalWorkHealth}` : "";
-  const longWorkMinutes = workSpecial?.hours === 8 ? workSpecial.minutes : 240;
+  const workWaitMinutes = (hours: number) => careerWorkWaitSeconds(player.currentJob, hours, player.talents.includes("workaholic_2")) / 60;
+  const longWorkMinutes = workWaitMinutes(8);
   const longWorkTitle = workSpecial?.hours === 8 ? `${workSpecial.name} 8 小時` : "長班 8 小時";
   const longWorkButton = workSpecial?.hours === 8 ? `開始${workSpecial.name}` : "開始工作";
   const isWriter = player.jobCategory === "literary";
@@ -1046,11 +1046,11 @@ function GameHome() {
                   <ActionCard icon="書" title="管理出版作品" meta="前往城市書店建立或下架作品，隨時管理" button="前往書店" onClick={() => void act("move", { location: "bookstore" })} disabled={actionBusy || !bookstoreOpen} disabledLabel={!bookstoreOpen ? "書店已關門" : undefined} />
                 </> : <>
                   {isRestaurantOwner && !player.ownsRestaurant && <ActionCard icon="店" title="購買自有餐廳" meta={`一次性 NT$${formatMoney(RESTAURANT_PURCHASE_PRICE)} · 購買後每日在線結算淨收益 NT$${formatMoney(RESTAURANT_DAILY_NET)} · 不再領時薪`} button="購買餐廳" onClick={() => void act("restaurant", { kind: "buy" })} featured disabled={actionBusy || !businessOpen || player.cash < RESTAURANT_PURCHASE_PRICE} disabledLabel={!businessOpen ? "已關門" : player.cash < RESTAURANT_PURCHASE_PRICE ? "現金不足" : undefined} />}
-                  {hasRestaurant ? <ActionCard icon="營" title="餐廳營運班 · 8 小時" meta={`特殊工作 · 現實等待 4 分鐘 · 飽足 +${restaurantSpecialHunger} · 不另發時薪 · 每日淨收益 NT$${formatMoney(RESTAURANT_DAILY_NET)}`} button="開始營運" onClick={() => void act("work", { hours: 8 })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /> : <>
-                    <ActionCard icon="01" title="短班 1 小時" meta={`現實等待 30 秒 · 收入 NT$${formatMoney(career.hourlyPay)} · EXP +4${medicalWorkLabel}`} button="開始工作" onClick={() => void act("work", { hours: 1 })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} />
-                    <ActionCard icon="04" title="標準班 4 小時" meta={`現實等待 2 分鐘 · 收入 NT$${formatMoney(career.hourlyPay * 4)} · EXP +16${medicalWorkLabel}`} button="開始工作" onClick={() => void act("work", { hours: 4 })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} />
+                  {hasRestaurant ? <ActionCard icon="營" title="餐廳營運班 · 8 小時" meta={`特殊工作 · 現實等待 ${formatWaitMinutes(workWaitMinutes(8))} · 飽足 +${restaurantSpecialHunger} · 不另發時薪 · 每日淨收益 NT$${formatMoney(RESTAURANT_DAILY_NET)}`} button="開始營運" onClick={() => void act("work", { hours: 8 })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} /> : <>
+                    <ActionCard icon="01" title="短班 1 小時" meta={`現實等待 ${formatWaitMinutes(workWaitMinutes(1))} · 收入 NT$${formatMoney(career.hourlyPay)} · EXP +4${medicalWorkLabel}`} button="開始工作" onClick={() => void act("work", { hours: 1 })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} />
+                    {(!workSpecial || workSpecial.hours !== 4) && <ActionCard icon="04" title="標準班 4 小時" meta={`現實等待 ${formatWaitMinutes(workWaitMinutes(4))} · 收入 NT$${formatMoney(career.hourlyPay * 4)} · EXP +16${medicalWorkLabel}`} button="開始工作" onClick={() => void act("work", { hours: 4 })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} />}
                     <ActionCard icon="08" title={longWorkTitle} meta={`${workSpecial?.hours === 8 ? "特殊能力 · " : ""}現實等待 ${formatWaitMinutes(longWorkMinutes)} · 收入 NT$${formatMoney(career.hourlyPay * 8)} · EXP +32${medicalWorkLabel}${workSpecial?.hours === 8 && player.jobCategory === "hospitality" ? ` · 飽足 +${restaurantSpecialHunger}` : ""}`} button={longWorkButton} onClick={() => void act("work", { hours: 8 })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} />
-                    {workSpecial && workSpecial.hours !== 8 && <ActionCard icon={String(workSpecial.hours)} title={`${workSpecial.name} ${workSpecial.hours} 小時`} meta={`特殊能力 · 現實等待 ${formatWaitMinutes(workSpecial.minutes)} · 收入 NT$${formatMoney(career.hourlyPay * workSpecial.hours)} · EXP +${workSpecial.hours * 4}${medicalWorkLabel}${player.jobCategory === "hospitality" ? ` · 飽足 +${restaurantSpecialHunger}` : ""}`} button={`開始${workSpecial.name}`} onClick={() => void act("work", { hours: workSpecial.hours })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} />}
+                    {workSpecial && workSpecial.hours !== 8 && <ActionCard icon={String(workSpecial.hours)} title={`${workSpecial.name} ${workSpecial.hours} 小時`} meta={`特殊能力 · 現實等待 ${formatWaitMinutes(workWaitMinutes(workSpecial.hours))} · 收入 NT$${formatMoney(career.hourlyPay * workSpecial.hours)} · EXP +${workSpecial.hours * 4}${medicalWorkLabel}${player.jobCategory === "hospitality" ? ` · 飽足 +${restaurantSpecialHunger}` : ""}`} button={`開始${workSpecial.name}`} onClick={() => void act("work", { hours: workSpecial.hours })} disabled={actionBusy || !businessOpen} disabledLabel={!businessOpen ? "已關門" : undefined} />}
                   </>}
                 </>}
               </>}

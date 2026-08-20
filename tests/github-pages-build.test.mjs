@@ -30,7 +30,8 @@ test("personal finance time only advances during continuous online heartbeats", 
   assert.match(worker, /HEARTBEAT_WRITE_INTERVAL_MS = 10_000/);
   assert.match(worker, /ONLINE_HEARTBEAT_GRACE_MS = 30_000/);
   assert.match(worker, /elapsed_minutes=elapsed_minutes\+CASE/);
-  assert.match(worker, /action_available_at=CASE/);
+  assert.doesNotMatch(worker, /action_available_at=CASE\s+WHEN \?-last_seen_at/);
+  assert.match(worker, /Action waits are wall-clock timers/);
   assert.match(worker, /last_seen_at=MAX\(last_seen_at, \?\)/);
   assert.match(worker, /elapsedMinutes: row\.elapsed_minutes/);
   assert.match(worker, /Math\.floor\(row\.elapsed_minutes \/ 1440\) \+ 1/);
@@ -150,7 +151,7 @@ test("administrative actions are instant and gameplay waits stay shortened", asy
   assert.doesNotMatch(worker, /next\.owns_home = 1; minutes =/);
   assert.doesNotMatch(worker, /next\.current_job = selected\.job;[^\n]*minutes =/);
   assert.doesNotMatch(worker, /next\.cash = next\.cash - 100 \+ prize; minutes =/);
-  assert.match(worker, /minutes = hours === 1 \? 30 : hours === 4 \? 120 : 240/);
+  assert.match(worker, /minutes = careerWorkWaitSeconds\(next\.current_job, hours/);
   assert.match(worker, /next\.cash \+= 100; minutes = 30/);
   assert.match(worker, /next\.location = body\.location as LocationId;/);
   assert.match(worker, /bypassVitalityEffects = body\.action === "move"/);
@@ -176,8 +177,9 @@ test("recovery, special-shift waits, synchronized time, and tournament all-in ar
   const worker = await readFile(new URL("worker/index.ts", root), "utf8");
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
 
-  assert.match(worker, /if \(workSpecial\) minutes = workSpecial\.minutes \* 60/);
-  assert.match(page, /if \(workSpecial\) minutes = workSpecial\.minutes \* 60/);
+  assert.match(worker, /careerWorkWaitSeconds\(next\.current_job, hours, talents\.has\("workaholic_2"\)\)/);
+  assert.match(page, /careerWorkWaitSeconds\(next\.currentJob, hours, next\.talents\.includes\("workaholic_2"\)\)/);
+  assert.match(page, /const workWaitMinutes = \(hours: number\) => careerWorkWaitSeconds/);
   assert.match(worker, /body\.action !== "sleep" && next\.hunger <= 15/);
   assert.match(worker, /body\.action !== "sleep" && next\.energy <= 5/);
   assert.match(page, /action !== "sleep" && next\.hunger <= 15/);
@@ -209,6 +211,22 @@ test("general office career has four ranks and role-specific work specials", asy
   assert.match(worker, /careerWorkSpecialFor\(next\.current_job, hours\)/);
   assert.match(page, /title=\{longWorkTitle\}/);
   assert.match(page, /workSpecial && workSpecial\.hours !== 8/);
+});
+
+test("every defined special shift has one shared real-time wait", async () => {
+  const jobs = await readFile(new URL("shared/jobs.ts", root), "utf8");
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const entries = [...jobs.matchAll(/"([^"]+)": \{ name: "[^"]+", hours: (\d+), minutes: (\d+) \}/g)];
+  assert.equal(entries.length, 20);
+  for (const [, job, hours, minutes] of entries) {
+    assert.ok(Number(hours) >= 1 && Number(hours) <= 11, `${job} has an invalid special-shift length`);
+    assert.ok(Number(minutes) >= 2 && Number(minutes) <= 5, `${job} has an invalid real wait`);
+  }
+  assert.match(jobs, /export function careerWorkWaitSeconds/);
+  assert.match(worker, /minutes = careerWorkWaitSeconds\(next\.current_job, hours/);
+  assert.match(page, /workWaitMinutes\(workSpecial\.hours\)/);
+  assert.match(worker, /going offline must not extend a work\/sleep\/class wait/);
 });
 
 test("hospitality career has four ranks, hunger specials, and a daily-settled restaurant", async () => {
@@ -407,7 +425,7 @@ test("ability history shows numeric progress and its display cap", async () => {
 test("critical multiplayer integrity fixes stay wired", async () => {
   const worker = await readFile(new URL("worker/index.ts", root), "utf8");
 
-  assert.match(worker, /action_available_at\+\(\?-last_seen_at\)/);
+  assert.doesNotMatch(worker, /action_available_at\+\(\?-last_seen_at\)/);
   assert.match(worker, /status='accepted', outcome='treated'.*RETURNING id/s);
   assert.match(worker, /status='accepted' AND outcome='treated'.*RETURNING user_id/s);
   assert.doesNotMatch(worker, /round\.pot \+ added/);
