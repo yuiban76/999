@@ -65,7 +65,11 @@ export const players = sqliteTable("players", {
   actionAvailableAt: integer("action_available_at").notNull().default(0),
   actionLabel: text("action_label").notNull().default(""),
   elapsedMinutes: integer("elapsed_minutes").notNull().default(450),
+  elapsedRemainderMs: integer("elapsed_remainder_ms").notNull().default(0),
   location: text("location").notNull().default("realtor"),
+  lifeVersion: integer("life_version").notNull().default(0),
+  resetGameOver: text("reset_game_over").notNull().default(""),
+  mutationToken: text("mutation_token").notNull().default(""),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
   lastSeenAt: integer("last_seen_at").notNull(),
@@ -76,6 +80,7 @@ export const territoryVisitLog = sqliteTable("territory_visit_log", {
   visitorId: text("visitor_id").notNull(),
   cycleDay: integer("cycle_day").notNull(),
   lastVisitMinute: integer("last_visit_minute").notNull(),
+  actionToken: text("action_token").notNull().default(""),
 }, (table) => [
   primaryKey({ columns: [table.ownerId, table.visitorId, table.cycleDay] }),
   index("idx_territory_visit_owner_day").on(table.ownerId, table.cycleDay),
@@ -103,12 +108,16 @@ export const casinoHands = sqliteTable("casino_hands", {
   result: text("result").notNull().default(""),
   seatNo: integer("seat_no"),
   revealAt: integer("reveal_at").notNull().default(0),
+  lifeVersion: integer("life_version").notNull().default(0),
+  dealToken: text("deal_token").notNull().default(""),
   updatedAt: integer("updated_at").notNull(),
 }, (table) => [index("idx_casino_status_updated").on(table.status, table.updatedAt), uniqueIndex("idx_casino_seat").on(table.seatNo)]);
 
 export const casinoTableState = sqliteTable("casino_table_state", {
   id: text("id").primaryKey(),
   deck: text("deck").notNull().default("[]"),
+  roundToken: text("round_token").notNull().default(""),
+  actionToken: text("action_token").notNull().default(""),
   updatedAt: integer("updated_at").notNull(),
 });
 
@@ -124,6 +133,9 @@ export const pokerHands = sqliteTable("poker_hands", {
   revealAt: integer("reveal_at").notNull().default(0),
   streetBet: integer("street_bet").notNull().default(0),
   acted: integer("acted", { mode: "boolean" }).notNull().default(false),
+  lifeVersion: integer("life_version").notNull().default(0),
+  roundToken: text("round_token").notNull().default(""),
+  actionToken: text("action_token").notNull().default(""),
   updatedAt: integer("updated_at").notNull(),
 }, (table) => [index("idx_poker_status_updated").on(table.status, table.updatedAt), uniqueIndex("idx_poker_seat").on(table.seatNo)]);
 
@@ -136,6 +148,8 @@ export const pokerTableState = sqliteTable("poker_table_state", {
   turnSeat: integer("turn_seat").notNull().default(0),
   pot: integer("pot").notNull().default(0),
   status: text("status").notNull().default("idle"),
+  roundToken: text("round_token").notNull().default(""),
+  actionToken: text("action_token").notNull().default(""),
   updatedAt: integer("updated_at").notNull(),
 });
 
@@ -173,6 +187,8 @@ export const playerTransferRequests = sqliteTable("player_transfer_requests", {
   recipientId: text("recipient_id").notNull(),
   kind: text("kind").notNull(),
   amount: integer("amount").notNull(),
+  senderLifeVersion: integer("sender_life_version").notNull().default(0),
+  recipientLifeVersion: integer("recipient_life_version").notNull().default(0),
   status: text("status").notNull().default("pending"),
   outcome: text("outcome").notNull().default(""),
   resolutionToken: text("resolution_token").notNull().default(""),
@@ -190,6 +206,8 @@ export const playerMedicalRequests = sqliteTable("player_medical_requests", {
   providerJob: text("provider_job").notNull(),
   healthGain: integer("health_gain").notNull(),
   amount: integer("amount").notNull(),
+  patientLifeVersion: integer("patient_life_version").notNull().default(0),
+  providerLifeVersion: integer("provider_life_version").notNull().default(0),
   status: text("status").notNull().default("pending"),
   outcome: text("outcome").notNull().default(""),
   resolutionToken: text("resolution_token").notNull().default(""),
@@ -208,6 +226,8 @@ export const playerLoanRequests = sqliteTable("player_loan_requests", {
   amount: integer("amount").notNull(),
   interestRateBp: integer("interest_rate_bp").notNull(),
   spreadBp: integer("spread_bp").notNull(),
+  borrowerLifeVersion: integer("borrower_life_version").notNull().default(0),
+  providerLifeVersion: integer("provider_life_version").notNull().default(0),
   status: text("status").notNull().default("pending"),
   outcome: text("outcome").notNull().default(""),
   resolutionToken: text("resolution_token").notNull().default(""),
@@ -227,6 +247,10 @@ export const playerLoanContracts = sqliteTable("player_loan_contracts", {
   outstandingBalance: integer("outstanding_balance").notNull(),
   interestRateBp: integer("interest_rate_bp").notNull(),
   spreadBp: integer("spread_bp").notNull(),
+  borrowerLifeVersion: integer("borrower_life_version").notNull().default(0),
+  providerLifeVersion: integer("provider_life_version").notNull().default(0),
+  revision: integer("revision").notNull().default(0),
+  mutationToken: text("mutation_token").notNull().default(""),
   status: text("status").notNull().default("active"),
   openedAt: integer("opened_at").notNull(),
   closedAt: integer("closed_at"),
@@ -236,6 +260,7 @@ export const writerBooks = sqliteTable("writer_books", {
   id: text("id").primaryKey(),
   authorId: text("author_id").notNull(),
   authorName: text("author_name").notNull(),
+  authorLifeVersion: integer("author_life_version").notNull().default(0),
   title: text("title").notNull(),
   price: integer("price").notNull(),
   status: text("status").notNull().default("active"),
@@ -247,7 +272,10 @@ export const writerBookPurchases = sqliteTable("writer_book_purchases", {
   bookId: text("book_id").notNull(),
   buyerId: text("buyer_id").notNull(),
   authorId: text("author_id").notNull(),
+  buyerLifeVersion: integer("buyer_life_version").notNull().default(0),
+  authorLifeVersion: integer("author_life_version").notNull().default(0),
   quantity: integer("quantity").notNull().default(0),
+  purchaseToken: text("purchase_token").notNull().default(""),
   updatedAt: integer("updated_at").notNull(),
 }, (table) => [primaryKey({ columns: [table.bookId, table.buyerId] }), index("idx_writer_purchases_buyer").on(table.buyerId, table.updatedAt), index("idx_writer_purchases_author").on(table.authorId, table.updatedAt)]);
 
@@ -257,7 +285,7 @@ export const casinoBingoState = sqliteTable("casino_bingo_state", {
 });
 
 export const casinoBingoEntries = sqliteTable("casino_bingo_entries", {
-  roundNo: integer("round_no").notNull(), userId: text("user_id").notNull(), playerName: text("player_name").notNull(), card: text("card").notNull(),
+  roundNo: integer("round_no").notNull(), userId: text("user_id").notNull(), playerName: text("player_name").notNull(), card: text("card").notNull(), lifeVersion: integer("life_version").notNull().default(0),
 }, (table) => [primaryKey({ columns: [table.roundNo, table.userId] }), index("idx_bingo_entries_round").on(table.roundNo)]);
 
 export const casinoTournamentState = sqliteTable("casino_tournament_state", {
@@ -267,4 +295,19 @@ export const casinoTournamentState = sqliteTable("casino_tournament_state", {
 
 export const casinoTournamentEntries = sqliteTable("casino_tournament_entries", {
   tournamentNo: integer("tournament_no").notNull(), userId: text("user_id").notNull(), playerName: text("player_name").notNull(), score: integer("score").notNull().default(0), latestHand: text("latest_hand").notNull().default(""),
+  lifeVersion: integer("life_version").notNull().default(0),
 }, (table) => [primaryKey({ columns: [table.tournamentNo, table.userId] }), index("idx_tournament_entries_round").on(table.tournamentNo)]);
+
+export const casinoTournamentRounds = sqliteTable("casino_tournament_rounds", {
+  tournamentNo: integer("tournament_no").notNull(), roundNo: integer("round_no").notNull(), game: text("game").notNull().default("blackjack"), status: text("status").notNull().default("playing"),
+  deck: text("deck").notNull().default("[]"), dealerCards: text("dealer_cards").notNull().default("[]"), communityCards: text("community_cards").notNull().default("[]"),
+  street: text("street").notNull().default("idle"), currentBet: integer("current_bet").notNull().default(0), turnSeat: integer("turn_seat").notNull().default(0), pot: integer("pot").notNull().default(0),
+  nextActionAt: integer("next_action_at").notNull().default(0), actionToken: text("action_token").notNull().default(""), updatedAt: integer("updated_at").notNull(),
+}, (table) => [primaryKey({ columns: [table.tournamentNo, table.roundNo] }), index("idx_tournament_round_status").on(table.tournamentNo, table.status)]);
+
+export const casinoTournamentHands = sqliteTable("casino_tournament_hands", {
+  tournamentNo: integer("tournament_no").notNull(), roundNo: integer("round_no").notNull(), userId: text("user_id").notNull(), playerName: text("player_name").notNull(), seatNo: integer("seat_no").notNull(),
+  playerCards: text("player_cards").notNull().default("[]"), holeCards: text("hole_cards").notNull().default("[]"), bet: integer("bet").notNull().default(0), streetBet: integer("street_bet").notNull().default(0),
+  stack: integer("stack").notNull().default(100), status: text("status").notNull().default("playing"), acted: integer("acted", { mode: "boolean" }).notNull().default(false), result: text("result").notNull().default(""),
+  lifeVersion: integer("life_version").notNull().default(0), actionToken: text("action_token").notNull().default(""), updatedAt: integer("updated_at").notNull(),
+}, (table) => [primaryKey({ columns: [table.tournamentNo, table.roundNo, table.userId] }), index("idx_tournament_hands_round").on(table.tournamentNo, table.roundNo, table.seatNo)]);

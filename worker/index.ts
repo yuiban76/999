@@ -57,23 +57,25 @@ type PlayerRow = {
   location: LocationId;
   life_version: number;
   reset_game_over: string;
+  mutation_token: string;
   updated_at: number;
   last_seen_at: number;
 };
 
-type CasinoRow = { user_id: string; player_name: string; player_cards: string; dealer_cards: string; bet: number; status: string; result: string; seat_no: number | null; reveal_at: number; updated_at: number; deal_token: string };
-type PokerRow = { user_id: string; player_name: string; hole_cards: string; community_cards: string; bet: number; status: string; result: string; seat_no: number | null; reveal_at: number; street_bet: number; acted: number; updated_at: number };
-type PokerTableRow = { id: string; deck: string; community_cards: string; street: string; current_bet: number; turn_seat: number; pot: number; status: string; updated_at: number };
-type TournamentRoundRow = { tournament_no: number; round_no: number; game: "blackjack" | "poker"; status: string; deck: string; dealer_cards: string; community_cards: string; street: string; current_bet: number; turn_seat: number; pot: number; next_action_at: number; updated_at: number };
-type TournamentHandRow = { tournament_no: number; round_no: number; user_id: string; player_name: string; seat_no: number; player_cards: string; hole_cards: string; bet: number; street_bet: number; stack: number; status: string; acted: number; result: string; updated_at: number };
+type CasinoRow = { user_id: string; player_name: string; player_cards: string; dealer_cards: string; bet: number; status: string; result: string; seat_no: number | null; reveal_at: number; life_version: number; updated_at: number; deal_token: string };
+type CasinoTableRow = { id: string; deck: string; round_token: string; action_token: string; updated_at: number };
+type PokerRow = { user_id: string; player_name: string; hole_cards: string; community_cards: string; bet: number; status: string; result: string; seat_no: number | null; reveal_at: number; street_bet: number; acted: number; life_version: number; round_token: string; action_token: string; updated_at: number };
+type PokerTableRow = { id: string; deck: string; community_cards: string; street: string; current_bet: number; turn_seat: number; pot: number; status: string; round_token: string; action_token: string; updated_at: number };
+type TournamentRoundRow = { tournament_no: number; round_no: number; game: "blackjack" | "poker"; status: string; deck: string; dealer_cards: string; community_cards: string; street: string; current_bet: number; turn_seat: number; pot: number; next_action_at: number; action_token: string; updated_at: number };
+type TournamentHandRow = { tournament_no: number; round_no: number; user_id: string; player_name: string; seat_no: number; player_cards: string; hole_cards: string; bet: number; street_bet: number; stack: number; status: string; acted: number; result: string; life_version: number; action_token: string; updated_at: number };
 type TournamentStateRow = { round_no: number; current_round: number; game: "blackjack" | "poker"; status: string; host_user_id: string; entry_fee: number; round_limit: number; next_round_at: number; latest_result: string };
 type ProgressRow = { user_id: string; talent_exp: number; talents: string; story_chapter: number; last_event_day: number; pending_event: string; updated_at: number };
 type MemoryRow = { cycle_day: number; work_count: number; hospital_count: number; housing_count: number; casino_count: number; study_count: number; event_count: number };
-type TransferRequestRow = { id: string; sender_id: string; sender_name: string; recipient_id: string; kind: "gift" | "scam"; amount: number; status: string; outcome: string; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
-type MedicalTreatmentRequestRow = { id: string; patient_id: string; patient_name: string; provider_id: string; provider_name: string; provider_job: string; health_gain: number; amount: number; status: string; outcome: string; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
-type LoanRequestRow = { id: string; borrower_id: string; borrower_name: string; provider_id: string; provider_name: string; provider_job: string; amount: number; interest_rate_bp: number; spread_bp: number; status: string; outcome: string; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
-type LoanContractRow = { id: string; borrower_id: string; borrower_name: string; provider_id: string; provider_name: string; provider_job: string; principal_amount: number; outstanding_balance: number; interest_rate_bp: number; spread_bp: number; status: string; opened_at: number; closed_at: number | null };
-type WriterBookRow = { id: string; author_id: string; author_name: string; title: string; price: number; status: "active" | "hidden"; created_at: number; updated_at: number; sales_count?: number; owned_count?: number };
+type TransferRequestRow = { id: string; sender_id: string; sender_name: string; recipient_id: string; kind: "gift" | "scam"; amount: number; sender_life_version: number; recipient_life_version: number; status: string; outcome: string; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
+type MedicalTreatmentRequestRow = { id: string; patient_id: string; patient_name: string; provider_id: string; provider_name: string; provider_job: string; health_gain: number; amount: number; patient_life_version: number; provider_life_version: number; status: string; outcome: string; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
+type LoanRequestRow = { id: string; borrower_id: string; borrower_name: string; provider_id: string; provider_name: string; provider_job: string; amount: number; interest_rate_bp: number; spread_bp: number; borrower_life_version: number; provider_life_version: number; status: string; outcome: string; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
+type LoanContractRow = { id: string; borrower_id: string; borrower_name: string; provider_id: string; provider_name: string; provider_job: string; principal_amount: number; outstanding_balance: number; interest_rate_bp: number; spread_bp: number; borrower_life_version: number; provider_life_version: number; revision: number; mutation_token: string; status: string; opened_at: number; closed_at: number | null };
+type WriterBookRow = { id: string; author_id: string; author_name: string; author_life_version: number; title: string; price: number; status: "active" | "hidden"; created_at: number; updated_at: number; sales_count?: number; owned_count?: number };
 
 const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "bank", "business", "shopping", "bookstore", "hotel", "casino", "school", "hospital", "prison"]);
 const TERRITORY_LOCATIONS = new Set<LocationId>(["realtor", "bank", "business", "shopping", "bookstore", "hotel", "casino", "school", "hospital"]);
@@ -84,6 +86,7 @@ const ONLINE_HEARTBEAT_GRACE_MS = 30_000;
 const TRANSFER_REQUEST_TIMEOUT_MS = 60_000;
 const MEDICAL_REQUEST_TIMEOUT_MS = 30_000;
 const LOAN_REQUEST_TIMEOUT_MS = 30_000;
+const REQUEST_PROCESSING_TIMEOUT_MS = 30_000;
 const clamp = (value: number) => Math.max(0, Math.min(100, value));
 const abilitiesFor = (player: PlayerRow): Abilities => ({
   physical: player.fitness_exp,
@@ -197,16 +200,21 @@ function serializePlayer(row: PlayerRow, progress?: ProgressRow | null, loanCont
 }
 
 async function activeLoanContract(db: D1Database, borrowerId: string) {
-  return db.prepare(`SELECT id, borrower_id, borrower_name, provider_id, provider_name, provider_job, principal_amount, outstanding_balance, interest_rate_bp, spread_bp, status, opened_at, closed_at
-    FROM player_loan_contracts WHERE borrower_id=? AND status='active' LIMIT 1`).bind(borrowerId).first<LoanContractRow>();
+  return db.prepare(`SELECT id, borrower_id, borrower_name, provider_id, provider_name, provider_job, principal_amount, outstanding_balance, interest_rate_bp, spread_bp,
+      borrower_life_version, provider_life_version, revision, mutation_token, status, opened_at, closed_at
+    FROM player_loan_contracts
+    WHERE borrower_id=? AND status='active'
+      AND borrower_life_version=(SELECT life_version FROM players WHERE user_id=?)
+    LIMIT 1`).bind(borrowerId, borrowerId).first<LoanContractRow>();
 }
 
 async function bookStore(db: D1Database, userId: string) {
-  const rows = await db.prepare(`SELECT b.id, b.author_id, b.author_name, b.title, b.price, b.status, b.created_at, b.updated_at,
+  const rows = await db.prepare(`SELECT b.id, b.author_id, b.author_name, b.author_life_version, b.title, b.price, b.status, b.created_at, b.updated_at,
       COALESCE((SELECT SUM(s.quantity) FROM writer_book_purchases s WHERE s.book_id=b.id), 0) AS sales_count,
       COALESCE((SELECT s.quantity FROM writer_book_purchases s WHERE s.book_id=b.id AND s.buyer_id=?), 0) AS owned_count
     FROM writer_books b
-    WHERE b.status='active' OR b.author_id=?
+    WHERE (b.status='active' OR b.author_id=?)
+      AND EXISTS (SELECT 1 FROM players author WHERE author.user_id=b.author_id AND author.life_version=b.author_life_version)
     ORDER BY CASE WHEN b.author_id=? THEN 0 ELSE 1 END, b.updated_at DESC
     LIMIT 120`).bind(userId, userId, userId).all<WriterBookRow>();
   const books = rows.results.map((book) => ({ id: book.id, authorId: book.author_id, authorName: book.author_name, title: book.title, price: book.price, status: book.status, salesCount: Number(book.sales_count ?? 0), ownedCount: Number(book.owned_count ?? 0), isMine: book.author_id === userId }));
@@ -272,7 +280,8 @@ async function ensureSchema(db: D1Database) {
       elapsed_remainder_ms INTEGER NOT NULL DEFAULT 0,
       location TEXT NOT NULL DEFAULT 'realtor', created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL,
-      life_version INTEGER NOT NULL DEFAULT 0, reset_game_over TEXT NOT NULL DEFAULT ''
+      life_version INTEGER NOT NULL DEFAULT 0, reset_game_over TEXT NOT NULL DEFAULT '',
+      mutation_token TEXT NOT NULL DEFAULT ''
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS game_events (
       id TEXT PRIMARY KEY, user_id TEXT NOT NULL, player_name TEXT NOT NULL,
@@ -285,10 +294,12 @@ async function ensureSchema(db: D1Database) {
       player_cards TEXT NOT NULL DEFAULT '[]', dealer_cards TEXT NOT NULL DEFAULT '[]',
       bet INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'idle',
       result TEXT NOT NULL DEFAULT '', seat_no INTEGER, reveal_at INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL, deal_token TEXT NOT NULL DEFAULT ''
+      updated_at INTEGER NOT NULL, life_version INTEGER NOT NULL DEFAULT 0,
+      deal_token TEXT NOT NULL DEFAULT ''
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS casino_table_state (
-      id TEXT PRIMARY KEY, deck TEXT NOT NULL DEFAULT '[]', updated_at INTEGER NOT NULL
+      id TEXT PRIMARY KEY, deck TEXT NOT NULL DEFAULT '[]',
+      round_token TEXT NOT NULL DEFAULT '', action_token TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS poker_hands (
       user_id TEXT PRIMARY KEY, player_name TEXT NOT NULL,
@@ -296,13 +307,15 @@ async function ensureSchema(db: D1Database) {
       bet INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'idle',
       result TEXT NOT NULL DEFAULT '', seat_no INTEGER, reveal_at INTEGER NOT NULL DEFAULT 0,
       street_bet INTEGER NOT NULL DEFAULT 0, acted INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL
+      life_version INTEGER NOT NULL DEFAULT 0, round_token TEXT NOT NULL DEFAULT '',
+      action_token TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS poker_table_state (
       id TEXT PRIMARY KEY, deck TEXT NOT NULL DEFAULT '[]', community_cards TEXT NOT NULL DEFAULT '[]',
       street TEXT NOT NULL DEFAULT 'idle', current_bet INTEGER NOT NULL DEFAULT 0,
       turn_seat INTEGER NOT NULL DEFAULT 0, pot INTEGER NOT NULL DEFAULT 0,
-      status TEXT NOT NULL DEFAULT 'idle', updated_at INTEGER NOT NULL
+      status TEXT NOT NULL DEFAULT 'idle', round_token TEXT NOT NULL DEFAULT '',
+      action_token TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS player_progress (
       user_id TEXT PRIMARY KEY, talent_exp INTEGER NOT NULL DEFAULT 0,
@@ -324,6 +337,7 @@ async function ensureSchema(db: D1Database) {
     db.prepare(`CREATE TABLE IF NOT EXISTS player_transfer_requests (
       id TEXT PRIMARY KEY, sender_id TEXT NOT NULL, sender_name TEXT NOT NULL,
       recipient_id TEXT NOT NULL, kind TEXT NOT NULL, amount INTEGER NOT NULL,
+      sender_life_version INTEGER NOT NULL DEFAULT 0, recipient_life_version INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'pending', outcome TEXT NOT NULL DEFAULT '',
       resolution_token TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL,
       expires_at INTEGER NOT NULL, resolved_at INTEGER
@@ -332,6 +346,7 @@ async function ensureSchema(db: D1Database) {
       id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, patient_name TEXT NOT NULL,
       provider_id TEXT NOT NULL, provider_name TEXT NOT NULL, provider_job TEXT NOT NULL,
       health_gain INTEGER NOT NULL, amount INTEGER NOT NULL,
+      patient_life_version INTEGER NOT NULL DEFAULT 0, provider_life_version INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'pending', outcome TEXT NOT NULL DEFAULT '',
       resolution_token TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL,
       expires_at INTEGER NOT NULL, resolved_at INTEGER
@@ -340,6 +355,7 @@ async function ensureSchema(db: D1Database) {
       id TEXT PRIMARY KEY, borrower_id TEXT NOT NULL, borrower_name TEXT NOT NULL,
       provider_id TEXT NOT NULL, provider_name TEXT NOT NULL, provider_job TEXT NOT NULL,
       amount INTEGER NOT NULL, interest_rate_bp INTEGER NOT NULL, spread_bp INTEGER NOT NULL,
+      borrower_life_version INTEGER NOT NULL DEFAULT 0, provider_life_version INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'pending', outcome TEXT NOT NULL DEFAULT '',
       resolution_token TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL,
       expires_at INTEGER NOT NULL, resolved_at INTEGER
@@ -349,19 +365,24 @@ async function ensureSchema(db: D1Database) {
       provider_id TEXT NOT NULL, provider_name TEXT NOT NULL, provider_job TEXT NOT NULL,
       principal_amount INTEGER NOT NULL, outstanding_balance INTEGER NOT NULL,
       interest_rate_bp INTEGER NOT NULL, spread_bp INTEGER NOT NULL,
+      borrower_life_version INTEGER NOT NULL DEFAULT 0, provider_life_version INTEGER NOT NULL DEFAULT 0,
+      revision INTEGER NOT NULL DEFAULT 0, mutation_token TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'active', opened_at INTEGER NOT NULL, closed_at INTEGER
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS territory_visit_log (
       owner_id TEXT NOT NULL, visitor_id TEXT NOT NULL, cycle_day INTEGER NOT NULL,
-      last_visit_minute INTEGER NOT NULL, PRIMARY KEY (owner_id, visitor_id, cycle_day)
+      last_visit_minute INTEGER NOT NULL, action_token TEXT NOT NULL DEFAULT '',
+      PRIMARY KEY (owner_id, visitor_id, cycle_day)
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS writer_books (
       id TEXT PRIMARY KEY, author_id TEXT NOT NULL, author_name TEXT NOT NULL,
+      author_life_version INTEGER NOT NULL DEFAULT 0,
       title TEXT NOT NULL, price INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'active',
       created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS writer_book_purchases (
       book_id TEXT NOT NULL, buyer_id TEXT NOT NULL, author_id TEXT NOT NULL,
+      buyer_life_version INTEGER NOT NULL DEFAULT 0, author_life_version INTEGER NOT NULL DEFAULT 0,
       quantity INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL, purchase_token TEXT NOT NULL DEFAULT '',
       PRIMARY KEY (book_id, buyer_id)
     )`),
@@ -371,6 +392,7 @@ async function ensureSchema(db: D1Database) {
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS casino_bingo_entries (
       round_no INTEGER NOT NULL, user_id TEXT NOT NULL, player_name TEXT NOT NULL, card TEXT NOT NULL,
+      life_version INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (round_no, user_id)
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS casino_tournament_state (
@@ -379,20 +401,23 @@ async function ensureSchema(db: D1Database) {
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS casino_tournament_entries (
       tournament_no INTEGER NOT NULL, user_id TEXT NOT NULL, player_name TEXT NOT NULL, score INTEGER NOT NULL DEFAULT 0, latest_hand TEXT NOT NULL DEFAULT '',
+      life_version INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (tournament_no, user_id)
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS casino_tournament_rounds (
       tournament_no INTEGER NOT NULL, round_no INTEGER NOT NULL, game TEXT NOT NULL DEFAULT 'blackjack', status TEXT NOT NULL DEFAULT 'playing',
       deck TEXT NOT NULL DEFAULT '[]', dealer_cards TEXT NOT NULL DEFAULT '[]', community_cards TEXT NOT NULL DEFAULT '[]',
       street TEXT NOT NULL DEFAULT 'idle', current_bet INTEGER NOT NULL DEFAULT 0, turn_seat INTEGER NOT NULL DEFAULT 0,
-      pot INTEGER NOT NULL DEFAULT 0, next_action_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL,
+      pot INTEGER NOT NULL DEFAULT 0, next_action_at INTEGER NOT NULL DEFAULT 0,
+      action_token TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL,
       PRIMARY KEY (tournament_no, round_no)
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS casino_tournament_hands (
       tournament_no INTEGER NOT NULL, round_no INTEGER NOT NULL, user_id TEXT NOT NULL, player_name TEXT NOT NULL, seat_no INTEGER NOT NULL,
       player_cards TEXT NOT NULL DEFAULT '[]', hole_cards TEXT NOT NULL DEFAULT '[]', bet INTEGER NOT NULL DEFAULT 0,
       street_bet INTEGER NOT NULL DEFAULT 0, stack INTEGER NOT NULL DEFAULT 100, status TEXT NOT NULL DEFAULT 'playing',
-      acted INTEGER NOT NULL DEFAULT 0, result TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL,
+      acted INTEGER NOT NULL DEFAULT 0, result TEXT NOT NULL DEFAULT '',
+      life_version INTEGER NOT NULL DEFAULT 0, action_token TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL,
       PRIMARY KEY (tournament_no, round_no, user_id)
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_tournament_round_status ON casino_tournament_rounds(tournament_no, status)"),
@@ -440,16 +465,55 @@ async function ensureSchema(db: D1Database) {
     !columnNames.has("elapsed_remainder_ms") ? "ALTER TABLE players ADD COLUMN elapsed_remainder_ms INTEGER NOT NULL DEFAULT 0" : null,
     !columnNames.has("life_version") ? "ALTER TABLE players ADD COLUMN life_version INTEGER NOT NULL DEFAULT 0" : null,
     !columnNames.has("reset_game_over") ? "ALTER TABLE players ADD COLUMN reset_game_over TEXT NOT NULL DEFAULT ''" : null,
+    !columnNames.has("mutation_token") ? "ALTER TABLE players ADD COLUMN mutation_token TEXT NOT NULL DEFAULT ''" : null,
     !columnNames.has("hack_day") ? "ALTER TABLE players ADD COLUMN hack_day INTEGER NOT NULL DEFAULT 0" : null,
     !columnNames.has("hack_uses") ? "ALTER TABLE players ADD COLUMN hack_uses INTEGER NOT NULL DEFAULT 0" : null,
   ].filter((item): item is string => Boolean(item))) await db.prepare(statement).run();
-  const purchaseColumns = await db.prepare("PRAGMA table_info(writer_book_purchases)").all<{ name: string }>();
-  if (!purchaseColumns.results.some((column) => column.name === "purchase_token")) {
-    await db.prepare("ALTER TABLE writer_book_purchases ADD COLUMN purchase_token TEXT NOT NULL DEFAULT ''").run();
-  }
-  const casinoColumns = await db.prepare("PRAGMA table_info(casino_hands)").all<{ name: string }>();
-  if (!casinoColumns.results.some((column) => column.name === "deal_token")) {
-    await db.prepare("ALTER TABLE casino_hands ADD COLUMN deal_token TEXT NOT NULL DEFAULT ''").run();
+  const extraColumns: Record<string, Record<string, string>> = {
+    writer_books: { author_life_version: "INTEGER NOT NULL DEFAULT 0" },
+    writer_book_purchases: {
+      buyer_life_version: "INTEGER NOT NULL DEFAULT 0",
+      author_life_version: "INTEGER NOT NULL DEFAULT 0",
+      purchase_token: "TEXT NOT NULL DEFAULT ''",
+    },
+    casino_hands: { life_version: "INTEGER NOT NULL DEFAULT 0", deal_token: "TEXT NOT NULL DEFAULT ''" },
+    casino_table_state: { round_token: "TEXT NOT NULL DEFAULT ''", action_token: "TEXT NOT NULL DEFAULT ''" },
+    poker_hands: {
+      life_version: "INTEGER NOT NULL DEFAULT 0",
+      round_token: "TEXT NOT NULL DEFAULT ''",
+      action_token: "TEXT NOT NULL DEFAULT ''",
+    },
+    poker_table_state: { round_token: "TEXT NOT NULL DEFAULT ''", action_token: "TEXT NOT NULL DEFAULT ''" },
+    player_transfer_requests: {
+      sender_life_version: "INTEGER NOT NULL DEFAULT 0",
+      recipient_life_version: "INTEGER NOT NULL DEFAULT 0",
+    },
+    player_medical_requests: {
+      patient_life_version: "INTEGER NOT NULL DEFAULT 0",
+      provider_life_version: "INTEGER NOT NULL DEFAULT 0",
+    },
+    player_loan_requests: {
+      borrower_life_version: "INTEGER NOT NULL DEFAULT 0",
+      provider_life_version: "INTEGER NOT NULL DEFAULT 0",
+    },
+    player_loan_contracts: {
+      borrower_life_version: "INTEGER NOT NULL DEFAULT 0",
+      provider_life_version: "INTEGER NOT NULL DEFAULT 0",
+      revision: "INTEGER NOT NULL DEFAULT 0",
+      mutation_token: "TEXT NOT NULL DEFAULT ''",
+    },
+    territory_visit_log: { action_token: "TEXT NOT NULL DEFAULT ''" },
+    casino_bingo_entries: { life_version: "INTEGER NOT NULL DEFAULT 0" },
+    casino_tournament_entries: { life_version: "INTEGER NOT NULL DEFAULT 0" },
+    casino_tournament_rounds: { action_token: "TEXT NOT NULL DEFAULT ''" },
+    casino_tournament_hands: { life_version: "INTEGER NOT NULL DEFAULT 0", action_token: "TEXT NOT NULL DEFAULT ''" },
+  };
+  for (const [table, definitions] of Object.entries(extraColumns)) {
+    const tableColumns = await db.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
+    const names = new Set(tableColumns.results.map((column) => column.name));
+    for (const [name, definition] of Object.entries(definitions)) {
+      if (!names.has(name)) await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`).run();
+    }
   }
   if (columnNames.has("mood")) await db.prepare("ALTER TABLE players DROP COLUMN mood").run();
   await db.prepare("UPDATE players SET current_job='寫作助理', job_category='literary', job_exp=0 WHERE job_category='creative' OR current_job IN ('作家','畫家','設計師','演員','歌手','導演','實況主','網紅')").run();
@@ -503,28 +567,30 @@ async function upsertPlayer(db: D1Database, user: AuthUser, forceHeartbeat = fal
   }
   if (!row) return null;
   if (row.prison_until > 0 && row.elapsed_minutes >= row.prison_until) {
-    await db.prepare("UPDATE players SET prison_until=0, prison_crime='', location='realtor', updated_at=?, last_seen_at=? WHERE user_id=?")
-      .bind(now, now, user.userId).run();
+    await db.prepare("UPDATE players SET prison_until=0, prison_crime='', location='realtor', updated_at=?, last_seen_at=? WHERE user_id=? AND life_version=? AND reset_game_over='' AND game_over<>'__resetting__'")
+      .bind(now, now, user.userId, row.life_version).run();
     row = { ...row, prison_until: 0, prison_crime: "", location: "realtor", last_seen_at: now };
   }
   if (row.job_category === "crime" && row.current_job === "大橋頭營運長" && row.territory_location) {
     const cityDay = Math.floor(worldMinutes() / 1440) + 1;
     if (row.territory_day <= 0) {
-      await db.prepare("UPDATE players SET territory_day=?, updated_at=? WHERE user_id=?").bind(cityDay, now, user.userId).run();
+      await db.prepare("UPDATE players SET territory_day=?, updated_at=? WHERE user_id=? AND life_version=? AND reset_game_over='' AND game_over<>'__resetting__'").bind(cityDay, now, user.userId, row.life_version).run();
       row.territory_day = cityDay;
     } else if (cityDay > row.territory_day) {
       const rolled = await db.prepare(`UPDATE players SET territory_day=?, territory_visits=0,
         territory_pending=territory_pending+territory_income, territory_income=0, updated_at=?
-        WHERE user_id=? AND territory_day<? AND territory_location<>''
-        RETURNING *`).bind(cityDay, now, user.userId, cityDay).first<PlayerRow>();
+        WHERE user_id=? AND territory_day<? AND territory_location<>'' AND life_version=?
+          AND reset_game_over='' AND game_over<>'__resetting__'
+        RETURNING *`).bind(cityDay, now, user.userId, cityDay, row.life_version).first<PlayerRow>();
       if (rolled) row = rolled;
       else row = await db.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>() ?? row;
     }
     if (row.territory_pending > 0 && row.prison_until <= row.elapsed_minutes) {
       const paid = await db.prepare(`UPDATE players SET cash=cash+territory_pending, territory_pending=0,
         territory_payout_day=?, updated_at=?
-        WHERE user_id=? AND territory_pending>0 AND prison_until<=elapsed_minutes
-        RETURNING *`).bind(cityDay, now, user.userId).first<PlayerRow>();
+        WHERE user_id=? AND territory_pending>0 AND prison_until<=elapsed_minutes AND life_version=?
+          AND reset_game_over='' AND game_over<>'__resetting__'
+        RETURNING *`).bind(cityDay, now, user.userId, row.life_version).first<PlayerRow>();
       if (paid) row = paid;
       else row = await db.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>() ?? row;
     }
@@ -550,12 +616,25 @@ async function upsertPlayer(db: D1Database, user: AuthUser, forceHeartbeat = fal
   } else if (today > row.finance_day) {
     const sourceFinanceDay = row.finance_day;
     const sourceRevision = row.updated_at;
+    const sourceLifeVersion = row.life_version;
     const financeClaimRevision = Math.max(now, sourceRevision + 1);
-    const claimedFinance = await db.prepare(`UPDATE players SET updated_at=?
-      WHERE user_id=? AND finance_day=? AND updated_at=? RETURNING *`)
-      .bind(financeClaimRevision, user.userId, sourceFinanceDay, sourceRevision).first<PlayerRow>();
-    if (!claimedFinance) return await db.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>() ?? row;
-    row = claimedFinance;
+    const financeToken = crypto.randomUUID();
+    const financeClaimStatements: D1PreparedStatement[] = [db.prepare(`UPDATE players SET updated_at=?, mutation_token=?
+      WHERE user_id=? AND finance_day=? AND updated_at=? AND life_version=?
+        AND game_over<>'__resetting__' AND reset_game_over=''
+      RETURNING *`).bind(financeClaimRevision, financeToken, user.userId, sourceFinanceDay, sourceRevision, sourceLifeVersion)];
+    if (loanContract) financeClaimStatements.push(db.prepare(`UPDATE player_loan_contracts
+      SET revision=revision+1, mutation_token=?
+      WHERE id=? AND status='active' AND revision=? AND borrower_life_version=?
+        AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=? AND updated_at=?)
+      RETURNING revision, mutation_token`).bind(financeToken, loanContract.id, loanContract.revision, sourceLifeVersion,
+        user.userId, sourceLifeVersion, financeToken, financeClaimRevision));
+    const financeClaims = await db.batch(financeClaimStatements);
+    if ((financeClaims[0]?.results?.length ?? 0) !== 1 || (loanContract && (financeClaims[1]?.results?.length ?? 0) !== 1)) {
+      return await db.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>() ?? row;
+    }
+    row = financeClaims[0].results[0] as PlayerRow;
+    if (loanContract) loanContract = { ...loanContract, revision: loanContract.revision + 1, mutation_token: financeToken };
     const progress = await ensureProgress(db, row);
     const elapsedDays = today - row.finance_day;
     let cashBalance = row.cash;
@@ -597,24 +676,34 @@ async function upsertPlayer(db: D1Database, user: AuthUser, forceHeartbeat = fal
     }
     writerWrites = 0;
     const financeFinishedRevision = financeClaimRevision + 1;
+    const financeFinishedToken = crypto.randomUUID();
     const financeStatements = [db.prepare(`UPDATE players SET cash=?, bank_balance=?, loan_balance=?, finance_day=?, daily_minimum_payment=?,
-      daily_payment_made=?, missed_payment_days=?, game_over=?, writer_day=?, writer_writes=?, updated_at=?
-      WHERE user_id=? AND finance_day=? AND updated_at=? RETURNING user_id`)
+      daily_payment_made=?, missed_payment_days=?, game_over=?, writer_day=?, writer_writes=?, updated_at=?, mutation_token=?
+      WHERE user_id=? AND finance_day=? AND updated_at=? AND life_version=? AND mutation_token=?
+        AND (?=0 OR EXISTS (SELECT 1 FROM player_loan_contracts WHERE id=? AND status='active' AND mutation_token=?))
+      RETURNING user_id`)
       .bind(cashBalance, bankBalance, loanBalance, today, minimumPayment, paymentMade, missedPaymentDays, gameOver, today, writerWrites,
-        financeFinishedRevision, user.userId, sourceFinanceDay, financeClaimRevision)];
+        financeFinishedRevision, financeFinishedToken, user.userId, sourceFinanceDay, financeClaimRevision, sourceLifeVersion, financeToken,
+        loanContract ? 1 : 0, loanContract?.id ?? "", financeToken)];
     if (loanContract) {
-      financeStatements.push(db.prepare(`UPDATE player_loan_contracts SET outstanding_balance=?, status=?, closed_at=?
-        WHERE id=? AND status='active' AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND finance_day=? AND updated_at=?)`)
-        .bind(loanBalance, loanBalance > 0 ? "active" : "paid", loanBalance > 0 ? null : now, loanContract.id,
-          user.userId, today, financeFinishedRevision));
-      if (providerEarnings > 0) financeStatements.push(db.prepare(`UPDATE players SET cash=cash+?, updated_at=MAX(updated_at+1, ?) WHERE user_id=?
-        AND EXISTS (SELECT 1 FROM players borrower WHERE borrower.user_id=? AND borrower.finance_day=? AND borrower.updated_at=?)`)
-        .bind(providerEarnings, now, loanContract.provider_id, user.userId, today, financeFinishedRevision));
+      financeStatements.push(db.prepare(`UPDATE player_loan_contracts SET outstanding_balance=?, status=?, closed_at=?,
+        revision=revision+1, mutation_token=?
+        WHERE id=? AND status='active' AND mutation_token=?
+          AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND finance_day=? AND life_version=? AND mutation_token=? AND updated_at=?)
+        RETURNING id`)
+        .bind(loanBalance, loanBalance > 0 ? "active" : "paid", loanBalance > 0 ? null : now, financeFinishedToken,
+          loanContract.id, financeToken, user.userId, today, sourceLifeVersion, financeFinishedToken, financeFinishedRevision));
+      if (providerEarnings > 0 && loanContract.provider_id !== "bank") financeStatements.push(db.prepare(`UPDATE players SET cash=cash+?, updated_at=MAX(updated_at+1, ?)
+        WHERE user_id=? AND life_version=? AND game_over<>'__resetting__' AND reset_game_over=''
+          AND EXISTS (SELECT 1 FROM player_loan_contracts WHERE id=? AND provider_id=? AND provider_life_version=? AND mutation_token=?)
+        RETURNING user_id`)
+        .bind(providerEarnings, now, loanContract.provider_id, loanContract.provider_life_version, loanContract.id,
+          loanContract.provider_id, loanContract.provider_life_version, financeFinishedToken));
     }
     const financeResults = await db.batch(financeStatements);
     if ((financeResults[0]?.results?.length ?? 0) !== 1) return await db.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>() ?? row;
     if (loanContract && loanBalance <= 0) loanContract = null;
-    row.cash = cashBalance; row.bank_balance = bankBalance; row.loan_balance = loanBalance; row.finance_day = today; row.daily_minimum_payment = minimumPayment; row.daily_payment_made = paymentMade; row.missed_payment_days = missedPaymentDays; row.game_over = gameOver; row.writer_day = today; row.writer_writes = writerWrites; row.updated_at = financeFinishedRevision;
+    row.cash = cashBalance; row.bank_balance = bankBalance; row.loan_balance = loanBalance; row.finance_day = today; row.daily_minimum_payment = minimumPayment; row.daily_payment_made = paymentMade; row.missed_payment_days = missedPaymentDays; row.game_over = gameOver; row.writer_day = today; row.writer_writes = writerWrites; row.updated_at = financeFinishedRevision; row.mutation_token = financeFinishedToken;
   }
   return row;
 }
@@ -694,22 +783,24 @@ async function multiplayer(db: D1Database) {
   };
 }
 
-async function recordTerritoryVisit(db: D1Database, visitorId: string, location: LocationId, gameDay: number, gameMinute: number) {
+async function recordTerritoryVisit(db: D1Database, visitorId: string, visitorLifeVersion: number, location: LocationId, gameDay: number, gameMinute: number) {
   if (!TERRITORY_LOCATIONS.has(location)) return null;
-  const owner = await db.prepare(`SELECT user_id, current_job, job_category, prison_until, elapsed_minutes, territory_day, territory_visits, territory_income
+  const owner = await db.prepare(`SELECT user_id, current_job, job_category, prison_until, elapsed_minutes, territory_day, territory_visits, territory_income, life_version
     FROM players WHERE territory_location=? AND current_job='大橋頭營運長' AND job_category='crime'
+      AND game_over<>'__resetting__' AND reset_game_over=''
     ORDER BY created_at, user_id LIMIT 1`).bind(location).first<{
     user_id: string; current_job: string; job_category: string; prison_until: number; elapsed_minutes: number;
-    territory_day: number; territory_visits: number; territory_income: number;
+    territory_day: number; territory_visits: number; territory_income: number; life_version: number;
   }>();
   if (!owner || owner.user_id === visitorId || owner.prison_until > owner.elapsed_minutes) return null;
   if (owner.territory_day !== gameDay) {
     const rolled = await db.prepare(`UPDATE players SET territory_day=?, territory_visits=0,
       territory_pending=territory_pending+territory_income, territory_income=0, updated_at=?
       WHERE user_id=? AND territory_location=? AND current_job='大橋頭營運長'
-        AND job_category='crime' AND territory_day<?
+        AND job_category='crime' AND territory_day<? AND life_version=?
+        AND game_over<>'__resetting__' AND reset_game_over=''
       RETURNING territory_day, territory_visits, territory_income`)
-      .bind(gameDay, Date.now(), owner.user_id, location, gameDay)
+      .bind(gameDay, Date.now(), owner.user_id, location, gameDay, owner.life_version)
       .first<{ territory_day: number; territory_visits: number; territory_income: number }>();
     if (rolled) {
       owner.territory_day = rolled.territory_day;
@@ -726,27 +817,47 @@ async function recordTerritoryVisit(db: D1Database, visitorId: string, location:
     }
   }
   if (owner.territory_income >= TERRITORY_DAILY_CAP || owner.territory_visits >= Math.floor(TERRITORY_DAILY_CAP / TERRITORY_VISIT_REWARD)) return null;
-  const claimedVisit = await db.prepare(`INSERT INTO territory_visit_log (owner_id, visitor_id, cycle_day, last_visit_minute)
-    VALUES (?, ?, ?, ?)
-    ON CONFLICT(owner_id, visitor_id, cycle_day) DO UPDATE SET last_visit_minute=excluded.last_visit_minute
-    WHERE excluded.last_visit_minute-territory_visit_log.last_visit_minute>=?
-    RETURNING last_visit_minute`).bind(owner.user_id, visitorId, gameDay, gameMinute, TERRITORY_VISIT_COOLDOWN_MINUTES).first<{ last_visit_minute: number }>();
-  if (!claimedVisit) return null;
-  const updated = await db.prepare(`UPDATE players SET territory_visits=territory_visits+1, territory_income=MIN(territory_income+?, ?), updated_at=?
-    WHERE user_id=? AND territory_location=? AND current_job='大橋頭營運長' AND job_category='crime'
-      AND prison_until<=elapsed_minutes AND territory_day=? AND territory_income<?
-    RETURNING territory_income`).bind(TERRITORY_VISIT_REWARD, TERRITORY_DAILY_CAP, Date.now(), owner.user_id, location, gameDay, TERRITORY_DAILY_CAP).first<{ territory_income: number }>();
-  if (!updated) return null;
-  return { ownerId: owner.user_id, amount: TERRITORY_VISIT_REWARD, income: updated.territory_income };
+  const visitToken = crypto.randomUUID();
+  const visitResults = await db.batch([
+    db.prepare(`INSERT INTO territory_visit_log (owner_id, visitor_id, cycle_day, last_visit_minute, action_token)
+      SELECT ?, ?, ?, ?, ? WHERE
+        EXISTS (SELECT 1 FROM players visitor WHERE visitor.user_id=? AND visitor.life_version=?
+          AND visitor.game_over<>'__resetting__' AND visitor.reset_game_over='')
+        AND EXISTS (SELECT 1 FROM players owner WHERE owner.user_id=? AND owner.life_version=?
+          AND owner.territory_location=? AND owner.current_job='大橋頭營運長' AND owner.job_category='crime'
+          AND owner.game_over<>'__resetting__' AND owner.reset_game_over='')
+      ON CONFLICT(owner_id, visitor_id, cycle_day) DO UPDATE SET
+        last_visit_minute=excluded.last_visit_minute, action_token=excluded.action_token
+      WHERE excluded.last_visit_minute-territory_visit_log.last_visit_minute>=?
+      RETURNING last_visit_minute`).bind(owner.user_id, visitorId, gameDay, gameMinute, visitToken,
+        visitorId, visitorLifeVersion, owner.user_id, owner.life_version, location, TERRITORY_VISIT_COOLDOWN_MINUTES),
+    db.prepare(`UPDATE players SET territory_visits=territory_visits+1, territory_income=MIN(territory_income+?, ?), updated_at=MAX(updated_at+1, ?)
+      WHERE user_id=? AND life_version=? AND territory_location=? AND current_job='大橋頭營運長' AND job_category='crime'
+        AND game_over<>'__resetting__' AND reset_game_over='' AND prison_until<=elapsed_minutes
+        AND territory_day=? AND territory_income<?
+        AND EXISTS (SELECT 1 FROM territory_visit_log WHERE owner_id=? AND visitor_id=? AND cycle_day=? AND action_token=?)
+      RETURNING territory_income`).bind(TERRITORY_VISIT_REWARD, TERRITORY_DAILY_CAP, Date.now(), owner.user_id,
+        owner.life_version, location, gameDay, TERRITORY_DAILY_CAP, owner.user_id, visitorId, gameDay, visitToken),
+  ]);
+  if ((visitResults[0]?.results?.length ?? 0) !== 1 || (visitResults[1]?.results?.length ?? 0) !== 1) return null;
+  return { ownerId: owner.user_id, amount: TERRITORY_VISIT_REWARD, income: Number((visitResults[1].results[0] as { territory_income: number }).territory_income) };
 }
 
 async function pendingTransferRequests(db: D1Database, recipientId: string) {
   const now = Date.now();
-  const hasPending = await db.prepare("SELECT 1 AS pending FROM player_transfer_requests WHERE recipient_id=? AND status='pending' LIMIT 1").bind(recipientId).first<{ pending: number }>();
+  const hasPending = await db.prepare("SELECT 1 AS pending FROM player_transfer_requests WHERE recipient_id=? AND status IN ('pending','processing') LIMIT 1").bind(recipientId).first<{ pending: number }>();
   if (!hasPending) return [];
-  await db.prepare("UPDATE player_transfer_requests SET status='cancelled', outcome='expired', resolved_at=? WHERE recipient_id=? AND status='pending' AND expires_at<=?")
-    .bind(now, recipientId, now).run();
-  const requests = await db.prepare(`SELECT id, sender_id, sender_name, recipient_id, kind, amount, status, outcome, resolution_token, created_at, expires_at, resolved_at
+  await db.batch([
+    db.prepare("UPDATE player_transfer_requests SET status='cancelled', outcome='expired', resolved_at=? WHERE recipient_id=? AND status='pending' AND expires_at<=?").bind(now, recipientId, now),
+    db.prepare("UPDATE player_transfer_requests SET status='cancelled', outcome='processing_timeout', resolved_at=? WHERE recipient_id=? AND status='processing' AND resolved_at<=?").bind(now, recipientId, now - REQUEST_PROCESSING_TIMEOUT_MS),
+    db.prepare(`UPDATE player_transfer_requests SET status='cancelled', outcome='life_changed', resolved_at=?
+      WHERE recipient_id=? AND status='pending' AND (
+        NOT EXISTS (SELECT 1 FROM players sender WHERE sender.user_id=sender_id AND sender.life_version=sender_life_version AND sender.reset_game_over='' AND sender.game_over<>'__resetting__')
+        OR NOT EXISTS (SELECT 1 FROM players recipient WHERE recipient.user_id=recipient_id AND recipient.life_version=recipient_life_version AND recipient.reset_game_over='' AND recipient.game_over<>'__resetting__')
+      )`).bind(now, recipientId),
+  ]);
+  const requests = await db.prepare(`SELECT id, sender_id, sender_name, recipient_id, kind, amount, sender_life_version, recipient_life_version,
+      status, outcome, resolution_token, created_at, expires_at, resolved_at
     FROM player_transfer_requests
     WHERE recipient_id=? AND status='pending' AND expires_at>?
     ORDER BY created_at ASC LIMIT 1`).bind(recipientId, now).all<TransferRequestRow>();
@@ -755,23 +866,28 @@ async function pendingTransferRequests(db: D1Database, recipientId: string) {
 
 async function pendingMedicalRequests(db: D1Database, providerId: string) {
   const now = Date.now();
-  const hasPending = await db.prepare("SELECT 1 AS pending FROM player_medical_requests WHERE provider_id=? AND status='pending' LIMIT 1").bind(providerId).first<{ pending: number }>();
+  const hasPending = await db.prepare("SELECT 1 AS pending FROM player_medical_requests WHERE provider_id=? AND status IN ('pending','processing') LIMIT 1").bind(providerId).first<{ pending: number }>();
   if (!hasPending) return [];
   await db.batch([
     db.prepare("UPDATE player_medical_requests SET status='cancelled', outcome='expired', resolved_at=? WHERE provider_id=? AND status='pending' AND expires_at<=?").bind(now, providerId, now),
+    db.prepare("UPDATE player_medical_requests SET status='cancelled', outcome='processing_timeout', resolved_at=? WHERE provider_id=? AND status='processing' AND resolved_at<=?").bind(now, providerId, now - REQUEST_PROCESSING_TIMEOUT_MS),
     db.prepare(`UPDATE player_medical_requests SET status='cancelled', outcome='provider_unavailable', resolved_at=?
       WHERE provider_id=? AND status='pending' AND NOT EXISTS (
         SELECT 1 FROM players p
         WHERE p.user_id=player_medical_requests.provider_id AND p.last_seen_at>=?
-          AND p.current_job=player_medical_requests.provider_job AND p.game_over='' AND p.main_story<>'unselected'
+          AND p.current_job=player_medical_requests.provider_job AND p.life_version=player_medical_requests.provider_life_version
+          AND p.reset_game_over='' AND p.game_over='' AND p.main_story<>'unselected'
       )`).bind(now, providerId, now - ONLINE_HEARTBEAT_GRACE_MS),
     db.prepare(`UPDATE player_medical_requests SET status='cancelled', outcome='patient_unavailable', resolved_at=?
       WHERE provider_id=? AND status='pending' AND NOT EXISTS (
         SELECT 1 FROM players p
-        WHERE p.user_id=player_medical_requests.patient_id AND p.last_seen_at>=? AND p.game_over='' AND p.main_story<>'unselected'
+        WHERE p.user_id=player_medical_requests.patient_id AND p.last_seen_at>=?
+          AND p.life_version=player_medical_requests.patient_life_version AND p.reset_game_over=''
+          AND p.game_over='' AND p.main_story<>'unselected'
       )`).bind(now, providerId, now - ONLINE_HEARTBEAT_GRACE_MS),
   ]);
-  const requests = await db.prepare(`SELECT id, patient_id, patient_name, provider_id, provider_name, provider_job, health_gain, amount, status, outcome, resolution_token, created_at, expires_at, resolved_at
+  const requests = await db.prepare(`SELECT id, patient_id, patient_name, provider_id, provider_name, provider_job, health_gain, amount,
+      patient_life_version, provider_life_version, status, outcome, resolution_token, created_at, expires_at, resolved_at
     FROM player_medical_requests
     WHERE provider_id=? AND status='pending' AND expires_at>?
     ORDER BY created_at ASC LIMIT 1`).bind(providerId, now).all<MedicalTreatmentRequestRow>();
@@ -780,24 +896,29 @@ async function pendingMedicalRequests(db: D1Database, providerId: string) {
 
 async function pendingLoanRequests(db: D1Database, providerId: string) {
   const now = Date.now();
-  const hasPending = await db.prepare("SELECT 1 AS pending FROM player_loan_requests WHERE provider_id=? AND status='pending' LIMIT 1").bind(providerId).first<{ pending: number }>();
+  const hasPending = await db.prepare("SELECT 1 AS pending FROM player_loan_requests WHERE provider_id=? AND status IN ('pending','processing') LIMIT 1").bind(providerId).first<{ pending: number }>();
   if (!hasPending) return [];
   await db.batch([
     db.prepare("UPDATE player_loan_requests SET status='cancelled', outcome='expired', resolved_at=? WHERE provider_id=? AND status='pending' AND expires_at<=?").bind(now, providerId, now),
+    db.prepare("UPDATE player_loan_requests SET status='cancelled', outcome='processing_timeout', resolved_at=? WHERE provider_id=? AND status='processing' AND resolved_at<=?").bind(now, providerId, now - REQUEST_PROCESSING_TIMEOUT_MS),
     db.prepare(`UPDATE player_loan_requests SET status='cancelled', outcome='provider_unavailable', resolved_at=?
       WHERE provider_id=? AND status='pending' AND NOT EXISTS (
         SELECT 1 FROM players p
         WHERE p.user_id=player_loan_requests.provider_id AND p.last_seen_at>=?
-          AND p.current_job=player_loan_requests.provider_job AND p.job_category='finance' AND p.game_over='' AND p.main_story<>'unselected'
+          AND p.current_job=player_loan_requests.provider_job AND p.job_category='finance'
+          AND p.life_version=player_loan_requests.provider_life_version AND p.reset_game_over=''
+          AND p.game_over='' AND p.main_story<>'unselected'
       )`).bind(now, providerId, now - ONLINE_HEARTBEAT_GRACE_MS),
     db.prepare(`UPDATE player_loan_requests SET status='cancelled', outcome='borrower_unavailable', resolved_at=?
       WHERE provider_id=? AND status='pending' AND NOT EXISTS (
         SELECT 1 FROM players p
         WHERE p.user_id=player_loan_requests.borrower_id AND p.last_seen_at>=? AND p.loan_balance=0
+          AND p.life_version=player_loan_requests.borrower_life_version AND p.reset_game_over=''
           AND p.game_over='' AND p.main_story NOT IN ('unselected', 'prodigal_return')
       )`).bind(now, providerId, now - ONLINE_HEARTBEAT_GRACE_MS),
   ]);
-  const requests = await db.prepare(`SELECT id, borrower_id, borrower_name, provider_id, provider_name, provider_job, amount, interest_rate_bp, spread_bp, status, outcome, resolution_token, created_at, expires_at, resolved_at
+  const requests = await db.prepare(`SELECT id, borrower_id, borrower_name, provider_id, provider_name, provider_job, amount, interest_rate_bp, spread_bp,
+      borrower_life_version, provider_life_version, status, outcome, resolution_token, created_at, expires_at, resolved_at
     FROM player_loan_requests
     WHERE provider_id=? AND status='pending' AND expires_at>?
     ORDER BY created_at ASC LIMIT 1`).bind(providerId, now).all<LoanRequestRow>();
@@ -857,6 +978,10 @@ const randomBingoCard = () => { const pool = Array.from({ length: 25 }, (_, inde
 const bingoLine = (card: number[], drawn: number[]) => BINGO_LINES.some((line) => line.every((index) => drawn.includes(card[index])));
 
 async function bingoState(db: D1Database, userId: string) {
+  await db.prepare(`DELETE FROM casino_bingo_entries WHERE NOT EXISTS (
+    SELECT 1 FROM players p WHERE p.user_id=casino_bingo_entries.user_id AND p.life_version=casino_bingo_entries.life_version
+      AND p.reset_game_over='' AND p.game_over<>'__resetting__'
+  )`).run();
   let state = await db.prepare("SELECT * FROM casino_bingo_state WHERE id='bingo-01'").first<{ round_no: number; status: string; host_user_id: string; entry_fee: number; drawn_numbers: string; next_draw_at: number }>();
   if (!state) { await db.prepare("INSERT INTO casino_bingo_state (id, updated_at) VALUES ('bingo-01', ?)").bind(Date.now()).run(); state = { round_no: 1, status: "lobby", host_user_id: "", entry_fee: BINGO_ENTRY_FEE, drawn_numbers: "[]", next_draw_at: 0 }; }
   if (state.status === "drawing" && state.next_draw_at <= Date.now()) {
@@ -869,16 +994,20 @@ async function bingoState(db: D1Database, userId: string) {
     } else {
     const drawn = parseCards(state.drawn_numbers).map(Number); const remaining = Array.from({ length: 25 }, (_, index) => index + 1).filter((number) => !drawn.includes(number));
     if (remaining.length) drawn.push(remaining[randomIndex(remaining.length)]);
-    const entries = await db.prepare("SELECT user_id, player_name, card FROM casino_bingo_entries WHERE round_no=?").bind(state.round_no).all<{ user_id: string; player_name: string; card: string }>();
+    const entries = await db.prepare(`SELECT e.user_id, e.player_name, e.card, e.life_version FROM casino_bingo_entries e
+      JOIN players p ON p.user_id=e.user_id AND p.life_version=e.life_version
+      WHERE e.round_no=? AND p.reset_game_over='' AND p.game_over<>'__resetting__'`).bind(state.round_no).all<{ user_id: string; player_name: string; card: string; life_version: number }>();
     const winners = entries.results.filter((entry) => bingoLine(parseCards(entry.card).map(Number), drawn));
     if (winners.length) {
       const prize = Math.floor((entries.results.length * state.entry_fee) / winners.length);
-      await db.batch([db.prepare("UPDATE casino_bingo_state SET status='completed', drawn_numbers=?, next_draw_at=0, updated_at=? WHERE id='bingo-01'").bind(JSON.stringify(drawn), Date.now()), ...winners.map((winner) => db.prepare("UPDATE players SET cash=cash+?, updated_at=MAX(updated_at+1, ?) WHERE user_id=?").bind(prize, Date.now(), winner.user_id))]);
+      await db.batch([db.prepare("UPDATE casino_bingo_state SET status='completed', drawn_numbers=?, next_draw_at=0, updated_at=? WHERE id='bingo-01'").bind(JSON.stringify(drawn), Date.now()), ...winners.map((winner) => db.prepare("UPDATE players SET cash=cash+?, updated_at=MAX(updated_at+1, ?) WHERE user_id=? AND life_version=? AND reset_game_over='' AND game_over<>'__resetting__'").bind(prize, Date.now(), winner.user_id, winner.life_version))]);
     } else await db.prepare("UPDATE casino_bingo_state SET drawn_numbers=?, next_draw_at=?, updated_at=? WHERE id='bingo-01'").bind(JSON.stringify(drawn), Date.now() + 2_000, Date.now()).run();
     state = await db.prepare("SELECT * FROM casino_bingo_state WHERE id='bingo-01'").first<{ round_no: number; status: string; host_user_id: string; entry_fee: number; drawn_numbers: string; next_draw_at: number }>();
     }
   }
-  const entries = await db.prepare("SELECT user_id, player_name, card FROM casino_bingo_entries WHERE round_no=? ORDER BY player_name").bind(state!.round_no).all<{ user_id: string; player_name: string; card: string }>();
+  const entries = await db.prepare(`SELECT e.user_id, e.player_name, e.card FROM casino_bingo_entries e
+    JOIN players p ON p.user_id=e.user_id AND p.life_version=e.life_version
+    WHERE e.round_no=? AND p.reset_game_over='' AND p.game_over<>'__resetting__' ORDER BY e.player_name`).bind(state!.round_no).all<{ user_id: string; player_name: string; card: string }>();
   const drawn = parseCards(state!.drawn_numbers).map(Number);
   return { hostUserId: state!.host_user_id, entryFee: state!.entry_fee, capacity: 5, status: state!.status, roundNo: state!.round_no, drawn, nextDrawAt: state!.next_draw_at, players: entries.results.map((entry) => ({ id: entry.user_id, displayName: entry.player_name, card: parseCards(entry.card).map(Number), isMine: entry.user_id === userId })) };
 }
@@ -895,8 +1024,8 @@ async function bingoAction(request: Request, env: Env) {
     if (!state.players.some((entry) => entry.id === user.userId)) return json({ message: "你不在這個賓果房間。" }, 409);
     const leavingFee = state.entryFee;
     await env.DB.batch([
-      env.DB.prepare("UPDATE players SET cash=cash+?, updated_at=MAX(updated_at+1, ?) WHERE user_id=? AND EXISTS (SELECT 1 FROM casino_bingo_state WHERE id='bingo-01' AND status='lobby') AND EXISTS (SELECT 1 FROM casino_bingo_entries WHERE round_no=? AND user_id=?)").bind(leavingFee, Date.now(), user.userId, state.roundNo, user.userId),
-      env.DB.prepare("DELETE FROM casino_bingo_entries WHERE round_no=? AND user_id=? AND EXISTS (SELECT 1 FROM casino_bingo_state WHERE id='bingo-01' AND status='lobby')").bind(state.roundNo, user.userId),
+      env.DB.prepare("UPDATE players SET cash=cash+?, updated_at=MAX(updated_at+1, ?) WHERE user_id=? AND life_version=? AND reset_game_over='' AND game_over='' AND EXISTS (SELECT 1 FROM casino_bingo_state WHERE id='bingo-01' AND status='lobby') AND EXISTS (SELECT 1 FROM casino_bingo_entries WHERE round_no=? AND user_id=? AND life_version=?)").bind(leavingFee, Date.now(), user.userId, player.life_version, state.roundNo, user.userId, player.life_version),
+      env.DB.prepare("DELETE FROM casino_bingo_entries WHERE round_no=? AND user_id=? AND life_version=? AND EXISTS (SELECT 1 FROM casino_bingo_state WHERE id='bingo-01' AND status='lobby')").bind(state.roundNo, user.userId, player.life_version),
       env.DB.prepare("UPDATE casino_bingo_state SET host_user_id=COALESCE((SELECT user_id FROM casino_bingo_entries WHERE round_no=? ORDER BY rowid LIMIT 1), ''), entry_fee=CASE WHEN EXISTS (SELECT 1 FROM casino_bingo_entries WHERE round_no=?) THEN entry_fee ELSE ? END, updated_at=? WHERE id='bingo-01' AND status='lobby'").bind(state.roundNo, state.roundNo, BINGO_ENTRY_FEE, Date.now()),
     ]);
     state = await bingoState(env.DB, user.userId);
@@ -925,15 +1054,15 @@ async function bingoAction(request: Request, env: Env) {
   let admission: D1Result<unknown>[];
   try {
     admission = await env.DB.batch([
-      env.DB.prepare(`INSERT INTO casino_bingo_entries (round_no, user_id, player_name, card)
-        SELECT ?, ?, ?, ? WHERE
+      env.DB.prepare(`INSERT INTO casino_bingo_entries (round_no, user_id, player_name, card, life_version)
+        SELECT ?, ?, ?, ?, ? WHERE
           EXISTS (SELECT 1 FROM casino_bingo_state WHERE id='bingo-01' AND round_no=? AND status='lobby')
-          AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND cash>=? AND game_over='')
+          AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND cash>=? AND reset_game_over='' AND game_over='')
           AND (SELECT COUNT(*) FROM casino_bingo_entries WHERE round_no=?)<5
-        RETURNING user_id`).bind(state.roundNo, user.userId, user.displayName.slice(0, 40), JSON.stringify(randomBingoCard()), state.roundNo, user.userId, entryFee, state.roundNo),
-      env.DB.prepare(`UPDATE players SET cash=cash-?, updated_at=MAX(updated_at+1, ?) WHERE user_id=? AND cash>=?
-        AND EXISTS (SELECT 1 FROM casino_bingo_entries WHERE round_no=? AND user_id=?)
-        RETURNING user_id`).bind(entryFee, Date.now(), user.userId, entryFee, state.roundNo, user.userId),
+        RETURNING user_id`).bind(state.roundNo, user.userId, user.displayName.slice(0, 40), JSON.stringify(randomBingoCard()), player.life_version, state.roundNo, user.userId, player.life_version, entryFee, state.roundNo),
+      env.DB.prepare(`UPDATE players SET cash=cash-?, updated_at=MAX(updated_at+1, ?) WHERE user_id=? AND life_version=? AND cash>=? AND reset_game_over='' AND game_over=''
+        AND EXISTS (SELECT 1 FROM casino_bingo_entries WHERE round_no=? AND user_id=? AND life_version=?)
+        RETURNING user_id`).bind(entryFee, Date.now(), user.userId, player.life_version, entryFee, state.roundNo, user.userId, player.life_version),
     ]);
   } catch {
     if (hosting) await env.DB.prepare("UPDATE casino_bingo_state SET host_user_id=COALESCE((SELECT user_id FROM casino_bingo_entries WHERE round_no=? ORDER BY rowid LIMIT 1), ''), entry_fee=CASE WHEN EXISTS (SELECT 1 FROM casino_bingo_entries WHERE round_no=?) THEN entry_fee ELSE ? END WHERE id='bingo-01' AND host_user_id=?").bind(state.roundNo, state.roundNo, BINGO_ENTRY_FEE, user.userId).run();
@@ -951,10 +1080,14 @@ async function bingoAction(request: Request, env: Env) {
 }
 
 async function startTournamentRound(db: D1Database, state: TournamentStateRow) {
-  const entries = await db.prepare("SELECT user_id, player_name FROM casino_tournament_entries WHERE tournament_no=? ORDER BY rowid").bind(state.round_no).all<{ user_id: string; player_name: string }>();
+  const entries = await db.prepare(`SELECT e.user_id, e.player_name, e.life_version FROM casino_tournament_entries e
+    JOIN players p ON p.user_id=e.user_id AND p.life_version=e.life_version
+    WHERE e.tournament_no=? AND p.reset_game_over='' AND p.game_over<>'__resetting__' ORDER BY e.rowid`)
+    .bind(state.round_no).all<{ user_id: string; player_name: string; life_version: number }>();
   if (entries.results.length < 2) return;
   const now = Date.now();
   const roundNo = state.current_round + 1;
+  const roundToken = crypto.randomUUID();
   const deck = shuffledDeck();
   const dealerCards = state.game === "blackjack" ? [deck.pop()!, deck.pop()!] : [];
   const hands = entries.results.map((entry, index) => {
@@ -965,13 +1098,13 @@ async function startTournamentRound(db: D1Database, state: TournamentStateRow) {
   });
   const firstTurn = state.game === "poker" ? (hands[2]?.seatNo ?? hands[0].seatNo) : 0;
   const round = db.prepare(`INSERT OR IGNORE INTO casino_tournament_rounds
-    (tournament_no, round_no, game, status, deck, dealer_cards, community_cards, street, current_bet, turn_seat, pot, next_action_at, updated_at)
-    VALUES (?, ?, ?, 'playing', ?, ?, '[]', ?, ?, ?, ?, ?, ?)`)
-    .bind(state.round_no, roundNo, state.game, JSON.stringify(deck), JSON.stringify(dealerCards), state.game === "poker" ? "preflop" : "blackjack", state.game === "poker" ? TOURNAMENT_BIG_BLIND : 0, firstTurn, state.game === "poker" ? TOURNAMENT_SMALL_BLIND + TOURNAMENT_BIG_BLIND : 0, now + TOURNAMENT_ACTION_TIMEOUT_MS, now);
+    (tournament_no, round_no, game, status, deck, dealer_cards, community_cards, street, current_bet, turn_seat, pot, next_action_at, action_token, updated_at)
+    VALUES (?, ?, ?, 'playing', ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(state.round_no, roundNo, state.game, JSON.stringify(deck), JSON.stringify(dealerCards), state.game === "poker" ? "preflop" : "blackjack", state.game === "poker" ? TOURNAMENT_BIG_BLIND : 0, firstTurn, state.game === "poker" ? TOURNAMENT_SMALL_BLIND + TOURNAMENT_BIG_BLIND : 0, now + TOURNAMENT_ACTION_TIMEOUT_MS, roundToken, now);
   const handStatements = hands.map((hand) => db.prepare(`INSERT OR IGNORE INTO casino_tournament_hands
-    (tournament_no, round_no, user_id, player_name, seat_no, player_cards, hole_cards, bet, street_bet, stack, status, acted, result, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'playing', 0, '', ?)`)
-    .bind(state.round_no, roundNo, hand.user_id, hand.player_name, hand.seatNo, state.game === "blackjack" ? JSON.stringify(hand.cards) : "[]", state.game === "poker" ? JSON.stringify(hand.cards) : "[]", hand.bet, hand.bet, hand.stack, now));
+    (tournament_no, round_no, user_id, player_name, seat_no, player_cards, hole_cards, bet, street_bet, stack, status, acted, result, life_version, action_token, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'playing', 0, '', ?, ?, ?)`)
+    .bind(state.round_no, roundNo, hand.user_id, hand.player_name, hand.seatNo, state.game === "blackjack" ? JSON.stringify(hand.cards) : "[]", state.game === "poker" ? JSON.stringify(hand.cards) : "[]", hand.bet, hand.bet, hand.stack, hand.life_version, roundToken, now));
   await db.batch([round, ...handStatements, db.prepare("UPDATE casino_tournament_state SET next_round_at=0, updated_at=? WHERE id='tournament-01' AND round_no=? AND current_round=? AND status='playing'").bind(now, state.round_no, state.current_round)]);
 }
 
@@ -986,7 +1119,10 @@ async function settleTournamentRound(db: D1Database, state: TournamentStateRow, 
       .bind(settlingRevision, state.round_no, round.round_no, round.updated_at).first<{ round_no: number }>();
   if (!claimed) return;
   round = { ...round, status: "settling", updated_at: settlingRevision };
-  const entries = await db.prepare("SELECT user_id, player_name, score FROM casino_tournament_entries WHERE tournament_no=?").bind(state.round_no).all<{ user_id: string; player_name: string; score: number }>();
+  const entries = await db.prepare(`SELECT e.user_id, e.player_name, e.score, e.life_version FROM casino_tournament_entries e
+    JOIN players p ON p.user_id=e.user_id AND p.life_version=e.life_version
+    WHERE e.tournament_no=? AND p.reset_game_over='' AND p.game_over<>'__resetting__'`)
+    .bind(state.round_no).all<{ user_id: string; player_name: string; score: number; life_version: number }>();
   const now = Date.now();
   const points = new Map<string, number>();
   const handResults = new Map<string, string>();
@@ -1018,8 +1154,8 @@ async function settleTournamentRound(db: D1Database, state: TournamentStateRow, 
     evaluated.forEach((item, index) => { const earned = item.evaluation ? Math.max(1, evaluated.length - index) : 0; points.set(item.hand.user_id, earned); handResults.set(item.hand.user_id, item.evaluation ? `${item.evaluation.name} · ${item.evaluation.score.join("-")} · 本局 +${earned} 分` : "本局已棄牌 · 本局 +0 分"); });
   }
   const updates = entries.results.flatMap((entry) => [
-    db.prepare("UPDATE casino_tournament_entries SET score=score+?, latest_hand=? WHERE tournament_no=? AND user_id=?").bind(points.get(entry.user_id) ?? 0, handResults.get(entry.user_id) ?? "未完成本局", state.round_no, entry.user_id),
-    db.prepare("UPDATE casino_tournament_hands SET status='complete', result=?, updated_at=? WHERE tournament_no=? AND round_no=? AND user_id=?").bind(handResults.get(entry.user_id) ?? "未完成本局", now, state.round_no, round.round_no, entry.user_id),
+    db.prepare("UPDATE casino_tournament_entries SET score=score+?, latest_hand=? WHERE tournament_no=? AND user_id=? AND life_version=?").bind(points.get(entry.user_id) ?? 0, handResults.get(entry.user_id) ?? "未完成本局", state.round_no, entry.user_id, entry.life_version),
+    db.prepare("UPDATE casino_tournament_hands SET status='complete', result=?, updated_at=? WHERE tournament_no=? AND round_no=? AND user_id=? AND life_version=?").bind(handResults.get(entry.user_id) ?? "未完成本局", now, state.round_no, round.round_no, entry.user_id, entry.life_version),
   ]);
   // Rebuild totals from the persisted score and this round's points.  Using the
   // round ranking here used to make the fifth round's total look out of order
@@ -1033,7 +1169,7 @@ async function settleTournamentRound(db: D1Database, state: TournamentStateRow, 
   const roundUpdate = db.prepare("UPDATE casino_tournament_rounds SET status='completed', deck=?, dealer_cards=?, updated_at=?, next_action_at=0 WHERE tournament_no=? AND round_no=? AND status='settling' AND updated_at=? RETURNING round_no").bind(JSON.stringify(deck), JSON.stringify(dealerCards), now, state.round_no, round.round_no, settlingRevision);
   if (resolvedRound >= state.round_limit) {
     const pool = entries.results.length * state.entry_fee; const shares = finalScores.length === 2 ? [.7, .3] : [.6, .3, .1];
-    await db.batch([...updates, roundUpdate, ...finalScores.slice(0, shares.length).map((entry, index) => db.prepare("UPDATE players SET cash=cash+?, updated_at=MAX(updated_at+1, ?) WHERE user_id=?").bind(Math.floor(pool * shares[index]), now, entry.user_id)), db.prepare("UPDATE casino_tournament_state SET current_round=?, status='completed', latest_result=?, next_round_at=0, updated_at=? WHERE id='tournament-01' AND round_no=?").bind(resolvedRound, `賽事結束：${finalScores.map((entry, index) => `${index + 1}.${entry.player_name}（${entry.score}分）`).join(" · ")}`, now, state.round_no)]);
+    await db.batch([...updates, roundUpdate, ...finalScores.slice(0, shares.length).map((entry, index) => db.prepare("UPDATE players SET cash=cash+?, updated_at=MAX(updated_at+1, ?) WHERE user_id=? AND life_version=? AND reset_game_over='' AND game_over<>'__resetting__'").bind(Math.floor(pool * shares[index]), now, entry.user_id, entry.life_version)), db.prepare("UPDATE casino_tournament_state SET current_round=?, status='completed', latest_result=?, next_round_at=0, updated_at=? WHERE id='tournament-01' AND round_no=?").bind(resolvedRound, `賽事結束：${finalScores.map((entry, index) => `${index + 1}.${entry.player_name}（${entry.score}分）`).join(" · ")}`, now, state.round_no)]);
   } else await db.batch([...updates, roundUpdate, db.prepare("UPDATE casino_tournament_state SET current_round=?, status='playing', latest_result=?, next_round_at=?, updated_at=? WHERE id='tournament-01' AND round_no=?").bind(resolvedRound, `第 ${resolvedRound} 局完成：${summary}`, now + TOURNAMENT_START_DELAY_MS, now, state.round_no)]);
 }
 
@@ -1059,11 +1195,9 @@ async function advanceTournamentRound(db: D1Database, state: TournamentStateRow)
   if (round.turn_seat < 0) {
     if (round.updated_at > now - TOURNAMENT_ACTION_TIMEOUT_MS) return;
     const lockedSeat = Math.abs(round.turn_seat);
-    await db.prepare("UPDATE casino_tournament_hands SET status='folded', acted=1, result='操作中斷，逾時自動棄牌。', updated_at=? WHERE tournament_no=? AND round_no=? AND seat_no=? AND status='playing'")
-      .bind(now, state.round_no, round.round_no, lockedSeat).run();
-    await db.prepare("UPDATE casino_tournament_rounds SET turn_seat=?, updated_at=? WHERE tournament_no=? AND round_no=? AND turn_seat=?")
-      .bind(lockedSeat, now, state.round_no, round.round_no, -lockedSeat).run();
-    return advanceTournamentRound(db, state);
+    await db.prepare("UPDATE casino_tournament_rounds SET turn_seat=?, action_token='', next_action_at=?, updated_at=? WHERE tournament_no=? AND round_no=? AND turn_seat=?")
+      .bind(lockedSeat, now + TOURNAMENT_ACTION_TIMEOUT_MS, now, state.round_no, round.round_no, -lockedSeat).run();
+    return;
   }
   const current = actionable.find((hand) => hand.seat_no === round!.turn_seat);
   if (!current && actionable.length) {
@@ -1110,6 +1244,10 @@ async function advanceTournamentRound(db: D1Database, state: TournamentStateRow)
 }
 
 async function tournamentState(db: D1Database, userId: string) {
+  await db.prepare(`DELETE FROM casino_tournament_entries WHERE NOT EXISTS (
+    SELECT 1 FROM players p WHERE p.user_id=casino_tournament_entries.user_id AND p.life_version=casino_tournament_entries.life_version
+      AND p.reset_game_over='' AND p.game_over<>'__resetting__'
+  )`).run();
   let state = await db.prepare("SELECT * FROM casino_tournament_state WHERE id='tournament-01'").first<TournamentStateRow>();
   if (!state) { await db.prepare("INSERT INTO casino_tournament_state (id, updated_at) VALUES ('tournament-01', ?)").bind(Date.now()).run(); state = { round_no: 1, current_round: 0, game: "blackjack", status: "lobby", host_user_id: "", entry_fee: TOURNAMENT_ENTRY_FEE, round_limit: TOURNAMENT_ROUNDS, next_round_at: 0, latest_result: "" }; }
   const staleSettling = await db.prepare(`SELECT round_no FROM casino_tournament_rounds
@@ -1123,10 +1261,14 @@ async function tournamentState(db: D1Database, userId: string) {
   }
   await advanceTournamentRound(db, state);
   state = await db.prepare("SELECT * FROM casino_tournament_state WHERE id='tournament-01'").first<TournamentStateRow>() ?? state;
-  const entries = await db.prepare("SELECT user_id, player_name, score, latest_hand FROM casino_tournament_entries WHERE tournament_no=? ORDER BY score DESC, player_name").bind(state.round_no).all<{ user_id: string; player_name: string; score: number; latest_hand: string }>();
+  const entries = await db.prepare(`SELECT e.user_id, e.player_name, e.score, e.latest_hand, e.life_version FROM casino_tournament_entries e
+    JOIN players p ON p.user_id=e.user_id AND p.life_version=e.life_version
+    WHERE e.tournament_no=? AND p.reset_game_over='' AND p.game_over<>'__resetting__' ORDER BY e.score DESC, e.player_name`)
+    .bind(state.round_no).all<{ user_id: string; player_name: string; score: number; latest_hand: string; life_version: number }>();
   const targetRound = state.status === "completed" ? Math.max(1, state.current_round) : state.current_round + 1;
   const round = await db.prepare("SELECT * FROM casino_tournament_rounds WHERE tournament_no=? AND round_no=?").bind(state.round_no, targetRound).first<TournamentRoundRow>();
-  const hands = round ? (await db.prepare("SELECT * FROM casino_tournament_hands WHERE tournament_no=? AND round_no=? ORDER BY seat_no").bind(state.round_no, round.round_no).all<TournamentHandRow>()).results : [];
+  const hands = round ? (await db.prepare(`SELECT h.* FROM casino_tournament_hands h JOIN players p ON p.user_id=h.user_id AND p.life_version=h.life_version
+    WHERE h.tournament_no=? AND h.round_no=? AND p.reset_game_over='' AND p.game_over<>'__resetting__' ORDER BY h.seat_no`).bind(state.round_no, round.round_no).all<TournamentHandRow>()).results : [];
   const own = hands.find((hand) => hand.user_id === userId);
   const dealerCards = round ? parseCards(round.dealer_cards) : [];
   const visibleDealerCards = round?.game === "blackjack" && round.status === "playing" && dealerCards.length > 1 ? [dealerCards[0], "🂠"] : dealerCards;
@@ -1152,8 +1294,8 @@ async function tournamentAction(request: Request, env: Env) {
     if (!state.players.some((entry) => entry.id === user.userId)) return json({ message: "你不在這個錦標賽房間。" }, 409);
     const leavingFee = state.entryFee;
     await env.DB.batch([
-      env.DB.prepare("UPDATE players SET cash=cash+?, updated_at=MAX(updated_at+1, ?) WHERE user_id=? AND EXISTS (SELECT 1 FROM casino_tournament_state WHERE id='tournament-01' AND status='lobby') AND EXISTS (SELECT 1 FROM casino_tournament_entries WHERE tournament_no=? AND user_id=?)").bind(leavingFee, Date.now(), user.userId, state.tournamentNo, user.userId),
-      env.DB.prepare("DELETE FROM casino_tournament_entries WHERE tournament_no=? AND user_id=? AND EXISTS (SELECT 1 FROM casino_tournament_state WHERE id='tournament-01' AND status='lobby')").bind(state.tournamentNo, user.userId),
+      env.DB.prepare("UPDATE players SET cash=cash+?, updated_at=MAX(updated_at+1, ?) WHERE user_id=? AND life_version=? AND reset_game_over='' AND game_over='' AND EXISTS (SELECT 1 FROM casino_tournament_state WHERE id='tournament-01' AND status='lobby') AND EXISTS (SELECT 1 FROM casino_tournament_entries WHERE tournament_no=? AND user_id=? AND life_version=?)").bind(leavingFee, Date.now(), user.userId, player.life_version, state.tournamentNo, user.userId, player.life_version),
+      env.DB.prepare("DELETE FROM casino_tournament_entries WHERE tournament_no=? AND user_id=? AND life_version=? AND EXISTS (SELECT 1 FROM casino_tournament_state WHERE id='tournament-01' AND status='lobby')").bind(state.tournamentNo, user.userId, player.life_version),
       env.DB.prepare("UPDATE casino_tournament_state SET host_user_id=COALESCE((SELECT user_id FROM casino_tournament_entries WHERE tournament_no=? ORDER BY rowid LIMIT 1), ''), game=CASE WHEN EXISTS (SELECT 1 FROM casino_tournament_entries WHERE tournament_no=?) THEN game ELSE 'blackjack' END, entry_fee=CASE WHEN EXISTS (SELECT 1 FROM casino_tournament_entries WHERE tournament_no=?) THEN entry_fee ELSE ? END, updated_at=? WHERE id='tournament-01' AND status='lobby'").bind(state.tournamentNo, state.tournamentNo, state.tournamentNo, TOURNAMENT_ENTRY_FEE, Date.now()),
     ]);
     state = await tournamentState(env.DB, user.userId);
@@ -1194,15 +1336,15 @@ async function tournamentAction(request: Request, env: Env) {
     let admission: D1Result<unknown>[];
     try {
       admission = await env.DB.batch([
-        env.DB.prepare(`INSERT INTO casino_tournament_entries (tournament_no, user_id, player_name)
-          SELECT ?, ?, ? WHERE
+        env.DB.prepare(`INSERT INTO casino_tournament_entries (tournament_no, user_id, player_name, life_version)
+          SELECT ?, ?, ?, ? WHERE
             EXISTS (SELECT 1 FROM casino_tournament_state WHERE id='tournament-01' AND round_no=? AND status='lobby')
-            AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND cash>=? AND game_over='')
+            AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND cash>=? AND reset_game_over='' AND game_over='')
             AND (SELECT COUNT(*) FROM casino_tournament_entries WHERE tournament_no=?)<5
-          RETURNING user_id`).bind(state.tournamentNo, user.userId, user.displayName.slice(0, 40), state.tournamentNo, user.userId, entryFee, state.tournamentNo),
-        env.DB.prepare(`UPDATE players SET cash=cash-?, updated_at=MAX(updated_at+1, ?) WHERE user_id=? AND cash>=?
-          AND EXISTS (SELECT 1 FROM casino_tournament_entries WHERE tournament_no=? AND user_id=?)
-          RETURNING user_id`).bind(entryFee, Date.now(), user.userId, entryFee, state.tournamentNo, user.userId),
+          RETURNING user_id`).bind(state.tournamentNo, user.userId, user.displayName.slice(0, 40), player.life_version, state.tournamentNo, user.userId, player.life_version, entryFee, state.tournamentNo),
+        env.DB.prepare(`UPDATE players SET cash=cash-?, updated_at=MAX(updated_at+1, ?) WHERE user_id=? AND life_version=? AND cash>=? AND reset_game_over='' AND game_over=''
+          AND EXISTS (SELECT 1 FROM casino_tournament_entries WHERE tournament_no=? AND user_id=? AND life_version=?)
+          RETURNING user_id`).bind(entryFee, Date.now(), user.userId, player.life_version, entryFee, state.tournamentNo, user.userId, player.life_version),
       ]);
     } catch {
       if (hosting) await env.DB.prepare("UPDATE casino_tournament_state SET host_user_id=COALESCE((SELECT user_id FROM casino_tournament_entries WHERE tournament_no=? ORDER BY rowid LIMIT 1), ''), game=CASE WHEN EXISTS (SELECT 1 FROM casino_tournament_entries WHERE tournament_no=?) THEN game ELSE 'blackjack' END, entry_fee=CASE WHEN EXISTS (SELECT 1 FROM casino_tournament_entries WHERE tournament_no=?) THEN entry_fee ELSE ? END WHERE id='tournament-01' AND host_user_id=?").bind(state.tournamentNo, state.tournamentNo, state.tournamentNo, TOURNAMENT_ENTRY_FEE, user.userId).run();
@@ -1220,38 +1362,35 @@ async function tournamentAction(request: Request, env: Env) {
   const dbState = await env.DB.prepare("SELECT * FROM casino_tournament_state WHERE id='tournament-01'").first<TournamentStateRow>();
   if (!dbState || dbState.status !== "playing") return json({ message: "目前沒有進行中的錦標賽牌局。" }, 409);
   const round = await env.DB.prepare("SELECT * FROM casino_tournament_rounds WHERE tournament_no=? AND round_no=?").bind(dbState.round_no, dbState.current_round + 1).first<TournamentRoundRow>();
-  const hand = round ? await env.DB.prepare("SELECT * FROM casino_tournament_hands WHERE tournament_no=? AND round_no=? AND user_id=?").bind(dbState.round_no, round.round_no, user.userId).first<TournamentHandRow>() : null;
+  const hand = round ? await env.DB.prepare("SELECT * FROM casino_tournament_hands WHERE tournament_no=? AND round_no=? AND user_id=? AND life_version=?").bind(dbState.round_no, round.round_no, user.userId, player.life_version).first<TournamentHandRow>() : null;
   if (!round || !hand || round.status !== "playing") return json({ message: "下一局牌局尚未開桌，請稍候。" }, 409);
   const now = Date.now();
   if (round.game === "blackjack") {
     if (!(body.action === "hit" || body.action === "stand")) return json({ message: "二十一點只能選擇要牌或停牌。" }, 400);
     if (hand.status !== "playing") return json({ message: "你已完成這局，等待其他玩家。" }, 409);
     if (body.action === "hit") {
-      const handClaimRevision = Math.max(now, hand.updated_at + 1);
-      const claimedHand = await env.DB.prepare(`UPDATE casino_tournament_hands SET status='drawing', updated_at=?
-        WHERE tournament_no=? AND round_no=? AND user_id=? AND status='playing' AND updated_at=? RETURNING *`)
-        .bind(handClaimRevision, dbState.round_no, round.round_no, user.userId, hand.updated_at).first<TournamentHandRow>();
-      if (!claimedHand) return json({ message: "這次要牌已被處理，請重新整理。" }, 409);
       const latestRound = await env.DB.prepare("SELECT * FROM casino_tournament_rounds WHERE tournament_no=? AND round_no=?").bind(dbState.round_no, round.round_no).first<TournamentRoundRow>();
-      const deck = parseCards(latestRound?.deck ?? "[]"); const cards = parseCards(claimedHand.player_cards); const nextCard = deck.pop();
-      if (!nextCard || !latestRound) {
-        await env.DB.prepare("UPDATE casino_tournament_hands SET status='playing', updated_at=? WHERE tournament_no=? AND round_no=? AND user_id=? AND status='drawing'").bind(Math.max(Date.now(), handClaimRevision + 1), dbState.round_no, round.round_no, user.userId).run();
-        return json({ message: "牌堆已用盡，請等待結算。" }, 409);
-      }
+      const deck = parseCards(latestRound?.deck ?? "[]"); const cards = parseCards(hand.player_cards); const nextCard = deck.pop();
+      if (!nextCard || !latestRound) return json({ message: "牌堆已用盡，請等待結算。" }, 409);
       cards.push(nextCard); const score = handScore(cards); const status = score > 21 ? "bust" : score === 21 ? "stood" : "playing"; const result = score > 21 ? "要牌後爆牌。" : score === 21 ? "21 點，自動停牌。" : "";
-      const roundVersion = Math.max(now, latestRound.updated_at + 1);
-      const deckClaim = await env.DB.prepare(`UPDATE casino_tournament_rounds SET deck=?, next_action_at=?, updated_at=?
-        WHERE tournament_no=? AND round_no=? AND status='playing' AND updated_at=? RETURNING round_no`)
-        .bind(JSON.stringify(deck), now + TOURNAMENT_ACTION_TIMEOUT_MS, roundVersion, dbState.round_no, round.round_no, latestRound.updated_at).first<{ round_no: number }>();
-      if (!deckClaim) {
-        await env.DB.prepare("UPDATE casino_tournament_hands SET status='playing', updated_at=? WHERE tournament_no=? AND round_no=? AND user_id=? AND status='drawing'").bind(Math.max(Date.now(), handClaimRevision + 1), dbState.round_no, round.round_no, user.userId).run();
-        return json({ message: "另一位玩家剛完成要牌，請再按一次。" }, 409);
-      }
-      const handFinishedRevision = Math.max(Date.now(), handClaimRevision + 1);
-      await env.DB.prepare("UPDATE casino_tournament_hands SET player_cards=?, status=?, result=?, updated_at=? WHERE tournament_no=? AND round_no=? AND user_id=? AND status='drawing'").bind(JSON.stringify(cards), status, result, handFinishedRevision, dbState.round_no, round.round_no, user.userId).run();
+      const actionToken = crypto.randomUUID();
+      const actionRevision = Math.max(Date.now(), hand.updated_at + 1, latestRound.updated_at + 1);
+      const hit = await env.DB.batch([
+        env.DB.prepare(`UPDATE casino_tournament_rounds SET deck=?, next_action_at=?, action_token=?, updated_at=?
+          WHERE tournament_no=? AND round_no=? AND status='playing' AND updated_at=? AND EXISTS (
+            SELECT 1 FROM casino_tournament_hands WHERE tournament_no=? AND round_no=? AND user_id=? AND life_version=? AND status='playing' AND updated_at=?
+          ) RETURNING round_no`).bind(JSON.stringify(deck), now + TOURNAMENT_ACTION_TIMEOUT_MS, actionToken, actionRevision,
+            dbState.round_no, round.round_no, latestRound.updated_at, dbState.round_no, round.round_no, user.userId, player.life_version, hand.updated_at),
+        env.DB.prepare(`UPDATE casino_tournament_hands SET player_cards=?, status=?, result=?, action_token=?, updated_at=?
+          WHERE tournament_no=? AND round_no=? AND user_id=? AND life_version=? AND status='playing' AND updated_at=?
+            AND EXISTS (SELECT 1 FROM casino_tournament_rounds WHERE tournament_no=? AND round_no=? AND action_token=? AND updated_at=?)
+          RETURNING user_id`).bind(JSON.stringify(cards), status, result, actionToken, actionRevision, dbState.round_no,
+            round.round_no, user.userId, player.life_version, hand.updated_at, dbState.round_no, round.round_no, actionToken, actionRevision),
+      ]);
+      if ((hit[0]?.results?.length ?? 0) !== 1 || (hit[1]?.results?.length ?? 0) !== 1) return json({ message: "另一位玩家剛完成要牌，請重新整理後再試。" }, 409);
     } else {
       const stoodRevision = Math.max(now, hand.updated_at + 1);
-      const stood = await env.DB.prepare("UPDATE casino_tournament_hands SET status='stood', result='主動停牌。', updated_at=? WHERE tournament_no=? AND round_no=? AND user_id=? AND status='playing' AND updated_at=? RETURNING user_id").bind(stoodRevision, dbState.round_no, round.round_no, user.userId, hand.updated_at).first<{ user_id: string }>();
+      const stood = await env.DB.prepare("UPDATE casino_tournament_hands SET status='stood', result='主動停牌。', updated_at=? WHERE tournament_no=? AND round_no=? AND user_id=? AND life_version=? AND status='playing' AND updated_at=? RETURNING user_id").bind(stoodRevision, dbState.round_no, round.round_no, user.userId, player.life_version, hand.updated_at).first<{ user_id: string }>();
       if (!stood) return json({ message: "這次停牌已被處理，請重新整理。" }, 409);
     }
   } else {
@@ -1327,27 +1466,44 @@ async function expireIdleBlackjackSeats(db: D1Database) {
 
 async function revealReadyCasinoRound(db: D1Database) {
   const now = Date.now();
-  const ready = await db.prepare(`UPDATE casino_hands SET status='dealing', updated_at=?
-    WHERE status='waiting' AND reveal_at>0 AND reveal_at<=? RETURNING *`).bind(now, now).all<CasinoRow>();
+  const ready = await db.prepare(`SELECT h.* FROM casino_hands h
+    JOIN players p ON p.user_id=h.user_id AND p.life_version=h.life_version
+    WHERE h.status='waiting' AND h.reveal_at>0 AND h.reveal_at<=?
+      AND p.reset_game_over='' AND p.game_over<>'__resetting__'
+    ORDER BY h.seat_no`).bind(now).all<CasinoRow>();
   if (!ready.results.length) return;
   const deck = shuffledDeck();
+  const roundToken = crypto.randomUUID();
   const hands = new Map<string, string[]>();
   ready.results.forEach((row) => hands.set(row.user_id, [deck.pop()!]));
   const dealerCards = [deck.pop()!];
   ready.results.forEach((row) => hands.get(row.user_id)!.push(deck.pop()!));
   dealerCards.push(deck.pop()!);
   await db.batch([
-    ...ready.results.map((row) => db.prepare("UPDATE casino_hands SET player_cards=?, dealer_cards=?, status='playing', reveal_at=0, updated_at=? WHERE user_id=? AND status='dealing'")
-      .bind(JSON.stringify(hands.get(row.user_id)), JSON.stringify(dealerCards), now, row.user_id)),
-    db.prepare("INSERT INTO casino_table_state (id, deck, updated_at) VALUES ('table-01', ?, ?) ON CONFLICT(id) DO UPDATE SET deck=excluded.deck, updated_at=excluded.updated_at").bind(JSON.stringify(deck), now),
+    db.prepare(`INSERT INTO casino_table_state (id, deck, round_token, action_token, updated_at)
+      SELECT 'table-01', ?, ?, ?, ? WHERE EXISTS (
+        SELECT 1 FROM casino_hands WHERE user_id=? AND life_version=? AND status='waiting' AND deal_token=? AND reveal_at<=?
+      ) ON CONFLICT(id) DO UPDATE SET deck=excluded.deck, round_token=excluded.round_token,
+        action_token=excluded.action_token, updated_at=excluded.updated_at
+      WHERE EXISTS (SELECT 1 FROM casino_hands WHERE user_id=? AND life_version=? AND status='waiting' AND deal_token=? AND reveal_at<=?)
+      RETURNING id`).bind(JSON.stringify(deck), roundToken, roundToken, now,
+        ready.results[0].user_id, ready.results[0].life_version, ready.results[0].deal_token, now,
+        ready.results[0].user_id, ready.results[0].life_version, ready.results[0].deal_token, now),
+    ...ready.results.map((row) => db.prepare(`UPDATE casino_hands SET player_cards=?, dealer_cards=?, status='playing',
+      reveal_at=0, updated_at=?, deal_token=? WHERE user_id=? AND life_version=? AND status='waiting' AND deal_token=?
+        AND EXISTS (SELECT 1 FROM casino_table_state WHERE id='table-01' AND round_token=?)
+        AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND reset_game_over='' AND game_over<>'__resetting__')`)
+      .bind(JSON.stringify(hands.get(row.user_id)), JSON.stringify(dealerCards), now, roundToken,
+        row.user_id, row.life_version, row.deal_token, roundToken, row.user_id, row.life_version)),
   ]);
 }
 
 async function casinoState(db: D1Database, userId: string) {
   await resolveCasinoRoundIfReady(db);
   let [seats, own] = await Promise.all([
-    db.prepare(`SELECT * FROM casino_hands WHERE status IN ${ACTIVE_CASINO_STATUSES} AND seat_no IS NOT NULL ORDER BY seat_no LIMIT 5`).all<CasinoRow>(),
-    db.prepare("SELECT * FROM casino_hands WHERE user_id = ?").bind(userId).first<CasinoRow>(),
+    db.prepare(`SELECT h.* FROM casino_hands h JOIN players p ON p.user_id=h.user_id AND p.life_version=h.life_version
+      WHERE h.status IN ${ACTIVE_CASINO_STATUSES} AND h.seat_no IS NOT NULL AND p.reset_game_over='' AND p.game_over<>'__resetting__' ORDER BY h.seat_no LIMIT 5`).all<CasinoRow>(),
+    db.prepare("SELECT h.* FROM casino_hands h JOIN players p ON p.user_id=h.user_id AND p.life_version=h.life_version WHERE h.user_id=?").bind(userId).first<CasinoRow>(),
   ]);
   const now = Date.now();
   const needsIdleExpiry = seats.results.some((seat) => seat.status === "seated" && seat.updated_at < now - IDLE_CASINO_SEAT_TIMEOUT_MS);
@@ -1364,8 +1520,9 @@ async function casinoState(db: D1Database, userId: string) {
     // stale settling row means that batch did not commit yet.
     if (needsSettlingRecovery) await resolveCasinoRoundIfReady(db);
     [seats, own] = await Promise.all([
-      db.prepare(`SELECT * FROM casino_hands WHERE status IN ${ACTIVE_CASINO_STATUSES} AND seat_no IS NOT NULL ORDER BY seat_no LIMIT 5`).all<CasinoRow>(),
-      db.prepare("SELECT * FROM casino_hands WHERE user_id = ?").bind(userId).first<CasinoRow>(),
+      db.prepare(`SELECT h.* FROM casino_hands h JOIN players p ON p.user_id=h.user_id AND p.life_version=h.life_version
+        WHERE h.status IN ${ACTIVE_CASINO_STATUSES} AND h.seat_no IS NOT NULL AND p.reset_game_over='' AND p.game_over<>'__resetting__' ORDER BY h.seat_no LIMIT 5`).all<CasinoRow>(),
+      db.prepare("SELECT h.* FROM casino_hands h JOIN players p ON p.user_id=h.user_id AND p.life_version=h.life_version WHERE h.user_id=?").bind(userId).first<CasinoRow>(),
     ]);
   }
   const ownIsActive = Boolean(own && ["seated", "waiting", "dealing", "playing", "drawing", "stood", "settling"].includes(own.status));
@@ -1426,8 +1583,11 @@ async function resolveCasinoRoundIfReady(db: D1Database) {
     else if (blackjack && !dealerBlackjack) { payout = Math.floor(row.bet * 2.5); result = `Blackjack！獲得 NT$${payout}。`; }
     else if (dealerScore > 21 || playerScore > dealerScore) { payout = row.bet * 2; result = `你以 ${playerScore} 點獲勝，獲得 NT$${payout}。`; }
     else if (playerScore === dealerScore) { payout = row.bet; result = `${playerScore} 點平手，退回 NT$${row.bet}。`; }
-    statements.push(db.prepare("UPDATE casino_hands SET dealer_cards=?, status='seated', result=?, reveal_at=0, updated_at=? WHERE user_id=? AND status='settling' AND updated_at=?").bind(JSON.stringify(dealerCards), result, now, row.user_id, row.updated_at));
-    statements.push(db.prepare("UPDATE players SET cash=cash+?, updated_at=MAX(updated_at+1, ?) WHERE user_id=?").bind(payout, now, row.user_id));
+    statements.push(db.prepare("UPDATE casino_hands SET dealer_cards=?, status='seated', result=?, reveal_at=0, updated_at=? WHERE user_id=? AND life_version=? AND status='settling' AND updated_at=?").bind(JSON.stringify(dealerCards), result, now, row.user_id, row.life_version, row.updated_at));
+    statements.push(db.prepare(`UPDATE players SET cash=cash+?, updated_at=MAX(updated_at+1, ?) WHERE user_id=? AND life_version=?
+      AND reset_game_over='' AND game_over<>'__resetting__' AND EXISTS (
+        SELECT 1 FROM casino_hands WHERE user_id=? AND life_version=? AND status='seated' AND updated_at=?
+      )`).bind(payout, now, row.user_id, row.life_version, row.user_id, row.life_version, now));
   }
   statements.push(db.prepare("UPDATE casino_table_state SET deck=?, updated_at=? WHERE id='table-01'").bind(JSON.stringify(deck), now));
   await db.batch(statements);
@@ -1455,12 +1615,15 @@ async function casinoAction(request: Request, env: Env) {
     const current = await env.DB.prepare(`SELECT * FROM casino_hands WHERE user_id=? AND status IN ${ACTIVE_CASINO_STATUSES}`).bind(user.userId).first<CasinoRow>();
     if (current) return json({ message: `你已經坐在 ${current.seat_no} 號座位。` }, 400);
     try {
-      const joined = await env.DB.prepare(`INSERT INTO casino_hands (user_id, player_name, player_cards, dealer_cards, bet, status, result, seat_no, reveal_at, updated_at)
-        VALUES (?, ?, '[]', '[]', 0, 'seated', '', ?, 0, ?)
+      const joined = await env.DB.prepare(`INSERT INTO casino_hands (user_id, player_name, player_cards, dealer_cards, bet, status, result, seat_no, reveal_at, updated_at, life_version, deal_token)
+        SELECT ?, ?, '[]', '[]', 0, 'seated', '', ?, 0, ?, ?, '' WHERE EXISTS (
+          SELECT 1 FROM players WHERE user_id=? AND life_version=? AND reset_game_over='' AND game_over=''
+        )
         ON CONFLICT(user_id) DO UPDATE SET player_name=excluded.player_name, player_cards='[]', dealer_cards='[]', bet=0,
-          status='seated', result='', seat_no=excluded.seat_no, reveal_at=0, updated_at=excluded.updated_at
+          status='seated', result='', seat_no=excluded.seat_no, reveal_at=0, updated_at=excluded.updated_at,
+          life_version=excluded.life_version, deal_token=''
         WHERE casino_hands.status NOT IN ('seated','waiting','dealing','playing','drawing','stood','settling') RETURNING user_id`)
-        .bind(user.userId, user.displayName.slice(0, 40), seatNo, now).run();
+        .bind(user.userId, user.displayName.slice(0, 40), seatNo, now, player.life_version, user.userId, player.life_version).run();
       if (joined.results.length !== 1) return json({ message: "無法加入這個座位，請重新整理後再試。" }, 409);
     } catch { return json({ message: `${seatNo} 號座位已有人，請選擇其他空位。` }, 409); }
     message = `已加入 ${seatNo} 號座位，請輸入下注金額。`;
@@ -1468,7 +1631,7 @@ async function casinoAction(request: Request, env: Env) {
     const bet = Number(body.bet);
     if (!Number.isSafeInteger(bet) || bet < 1 || bet > 1_000_000) return json({ message: "請輸入 NT$1～1,000,000 的整數下注金額。" }, 400);
     if (player.cash < bet) return json({ message: "現金不足，無法下注。" }, 400);
-    const ownSeat = await env.DB.prepare("SELECT * FROM casino_hands WHERE user_id=? AND status='seated'").bind(user.userId).first<CasinoRow>();
+    const ownSeat = await env.DB.prepare("SELECT * FROM casino_hands WHERE user_id=? AND life_version=? AND status='seated'").bind(user.userId, player.life_version).first<CasinoRow>();
     if (!ownSeat) return json({ message: "請先點選 1～5 號空位加入遊戲。" }, 400);
     const activeRound = await env.DB.prepare("SELECT 1 AS active FROM casino_hands WHERE status IN ('dealing','playing','drawing','stood','settling') LIMIT 1").first<{ active: number }>();
     if (activeRound) return json({ message: "本局已經翻牌，你可以留在座位觀賽，下一局再下注。" }, 409);
@@ -1479,10 +1642,10 @@ async function casinoAction(request: Request, env: Env) {
     const queued = await env.DB.batch([env.DB.prepare(`UPDATE casino_hands SET bet=?, status='waiting', result='', reveal_at=?, updated_at=?, deal_token=?
       WHERE user_id=? AND status='seated' AND NOT EXISTS (
         SELECT 1 FROM casino_hands active WHERE active.status IN ('dealing','playing','drawing','stood','settling')
-      ) AND EXISTS (SELECT 1 FROM players actor WHERE actor.user_id=? AND actor.game_over='' AND actor.cash>=?) RETURNING user_id`)
-      .bind(bet, revealAt, now, dealToken, user.userId, user.userId, bet),
-      env.DB.prepare("UPDATE players SET cash=cash-?, updated_at=MAX(updated_at+1, ?), last_seen_at=? WHERE user_id=? AND cash>=? AND EXISTS (SELECT 1 FROM casino_hands WHERE user_id=? AND status='waiting' AND bet=? AND deal_token=?) RETURNING user_id")
-        .bind(bet, now, now, user.userId, bet, user.userId, bet, dealToken),
+      ) AND life_version=? AND EXISTS (SELECT 1 FROM players actor WHERE actor.user_id=? AND actor.life_version=? AND actor.reset_game_over='' AND actor.game_over='' AND actor.cash>=?) RETURNING user_id`)
+      .bind(bet, revealAt, now, dealToken, user.userId, player.life_version, user.userId, player.life_version, bet),
+      env.DB.prepare("UPDATE players SET cash=cash-?, updated_at=MAX(updated_at+1, ?), last_seen_at=? WHERE user_id=? AND life_version=? AND cash>=? AND reset_game_over='' AND game_over='' AND EXISTS (SELECT 1 FROM casino_hands WHERE user_id=? AND life_version=? AND status='waiting' AND bet=? AND deal_token=?) RETURNING user_id")
+        .bind(bet, now, now, user.userId, player.life_version, bet, user.userId, player.life_version, bet, dealToken),
     ]);
     if ((queued[0]?.results?.length ?? 0) !== 1 || (queued[1]?.results?.length ?? 0) !== 1) {
       await env.DB.prepare("UPDATE casino_hands SET bet=0, status='seated', result='', reveal_at=0, deal_token='', updated_at=? WHERE user_id=? AND status='waiting' AND bet=? AND deal_token=?")
@@ -1495,49 +1658,51 @@ async function casinoAction(request: Request, env: Env) {
     }
     message = `已下注 NT$${bet}，等待其他玩家；倒數結束後翻牌。`;
   } else {
-    const row = await env.DB.prepare("SELECT * FROM casino_hands WHERE user_id=? AND status='playing' AND updated_at>=?").bind(user.userId, cutoff).first<CasinoRow>();
+    const row = await env.DB.prepare("SELECT * FROM casino_hands WHERE user_id=? AND life_version=? AND status='playing' AND updated_at>=?").bind(user.userId, player.life_version, cutoff).first<CasinoRow>();
     if (body.action === "leave") {
-      const active = await env.DB.prepare(`SELECT * FROM casino_hands WHERE user_id=? AND status IN ${ACTIVE_CASINO_STATUSES}`).bind(user.userId).first<CasinoRow>();
+      const active = await env.DB.prepare(`SELECT * FROM casino_hands WHERE user_id=? AND life_version=? AND status IN ${ACTIVE_CASINO_STATUSES}`).bind(user.userId, player.life_version).first<CasinoRow>();
       if (!active) return json({ message: "你目前沒有加入牌桌。" }, 400);
       if (["dealing", "drawing", "settling"].includes(active.status)) return json({ message: "牌桌正在處理發牌或結算，請稍候再離場。" }, 409);
       message = active.status === "seated" ? "已離開牌桌。" : "已離開牌桌，本局下注不退還。";
-      await env.DB.prepare("UPDATE casino_hands SET status='left', result=?, seat_no=NULL, reveal_at=0, updated_at=? WHERE user_id=?").bind(message, now, user.userId).run();
+      await env.DB.prepare("UPDATE casino_hands SET status='left', result=?, seat_no=NULL, reveal_at=0, updated_at=? WHERE user_id=? AND life_version=?").bind(message, now, user.userId, player.life_version).run();
       await resolveCasinoRoundIfReady(env.DB);
     } else {
       if (!row) return json({ message: "牌局尚未翻牌，請等待倒數結束。" }, 400);
     const cards = parseCards(row.player_cards);
     if (body.action === "hit") {
-      const handClaimRevision = Math.max(now, row.updated_at + 1);
-      const claimedHand = await env.DB.prepare("UPDATE casino_hands SET status='drawing', updated_at=? WHERE user_id=? AND status='playing' AND updated_at=? RETURNING *")
-        .bind(handClaimRevision, user.userId, row.updated_at).first<CasinoRow>();
-      if (!claimedHand) return json({ message: "這次要牌已被處理，請重新整理牌桌。" }, 409);
-      const table = await env.DB.prepare("SELECT deck, updated_at FROM casino_table_state WHERE id='table-01'").first<{ deck: string; updated_at: number }>();
+      const table = await env.DB.prepare("SELECT * FROM casino_table_state WHERE id='table-01'").first<CasinoTableRow>();
       const deck = parseCards(table?.deck || "[]");
       const card = deck.pop();
-      if (!card || !table) {
-        await env.DB.prepare("UPDATE casino_hands SET status='playing', updated_at=? WHERE user_id=? AND status='drawing'").bind(Math.max(Date.now(), handClaimRevision + 1), user.userId).run();
-        return json({ message: "本局牌靴已用完，請停牌等待結算。" }, 409);
-      }
+      if (!card || !table) return json({ message: "本局牌靴已用完，請停牌等待結算。" }, 409);
       cards.push(card);
-      const deckUpdatedAt = Math.max(now, table.updated_at + 1);
-      const deckClaim = await env.DB.prepare("UPDATE casino_table_state SET deck=?, updated_at=? WHERE id='table-01' AND updated_at=? RETURNING id")
-        .bind(JSON.stringify(deck), deckUpdatedAt, table.updated_at).first<{ id: string }>();
-      if (!deckClaim) {
-        await env.DB.prepare("UPDATE casino_hands SET status='playing', updated_at=? WHERE user_id=? AND status='drawing'").bind(Math.max(Date.now(), handClaimRevision + 1), user.userId).run();
-        return json({ message: "另一位玩家剛完成要牌，請再按一次。" }, 409);
+      const score = handScore(cards);
+      const actionToken = crypto.randomUUID();
+      const handFinishedRevision = Math.max(Date.now(), row.updated_at + 1, table.updated_at + 1);
+      const result = score > 21 ? "你爆牌了，等待其他玩家完成。" : score === 21 ? "21 點，等待其他玩家完成。" : "";
+      const hit = await env.DB.batch([
+        env.DB.prepare(`UPDATE casino_table_state SET deck=?, action_token=?, updated_at=?
+          WHERE id='table-01' AND round_token=? AND updated_at=? AND EXISTS (
+            SELECT 1 FROM casino_hands WHERE user_id=? AND life_version=? AND status='playing' AND updated_at=? AND deal_token=?
+          ) RETURNING id`).bind(JSON.stringify(deck), actionToken, handFinishedRevision, table.round_token, table.updated_at,
+            user.userId, player.life_version, row.updated_at, table.round_token),
+        env.DB.prepare(`UPDATE casino_hands SET player_cards=?, status=?, result=?, updated_at=?
+          WHERE user_id=? AND life_version=? AND status='playing' AND updated_at=? AND deal_token=?
+            AND EXISTS (SELECT 1 FROM casino_table_state WHERE id='table-01' AND round_token=? AND action_token=?)
+          RETURNING user_id`).bind(JSON.stringify(cards), score >= 21 ? "stood" : "playing", result,
+            handFinishedRevision, user.userId, player.life_version, row.updated_at, table.round_token, table.round_token, actionToken),
+      ]);
+      if ((hit[0]?.results?.length ?? 0) !== 1 || (hit[1]?.results?.length ?? 0) !== 1) {
+        return json({ message: "另一位玩家剛完成要牌，請重新整理後再試。" }, 409);
       }
-      const handFinishedRevision = Math.max(Date.now(), handClaimRevision + 1);
-      if (handScore(cards) >= 21) {
-        await env.DB.prepare("UPDATE casino_hands SET player_cards=?, status='stood', result=?, updated_at=? WHERE user_id=? AND status='drawing'")
-          .bind(JSON.stringify(cards), handScore(cards) > 21 ? `你爆牌了，等待其他玩家完成。` : "21 點，等待其他玩家完成。", handFinishedRevision, user.userId).run();
+      if (score >= 21) {
         await resolveCasinoRoundIfReady(env.DB);
         const completed = await env.DB.prepare("SELECT result FROM casino_hands WHERE user_id=?").bind(user.userId).first<{ result: string }>();
-        message = completed?.result || `${handScore(cards)} 點，等待其他玩家完成。`;
+        message = completed?.result || `${score} 點，等待其他玩家完成。`;
       }
-      else { await env.DB.prepare("UPDATE casino_hands SET player_cards=?, status='playing', updated_at=? WHERE user_id=? AND status='drawing'").bind(JSON.stringify(cards), handFinishedRevision, user.userId).run(); message = `補牌後目前 ${handScore(cards)} 點。`; }
+      else message = `補牌後目前 ${score} 點。`;
     } else if (body.action === "stand") {
       const stoodRevision = Math.max(now, row.updated_at + 1);
-      const stood = await env.DB.prepare("UPDATE casino_hands SET status='stood', result='已停牌，等待其他玩家完成。', updated_at=? WHERE user_id=? AND status='playing' AND updated_at=? RETURNING user_id").bind(stoodRevision, user.userId, row.updated_at).first<{ user_id: string }>();
+      const stood = await env.DB.prepare("UPDATE casino_hands SET status='stood', result='已停牌，等待其他玩家完成。', updated_at=? WHERE user_id=? AND life_version=? AND status='playing' AND updated_at=? RETURNING user_id").bind(stoodRevision, user.userId, player.life_version, row.updated_at).first<{ user_id: string }>();
       if (!stood) return json({ message: "這次停牌已被處理，請重新整理牌桌。" }, 409);
       await resolveCasinoRoundIfReady(env.DB);
       const completed = await env.DB.prepare("SELECT result FROM casino_hands WHERE user_id=?").bind(user.userId).first<{ result: string }>();
@@ -1705,8 +1870,11 @@ async function settlePoker(db: D1Database, players: PokerRow[], table: PokerTabl
     const payout = payouts.get(row.user_id) ?? 0;
     const handName = handNames.get(row.user_id) ?? (active.length > 1 && (row.status === "playing" || row.status === "all_in") ? evaluate(row).name : "");
     const result = payout ? `${handName || "其他玩家棄牌"}獲勝，獲得 NT$${payout}。` : row.status === "folded" ? "本局已棄牌。" : `${handName || "本局"}未贏得獎池。`;
-    statements.push(db.prepare("UPDATE poker_hands SET status='seated', result=?, street_bet=0, acted=0, updated_at=? WHERE user_id=?").bind(result, now, row.user_id));
-    if (payout) statements.push(db.prepare("UPDATE players SET cash=cash+?, updated_at=MAX(updated_at+1, ?) WHERE user_id=?").bind(payout, now, row.user_id));
+    statements.push(db.prepare("UPDATE poker_hands SET status='seated', result=?, street_bet=0, acted=0, updated_at=? WHERE user_id=? AND life_version=? AND round_token=?").bind(result, now, row.user_id, row.life_version, table.round_token));
+    if (payout) statements.push(db.prepare(`UPDATE players SET cash=cash+?, updated_at=MAX(updated_at+1, ?) WHERE user_id=? AND life_version=?
+      AND reset_game_over='' AND game_over<>'__resetting__' AND EXISTS (
+        SELECT 1 FROM poker_hands WHERE user_id=? AND life_version=? AND round_token=? AND status='seated' AND updated_at=?
+      )`).bind(payout, now, row.user_id, row.life_version, row.user_id, row.life_version, table.round_token, now));
   });
   statements.push(db.prepare("UPDATE poker_table_state SET status='idle', street='showdown', current_bet=0, turn_seat=0, pot=0, updated_at=? WHERE id='table-01' AND status='settling' AND updated_at=?")
     .bind(Math.max(Date.now(), settlingRevision + 1), settlingRevision));
@@ -1747,6 +1915,12 @@ async function resolveExpiredPokerTurn(db: D1Database) {
   if (!table || table.status !== "playing" || !table.turn_seat || table.updated_at > now - POKER_ACTION_TIMEOUT_MS) return;
   const previousTurn = table.turn_seat;
   const seat = Math.abs(previousTurn);
+  if (previousTurn < 0) {
+    await db.prepare(`UPDATE poker_table_state SET turn_seat=?, action_token='', updated_at=?
+      WHERE id='table-01' AND status='playing' AND turn_seat=? AND updated_at=?`)
+      .bind(seat, now, previousTurn, table.updated_at).run();
+    return;
+  }
   const claimed = await db.prepare(`UPDATE poker_table_state SET turn_seat=?, updated_at=?
     WHERE id='table-01' AND status='playing' AND turn_seat=? AND updated_at=? RETURNING *`)
     .bind(-seat, now, previousTurn, table.updated_at).first<PokerTableRow>();
@@ -1786,14 +1960,16 @@ async function pokerState(db: D1Database, userId: string) {
   await recoverStalePokerSettlement(db);
   await resolveExpiredPokerTurn(db);
   let [seats, own, table] = await Promise.all([
-    db.prepare(`SELECT * FROM poker_hands WHERE status IN ${POKER_ACTIVE_STATUSES} AND seat_no IS NOT NULL ORDER BY seat_no LIMIT 5`).all<PokerRow>(),
-    db.prepare("SELECT * FROM poker_hands WHERE user_id=?").bind(userId).first<PokerRow>(), pokerTable(db),
+    db.prepare(`SELECT h.* FROM poker_hands h JOIN players p ON p.user_id=h.user_id AND p.life_version=h.life_version
+      WHERE h.status IN ${POKER_ACTIVE_STATUSES} AND h.seat_no IS NOT NULL AND p.reset_game_over='' AND p.game_over<>'__resetting__' ORDER BY h.seat_no LIMIT 5`).all<PokerRow>(),
+    db.prepare("SELECT h.* FROM poker_hands h JOIN players p ON p.user_id=h.user_id AND p.life_version=h.life_version WHERE h.user_id=?").bind(userId).first<PokerRow>(), pokerTable(db),
   ]);
   if (seats.results.some((seat) => ["seated", "ready"].includes(seat.status) && seat.updated_at < Date.now() - IDLE_CASINO_SEAT_TIMEOUT_MS)) {
     await expireIdlePokerSeats(db);
     [seats, own, table] = await Promise.all([
-      db.prepare(`SELECT * FROM poker_hands WHERE status IN ${POKER_ACTIVE_STATUSES} AND seat_no IS NOT NULL ORDER BY seat_no LIMIT 5`).all<PokerRow>(),
-      db.prepare("SELECT * FROM poker_hands WHERE user_id=?").bind(userId).first<PokerRow>(), pokerTable(db),
+      db.prepare(`SELECT h.* FROM poker_hands h JOIN players p ON p.user_id=h.user_id AND p.life_version=h.life_version
+        WHERE h.status IN ${POKER_ACTIVE_STATUSES} AND h.seat_no IS NOT NULL AND p.reset_game_over='' AND p.game_over<>'__resetting__' ORDER BY h.seat_no LIMIT 5`).all<PokerRow>(),
+      db.prepare("SELECT h.* FROM poker_hands h JOIN players p ON p.user_id=h.user_id AND p.life_version=h.life_version WHERE h.user_id=?").bind(userId).first<PokerRow>(), pokerTable(db),
     ]);
   }
   const state = table ?? { street: "idle", current_bet: 0, turn_seat: 0, pot: 0, status: "idle", community_cards: "[]", updated_at: 0 };
@@ -1823,35 +1999,42 @@ async function pokerAction(request: Request, env: Env) {
     const current = await env.DB.prepare(`SELECT * FROM poker_hands WHERE user_id=? AND status IN ${POKER_ACTIVE_STATUSES}`).bind(user.userId).first<PokerRow>();
     if (current) return json({ message: `你已經坐在 ${current.seat_no} 號座位。` }, 400);
     try {
-      const joined = await env.DB.prepare(`INSERT INTO poker_hands (user_id, player_name, hole_cards, community_cards, bet, status, result, seat_no, reveal_at, updated_at)
-        VALUES (?, ?, '[]', '[]', 0, 'seated', '', ?, 0, ?)
+      const joined = await env.DB.prepare(`INSERT INTO poker_hands (user_id, player_name, hole_cards, community_cards, bet, status, result, seat_no, reveal_at, updated_at, life_version, round_token, action_token)
+        SELECT ?, ?, '[]', '[]', 0, 'seated', '', ?, 0, ?, ?, '', '' WHERE EXISTS (
+          SELECT 1 FROM players WHERE user_id=? AND life_version=? AND reset_game_over='' AND game_over=''
+        )
         ON CONFLICT(user_id) DO UPDATE SET player_name=excluded.player_name, hole_cards='[]', community_cards='[]', bet=0, street_bet=0, acted=0, status='seated', result='', seat_no=excluded.seat_no, reveal_at=0, updated_at=excluded.updated_at
-        WHERE poker_hands.status NOT IN ('seated','ready','playing','all_in','folded','settling') RETURNING user_id`).bind(user.userId, user.displayName.slice(0, 40), seatNo, now).run();
+          , life_version=excluded.life_version, round_token='', action_token=''
+        WHERE poker_hands.status NOT IN ('seated','ready','playing','all_in','folded','settling') RETURNING user_id`)
+        .bind(user.userId, user.displayName.slice(0, 40), seatNo, now, player.life_version, user.userId, player.life_version).run();
       if (joined.results.length !== 1) return json({ message: "無法加入這個座位，請重新整理後再試。" }, 409);
     } catch { return json({ message: `${seatNo} 號座位已有人，請選擇其他空位。` }, 409); }
     message = `已加入德州撲克 ${seatNo} 號座位，請輸入下注金額。`;
   } else if (body.action === "ready") {
-    const ready = await env.DB.prepare("UPDATE poker_hands SET hole_cards='[]', community_cards='[]', bet=0, street_bet=0, acted=0, status='ready', result='', updated_at=? WHERE user_id=? AND status='seated' RETURNING user_id").bind(now, user.userId).run();
+    const ready = await env.DB.prepare("UPDATE poker_hands SET hole_cards='[]', community_cards='[]', bet=0, street_bet=0, acted=0, status='ready', result='', updated_at=? WHERE user_id=? AND life_version=? AND status='seated' RETURNING user_id").bind(now, user.userId, player.life_version).run();
     if (ready.results.length !== 1) return json({ message: "請先選擇空位，或等待目前牌局結束。" }, 409);
     message = "你已準備參加下一局；至少兩位玩家準備後即可開局。";
   } else if (body.action === "start") {
     const blind = Number(body.bet);
     if (!Number.isSafeInteger(blind) || blind < 10 || blind > 100_000) return json({ message: "大盲請設定為 NT$10～100,000。" }, 400);
     const table = await pokerTable(env.DB); if (table && table.status !== "idle") return json({ message: "牌局已在進行或結算中。" }, 409);
-    const joined = await env.DB.prepare("SELECT h.*, p.cash FROM poker_hands h JOIN players p ON p.user_id=h.user_id WHERE h.status='ready' AND h.seat_no IS NOT NULL ORDER BY h.seat_no").all<PokerRow & { cash: number }>();
+    const joined = await env.DB.prepare(`SELECT h.*, p.cash FROM poker_hands h JOIN players p ON p.user_id=h.user_id AND p.life_version=h.life_version
+      WHERE h.status='ready' AND h.seat_no IS NOT NULL AND p.reset_game_over='' AND p.game_over='' ORDER BY h.seat_no`).all<PokerRow & { cash: number }>();
     if (joined.results.length < 2) return json({ message: "至少需要兩位已準備玩家才能開局。" }, 409);
     const sb = joined.results[0];
     if (sb.user_id !== user.userId) return json({ message: `只有小盲 ${sb.seat_no} 號玩家可以開始牌局。` }, 409);
     if (joined.results.some((row) => row.cash < blind)) return json({ message: `有玩家現金少於開局起始資金 NT$${blind}，目前無法開局。` }, 409);
+    const startToken = crypto.randomUUID();
     const startRevision = Math.max(now, (table?.updated_at ?? 0) + 1);
-    const claimed = await env.DB.prepare(`INSERT INTO poker_table_state (id,deck,community_cards,street,current_bet,turn_seat,pot,status,updated_at)
-      SELECT 'table-01','[]','[]','idle',0,0,0,'starting',? WHERE EXISTS (
-        SELECT 1 FROM players WHERE user_id=? AND game_over=''
+    const claimed = await env.DB.prepare(`INSERT INTO poker_table_state (id,deck,community_cards,street,current_bet,turn_seat,pot,status,round_token,action_token,updated_at)
+      SELECT 'table-01','[]','[]','idle',0,0,0,'starting',?,?,? WHERE EXISTS (
+        SELECT 1 FROM players WHERE user_id=? AND life_version=? AND reset_game_over='' AND game_over=''
       )
-      ON CONFLICT(id) DO UPDATE SET status='starting', updated_at=excluded.updated_at
+      ON CONFLICT(id) DO UPDATE SET status='starting', round_token=excluded.round_token, action_token=excluded.action_token, updated_at=excluded.updated_at
       WHERE poker_table_state.status='idle' AND EXISTS (
-        SELECT 1 FROM players WHERE user_id=? AND game_over=''
-      ) RETURNING id`).bind(startRevision, user.userId, user.userId).first<{ id: string }>();
+        SELECT 1 FROM players WHERE user_id=? AND life_version=? AND reset_game_over='' AND game_over=''
+      ) RETURNING id`).bind(startToken, startToken, startRevision, user.userId, player.life_version,
+        user.userId, player.life_version).first<{ id: string }>();
     if (!claimed) return json({ message: "已有玩家先開始或正在結算牌局。" }, 409);
     const deck = shuffledDeck(); const hands = new Map<string, string[]>(); joined.results.forEach((row) => hands.set(row.user_id, [deck.pop()!, deck.pop()!]));
     const smallBlind = Math.max(1, Math.floor(blind / 2)); const bb = joined.results[1]; const firstTurn = joined.results[2]?.seat_no ?? sb.seat_no!;
@@ -1859,44 +2042,46 @@ async function pokerAction(request: Request, env: Env) {
     const handRevision = walletRevision + 1;
     const finalRevision = handRevision + 1;
     const statements: D1PreparedStatement[] = [env.DB.prepare(`UPDATE players SET
-      cash=cash-CASE WHEN user_id=? THEN ? ELSE ? END, updated_at=MAX(updated_at+1, ?)
+      cash=cash-CASE WHEN user_id=? THEN ? ELSE ? END, updated_at=MAX(updated_at+1, ?), mutation_token=?
       WHERE user_id IN (?, ?)
+        AND life_version=CASE WHEN user_id=? THEN ? ELSE ? END AND reset_game_over='' AND game_over=''
         AND (SELECT cash FROM players WHERE user_id=?)>=?
         AND (SELECT cash FROM players WHERE user_id=?)>=?
-        AND EXISTS (SELECT 1 FROM poker_table_state WHERE id='table-01' AND status='starting' AND updated_at=?)
-      RETURNING user_id`).bind(sb.user_id, smallBlind, blind, walletRevision, sb.user_id, bb.user_id,
-        sb.user_id, smallBlind, bb.user_id, blind, startRevision)];
+        AND EXISTS (SELECT 1 FROM poker_table_state WHERE id='table-01' AND status='starting' AND round_token=? AND updated_at=?)
+      RETURNING user_id`).bind(sb.user_id, smallBlind, blind, walletRevision, startToken, sb.user_id, bb.user_id,
+        sb.user_id, sb.life_version, bb.life_version, sb.user_id, smallBlind, bb.user_id, blind, startToken, startRevision)];
     joined.results.forEach((row) => { const forced = row.user_id === sb.user_id ? smallBlind : row.user_id === bb.user_id ? blind : 0; const status = forced > 0 && row.cash === forced ? "all_in" : "playing"; const acted = status === "all_in" ? 1 : 0;
-      statements.push(env.DB!.prepare(`UPDATE poker_hands SET hole_cards=?, community_cards='[]', bet=?, street_bet=?, acted=?, status=?, result='', updated_at=?
-        WHERE user_id=? AND seat_no=? AND status='ready'
-          AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND updated_at=?)
-          AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND updated_at=?)
-        RETURNING user_id`).bind(JSON.stringify(hands.get(row.user_id)), forced, forced, acted, status, handRevision,
-          row.user_id, row.seat_no, sb.user_id, walletRevision, bb.user_id, walletRevision)); });
-    statements.push(env.DB.prepare(`UPDATE poker_table_state SET deck=?,community_cards='[]',street='preflop',current_bet=?,turn_seat=?,pot=?,status='playing',updated_at=?
-      WHERE id='table-01' AND status='starting' AND updated_at=?
-        AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND updated_at=?)
-        AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND updated_at=?)
-      RETURNING id`).bind(JSON.stringify(deck), blind, firstTurn, smallBlind + blind, finalRevision, startRevision,
-        sb.user_id, walletRevision, bb.user_id, walletRevision));
+      statements.push(env.DB!.prepare(`UPDATE poker_hands SET hole_cards=?, community_cards='[]', bet=?, street_bet=?, acted=?, status=?, result='', round_token=?, action_token=?, updated_at=?
+        WHERE user_id=? AND life_version=? AND seat_no=? AND status='ready'
+          AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?)
+          AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?)
+        RETURNING user_id`).bind(JSON.stringify(hands.get(row.user_id)), forced, forced, acted, status, startToken, startToken, handRevision,
+          row.user_id, row.life_version, row.seat_no, sb.user_id, sb.life_version, startToken, bb.user_id, bb.life_version, startToken)); });
+    statements.push(env.DB.prepare(`UPDATE poker_table_state SET deck=?,community_cards='[]',street='preflop',current_bet=?,turn_seat=?,pot=?,status='playing',action_token=?,updated_at=?
+      WHERE id='table-01' AND status='starting' AND round_token=? AND updated_at=?
+        AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?)
+        AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?)
+      RETURNING id`).bind(JSON.stringify(deck), blind, firstTurn, smallBlind + blind, startToken, finalRevision, startToken, startRevision,
+        sb.user_id, sb.life_version, startToken, bb.user_id, bb.life_version, startToken));
     const started = await env.DB.batch(statements);
     const startSucceeded = (started[0]?.results?.length ?? 0) === 2
       && joined.results.every((_, index) => (started[index + 1]?.results?.length ?? 0) === 1)
       && (started[started.length - 1]?.results?.length ?? 0) === 1;
     if (!startSucceeded) {
       await env.DB.batch([
-        env.DB.prepare(`UPDATE players SET cash=cash+CASE WHEN user_id=? THEN ? ELSE ? END, updated_at=?
-          WHERE user_id IN (?, ?) AND updated_at=?`).bind(sb.user_id, smallBlind, blind, Date.now(), sb.user_id, bb.user_id, walletRevision),
+        env.DB.prepare(`UPDATE players SET cash=cash+CASE WHEN user_id=? THEN ? ELSE ? END, updated_at=?, mutation_token=''
+          WHERE user_id IN (?, ?) AND life_version=CASE WHEN user_id=? THEN ? ELSE ? END AND mutation_token=?`)
+          .bind(sb.user_id, smallBlind, blind, Date.now(), sb.user_id, bb.user_id, sb.user_id, sb.life_version, bb.life_version, startToken),
         ...joined.results.map((row) => env.DB!.prepare(`UPDATE poker_hands SET hole_cards='[]', community_cards='[]', bet=0,
-          street_bet=0, acted=0, status='ready', result='', updated_at=? WHERE user_id=? AND updated_at=?`)
-          .bind(Date.now(), row.user_id, handRevision)),
-        env.DB.prepare("UPDATE poker_table_state SET status='idle', turn_seat=0, pot=0, deck='[]', community_cards='[]', updated_at=? WHERE id='table-01' AND status='starting'").bind(Date.now()),
+          street_bet=0, acted=0, status='ready', result='', round_token='', action_token='', updated_at=? WHERE user_id=? AND life_version=? AND round_token=?`)
+          .bind(Date.now(), row.user_id, row.life_version, startToken)),
+        env.DB.prepare("UPDATE poker_table_state SET status='idle', turn_seat=0, pot=0, deck='[]', community_cards='[]', round_token='', action_token='', updated_at=? WHERE id='table-01' AND status='starting' AND round_token=?").bind(Date.now(), startToken),
       ]);
       return json({ message: "有玩家現金或座位在開局前發生變動，牌局未開始且盲注已退回。" }, 409);
     }
     message = `牌局開始：小盲 ${sb.seat_no} 號 NT$${smallBlind}、大盲 ${bb.seat_no} 號 NT$${blind}。`;
   } else if (["check", "call", "raise", "fold", "all_in"].includes(body.action || "")) {
-    const [table, row] = await Promise.all([pokerTable(env.DB), env.DB.prepare("SELECT * FROM poker_hands WHERE user_id=?").bind(user.userId).first<PokerRow>()]);
+    const [table, row] = await Promise.all([pokerTable(env.DB), env.DB.prepare("SELECT * FROM poker_hands WHERE user_id=? AND life_version=?").bind(user.userId, player.life_version).first<PokerRow>()]);
     if (!table || table.status !== "playing" || !row || row.status !== "playing") return json({ message: "你目前不在進行中的牌局。" }, 409);
     if (row.seat_no !== table.turn_seat) return json({ message: `目前輪到 ${table.turn_seat} 號座位。` }, 409);
     const callAmount = Math.max(0, table.current_bet - row.street_bet);
@@ -1917,56 +2102,58 @@ async function pokerAction(request: Request, env: Env) {
       added = callAmount + requestedRaise;
       nextBet = table.current_bet + requestedRaise;
     }
+    const actionToken = crypto.randomUUID();
     const tableClaimRevision = Math.max(now, table.updated_at + 1);
-    const claimedTable = await env.DB.prepare(`UPDATE poker_table_state SET turn_seat=?, updated_at=?
-      WHERE id='table-01' AND status='playing' AND turn_seat=? AND updated_at=? RETURNING *`)
-      .bind(-row.seat_no!, tableClaimRevision, row.seat_no!, table.updated_at).first<PokerTableRow>();
+    const claimedTable = await env.DB.prepare(`UPDATE poker_table_state SET turn_seat=?, action_token=?, updated_at=?
+      WHERE id='table-01' AND status='playing' AND round_token=? AND turn_seat=? AND updated_at=? RETURNING *`)
+      .bind(-row.seat_no!, actionToken, tableClaimRevision, table.round_token, row.seat_no!, table.updated_at).first<PokerTableRow>();
     if (!claimedTable) return json({ message: "這個回合已被處理，請重新整理牌桌。" }, 409);
     const restoreTurn = async () => {
-      await env.DB!.prepare("UPDATE poker_table_state SET turn_seat=?, updated_at=? WHERE id='table-01' AND status='playing' AND turn_seat=?")
-        .bind(row.seat_no, Math.max(Date.now(), tableClaimRevision + 1), -row.seat_no!).run();
+      await env.DB!.prepare("UPDATE poker_table_state SET turn_seat=?, action_token='', updated_at=? WHERE id='table-01' AND status='playing' AND round_token=? AND turn_seat=? AND action_token=?")
+        .bind(row.seat_no, Math.max(Date.now(), tableClaimRevision + 1), table.round_token, -row.seat_no!, actionToken).run();
     };
     const walletRevision = tableClaimRevision + 1;
     const handRevision = walletRevision + 1;
     const finishedAt = handRevision + 1;
     const walletStatement = expectedWallet !== null
-      ? env.DB.prepare("UPDATE players SET cash=cash-?, updated_at=MAX(updated_at+1, ?) WHERE user_id=? AND cash=? AND game_over='' AND reset_game_over='' RETURNING user_id, updated_at").bind(added, walletRevision, user.userId, expectedWallet)
-      : env.DB.prepare("UPDATE players SET cash=cash-?, updated_at=MAX(updated_at+1, ?) WHERE user_id=? AND cash>=? AND game_over='' AND reset_game_over='' RETURNING user_id, updated_at").bind(added, walletRevision, user.userId, added);
+      ? env.DB.prepare("UPDATE players SET cash=cash-?, updated_at=MAX(updated_at+1, ?), mutation_token=? WHERE user_id=? AND life_version=? AND cash=? AND game_over='' AND reset_game_over='' AND EXISTS (SELECT 1 FROM poker_table_state WHERE id='table-01' AND round_token=? AND action_token=? AND turn_seat=?) RETURNING user_id, updated_at").bind(added, walletRevision, actionToken, user.userId, player.life_version, expectedWallet, table.round_token, actionToken, -row.seat_no!)
+      : env.DB.prepare("UPDATE players SET cash=cash-?, updated_at=MAX(updated_at+1, ?), mutation_token=? WHERE user_id=? AND life_version=? AND cash>=? AND game_over='' AND reset_game_over='' AND EXISTS (SELECT 1 FROM poker_table_state WHERE id='table-01' AND round_token=? AND action_token=? AND turn_seat=?) RETURNING user_id, updated_at").bind(added, walletRevision, actionToken, user.userId, player.life_version, added, table.round_token, actionToken, -row.seat_no!);
     const handStatement = body.action === "fold"
-      ? env.DB.prepare(`UPDATE poker_hands SET status='folded', acted=1, result='本局已棄牌。', updated_at=?
-          WHERE user_id=? AND status='playing' AND updated_at=? AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND updated_at=?) RETURNING user_id`)
-        .bind(handRevision, user.userId, row.updated_at, user.userId, walletRevision)
+      ? env.DB.prepare(`UPDATE poker_hands SET status='folded', acted=1, result='本局已棄牌。', action_token=?, updated_at=?
+          WHERE user_id=? AND life_version=? AND round_token=? AND status='playing' AND updated_at=? AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?) RETURNING user_id`)
+        .bind(actionToken, handRevision, user.userId, player.life_version, table.round_token, row.updated_at, user.userId, player.life_version, actionToken)
       : body.action === "all_in"
-        ? env.DB.prepare(`UPDATE poker_hands SET bet=bet+?, street_bet=street_bet+?, acted=1, status='all_in', result='已全押，等待攤牌。', updated_at=?
-            WHERE user_id=? AND status='playing' AND updated_at=? AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND updated_at=?) RETURNING user_id`)
-          .bind(added, added, handRevision, user.userId, row.updated_at, user.userId, walletRevision)
-        : env.DB.prepare(`UPDATE poker_hands SET bet=bet+?, street_bet=street_bet+?, acted=1, updated_at=?
-            WHERE user_id=? AND status='playing' AND updated_at=? AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND updated_at=?) RETURNING user_id`)
-          .bind(added, added, handRevision, user.userId, row.updated_at, user.userId, walletRevision);
+        ? env.DB.prepare(`UPDATE poker_hands SET bet=bet+?, street_bet=street_bet+?, acted=1, status='all_in', result='已全押，等待攤牌。', action_token=?, updated_at=?
+            WHERE user_id=? AND life_version=? AND round_token=? AND status='playing' AND updated_at=? AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?) RETURNING user_id`)
+          .bind(added, added, actionToken, handRevision, user.userId, player.life_version, table.round_token, row.updated_at, user.userId, player.life_version, actionToken)
+        : env.DB.prepare(`UPDATE poker_hands SET bet=bet+?, street_bet=street_bet+?, acted=1, action_token=?, updated_at=?
+            WHERE user_id=? AND life_version=? AND round_token=? AND status='playing' AND updated_at=? AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?) RETURNING user_id`)
+          .bind(added, added, actionToken, handRevision, user.userId, player.life_version, table.round_token, row.updated_at, user.userId, player.life_version, actionToken);
     const actionStatements: D1PreparedStatement[] = [walletStatement, handStatement];
     if (raiseBy > 0) actionStatements.push(env.DB.prepare(`UPDATE poker_hands SET acted=0
-      WHERE status='playing' AND user_id<>? AND EXISTS (SELECT 1 FROM poker_hands WHERE user_id=? AND updated_at=?)`)
-      .bind(user.userId, user.userId, handRevision));
+      WHERE status='playing' AND round_token=? AND user_id<>? AND EXISTS (SELECT 1 FROM poker_hands WHERE user_id=? AND life_version=? AND round_token=? AND action_token=? AND updated_at=?)`)
+      .bind(table.round_token, user.userId, user.userId, player.life_version, table.round_token, actionToken, handRevision));
     actionStatements.push(env.DB.prepare(`UPDATE poker_table_state SET current_bet=?, pot=pot+?, turn_seat=?, updated_at=?
-      WHERE id='table-01' AND status='playing' AND turn_seat=? AND updated_at=?
-        AND EXISTS (SELECT 1 FROM poker_hands WHERE user_id=? AND updated_at=?) RETURNING id`)
-      .bind(nextBet, added, row.seat_no, finishedAt, -row.seat_no!, tableClaimRevision, user.userId, handRevision));
+      WHERE id='table-01' AND status='playing' AND round_token=? AND turn_seat=? AND action_token=? AND updated_at=?
+        AND EXISTS (SELECT 1 FROM poker_hands WHERE user_id=? AND life_version=? AND round_token=? AND action_token=? AND updated_at=?) RETURNING id`)
+      .bind(nextBet, added, row.seat_no, finishedAt, table.round_token, -row.seat_no!, actionToken, tableClaimRevision,
+        user.userId, player.life_version, table.round_token, actionToken, handRevision));
     const settledAction = await env.DB.batch(actionStatements);
     if ((settledAction[0]?.results?.length ?? 0) !== 1 || (settledAction[1]?.results?.length ?? 0) !== 1 || (settledAction[settledAction.length - 1]?.results?.length ?? 0) !== 1) {
-      if (added && (settledAction[0]?.results?.length ?? 0) === 1) await env.DB.prepare("UPDATE players SET cash=cash+?, updated_at=MAX(updated_at+1, ?) WHERE user_id=? AND updated_at>=?").bind(added, Date.now(), user.userId, walletRevision).run();
+      if (added && (settledAction[0]?.results?.length ?? 0) === 1) await env.DB.prepare("UPDATE players SET cash=cash+?, updated_at=MAX(updated_at+1, ?), mutation_token='' WHERE user_id=? AND life_version=? AND mutation_token=?").bind(added, Date.now(), user.userId, player.life_version, actionToken).run();
       await env.DB.prepare(`UPDATE poker_hands SET status='playing', bet=MAX(0,bet-?), street_bet=MAX(0,street_bet-?), acted=0, result='', updated_at=?
-        WHERE user_id=? AND updated_at=?`).bind(added, added, Date.now(), user.userId, handRevision).run();
+        WHERE user_id=? AND life_version=? AND round_token=? AND action_token=? AND updated_at=?`).bind(added, added, Date.now(), user.userId, player.life_version, table.round_token, actionToken, handRevision).run();
       await restoreTurn();
       return json({ message: "手牌或現金狀態已變更，下注未完成且款項已退回。" }, 409);
     }
     message = body.action === "fold" ? "你已棄牌。" : body.action === "check" ? "你選擇過牌。" : body.action === "all_in" ? `你已全押 NT$${added}，將保留到最後攤牌。` : body.action === "raise" ? `你跟注並加注 NT$${requestedRaise}。` : `你跟注 NT$${callAmount}。`;
     const refreshedPlayers = await env.DB.prepare("SELECT * FROM poker_hands WHERE status IN ('playing','all_in','folded') ORDER BY seat_no").all<PokerRow>(); const refreshedTable = await pokerTable(env.DB); await advancePoker(env.DB, refreshedPlayers.results, refreshedTable!);
   } else if (body.action === "leave") {
-    const active = await env.DB.prepare(`SELECT * FROM poker_hands WHERE user_id=? AND status IN ${POKER_ACTIVE_STATUSES}`).bind(user.userId).first<PokerRow>();
+    const active = await env.DB.prepare(`SELECT * FROM poker_hands WHERE user_id=? AND life_version=? AND status IN ${POKER_ACTIVE_STATUSES}`).bind(user.userId, player.life_version).first<PokerRow>();
     if (!active) return json({ message: "你目前沒有加入德州撲克牌桌。" }, 400);
     const table = await pokerTable(env.DB);
     if (["playing", "all_in", "folded", "settling"].includes(active.status) || table?.status === "starting" || table?.status === "playing" || table?.status === "settling") return json({ message: "牌局正在開局、進行或結算，請等待本局完成後再離場。" }, 409);
-    await env.DB.prepare("UPDATE poker_hands SET status='left', seat_no=NULL, reveal_at=0, updated_at=? WHERE user_id=?").bind(now, user.userId).run();
+    await env.DB.prepare("UPDATE poker_hands SET status='left', seat_no=NULL, reveal_at=0, updated_at=? WHERE user_id=? AND life_version=?").bind(now, user.userId, player.life_version).run();
     message = "已離開德州撲克牌桌。";
   } else return json({ message: "未知的德州撲克牌桌行動。" }, 400);
   const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
@@ -2046,16 +2233,20 @@ async function updateDisplayName(request: Request, env: Env) {
   if (!current) return json({ message: "找不到玩家資料。" }, 404);
   if (current.reset_game_over || current.game_over === "__resetting__") return json({ message: "人生資料正在重置，請稍候再更改名字。" }, 409);
   const now = Date.now();
+  const nameToken = crypto.randomUUID();
+  const renamed = await env.DB.prepare(`UPDATE players SET display_name=?, updated_at=MAX(updated_at+1, ?), last_seen_at=?, mutation_token=?
+    WHERE user_id=? AND life_version=? AND updated_at=? AND reset_game_over='' AND game_over<>'__resetting__'
+    RETURNING user_id`).bind(displayName, now, now, nameToken, user.userId, current.life_version, current.updated_at).first<{ user_id: string }>();
+  if (!renamed) return json({ message: "玩家資料剛剛已更新，請再試一次。" }, 409);
   await env.DB.batch([
     env.DB.prepare("UPDATE accounts SET display_name=? WHERE id=?").bind(displayName, user.userId),
-    env.DB.prepare("UPDATE players SET display_name=?, updated_at=?, last_seen_at=? WHERE user_id=?").bind(displayName, now, now, user.userId),
-    env.DB.prepare("UPDATE game_events SET player_name=? WHERE user_id=?").bind(displayName, user.userId),
-    env.DB.prepare("UPDATE casino_hands SET player_name=? WHERE user_id=?").bind(displayName, user.userId),
-    env.DB.prepare("UPDATE poker_hands SET player_name=? WHERE user_id=?").bind(displayName, user.userId),
-    env.DB.prepare("UPDATE casino_bingo_entries SET player_name=? WHERE user_id=?").bind(displayName, user.userId),
-    env.DB.prepare("UPDATE casino_tournament_entries SET player_name=? WHERE user_id=?").bind(displayName, user.userId),
-    env.DB.prepare("UPDATE casino_tournament_hands SET player_name=? WHERE user_id=?").bind(displayName, user.userId),
-    env.DB.prepare("UPDATE writer_books SET author_name=?, updated_at=? WHERE author_id=?").bind(displayName, now, user.userId),
+    env.DB.prepare("UPDATE game_events SET player_name=? WHERE user_id=? AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?)").bind(displayName, user.userId, user.userId, current.life_version, nameToken),
+    env.DB.prepare("UPDATE casino_hands SET player_name=? WHERE user_id=? AND life_version=?").bind(displayName, user.userId, current.life_version),
+    env.DB.prepare("UPDATE poker_hands SET player_name=? WHERE user_id=? AND life_version=?").bind(displayName, user.userId, current.life_version),
+    env.DB.prepare("UPDATE casino_bingo_entries SET player_name=? WHERE user_id=? AND life_version=?").bind(displayName, user.userId, current.life_version),
+    env.DB.prepare("UPDATE casino_tournament_entries SET player_name=? WHERE user_id=? AND life_version=?").bind(displayName, user.userId, current.life_version),
+    env.DB.prepare("UPDATE casino_tournament_hands SET player_name=? WHERE user_id=? AND life_version=?").bind(displayName, user.userId, current.life_version),
+    env.DB.prepare("UPDATE writer_books SET author_name=?, updated_at=? WHERE author_id=? AND author_life_version=?").bind(displayName, now, user.userId, current.life_version),
     env.DB.prepare("UPDATE player_transfer_requests SET sender_name=? WHERE sender_id=?").bind(displayName, user.userId),
     env.DB.prepare("UPDATE player_medical_requests SET patient_name=? WHERE patient_id=?").bind(displayName, user.userId),
     env.DB.prepare("UPDATE player_medical_requests SET provider_name=? WHERE provider_id=?").bind(displayName, user.userId),
@@ -2142,11 +2333,14 @@ async function takeAction(request: Request, env: Env) {
   let illegalCrime = "";
   let illegalJob = "";
   let illegalIncome = 0;
-  let pendingHack: { targetId: string; targetName: string; amount: number } | null = null;
+  let pendingHack: { targetId: string; targetName: string; targetLifeVersion: number; targetRevision: number; amount: number } | null = null;
   let pendingTerritoryVisit: { location: LocationId; cycleDay: number; worldMinute: number } | null = null;
   let pendingTalentSet: string | null = null;
+  let pendingCityEvent: { eventId: string; talentExp: number } | null = null;
+  let pendingProviderJobCancellation = false;
   let resetStatements: D1PreparedStatement[] = [];
-  let pendingLoanContractUpdate: { id: string; previousBalance: number; balance: number; closedAt: number | null } | null = null;
+  let pendingLoanContractUpdate: { id: string; previousBalance: number; previousRevision: number; balance: number; closedAt: number | null } | null = null;
+  const actionToken = crypto.randomUUID();
   let expectedLifeVersion = current.life_version;
   let expectedRevision = current.updated_at;
   let expectedResetMarker = current.reset_game_over || "";
@@ -2155,9 +2349,9 @@ async function takeAction(request: Request, env: Env) {
     case "crime_hack": {
       if (next.job_category !== "crime" || next.current_job !== "駭客") return json({ message: "只有駭客可以執行這項行動。" }, 400);
       if (!body.targetId || body.targetId === user.userId) return json({ message: "請選擇其他玩家。" }, 400);
-      const target = await env.DB.prepare("SELECT user_id, display_name, cash, last_seen_at, location, main_story, game_over FROM players WHERE user_id=?")
-        .bind(body.targetId).first<{ user_id: string; display_name: string; cash: number; last_seen_at: number; location: LocationId; main_story: string; game_over: string }>();
-      if (!target || target.last_seen_at < Date.now() - ONLINE_HEARTBEAT_GRACE_MS || target.location === "prison" || target.main_story === "unselected" || target.game_over) return json({ message: "這位玩家目前不在線上或無法成為目標。" }, 409);
+      const target = await env.DB.prepare("SELECT user_id, display_name, cash, last_seen_at, location, main_story, game_over, reset_game_over, life_version, updated_at FROM players WHERE user_id=?")
+        .bind(body.targetId).first<{ user_id: string; display_name: string; cash: number; last_seen_at: number; location: LocationId; main_story: string; game_over: string; reset_game_over: string; life_version: number; updated_at: number }>();
+      if (!target || target.last_seen_at < Date.now() - ONLINE_HEARTBEAT_GRACE_MS || target.location === "prison" || target.main_story === "unselected" || target.game_over || target.reset_game_over) return json({ message: "這位玩家目前不在線上或無法成為目標。" }, 409);
       const personalDay = Math.floor(next.elapsed_minutes / 1440) + 1;
       if (next.hack_day !== personalDay) { next.hack_day = personalDay; next.hack_uses = 0; }
       if (next.hack_uses >= HACK_DAILY_LIMIT) return json({ message: `今天最多只能嘗試 ${HACK_DAILY_LIMIT} 次駭客竊取。` }, 409);
@@ -2170,7 +2364,7 @@ async function takeAction(request: Request, env: Env) {
         message = `你嘗試從${target.display_name}的現金中竊取資金，但沒有成功。`;
       } else {
         const amount = Math.min(HACK_MAX_STEAL, Math.max(1, Math.floor(target.cash * HACK_STEAL_RATE)));
-        pendingHack = { targetId: target.user_id, targetName: target.display_name, amount };
+        pendingHack = { targetId: target.user_id, targetName: target.display_name, targetLifeVersion: target.life_version, targetRevision: target.updated_at, amount };
         title = "駭客行動完成";
         message = `你完成對${target.display_name}的駭客竊取，正在確認可取得的現金。`;
       }
@@ -2193,11 +2387,13 @@ async function takeAction(request: Request, env: Env) {
         territory_pending=territory_pending+CASE WHEN territory_day>0 AND territory_day<? THEN territory_income ELSE 0 END,
         territory_visits=CASE WHEN territory_day=? THEN territory_visits ELSE 0 END,
         territory_income=CASE WHEN territory_day=? THEN territory_income ELSE 0 END,
-        territory_day=?, territory_location=?, updated_at=?
+        territory_day=?, territory_location=?, updated_at=?, mutation_token=?
         WHERE user_id=? AND current_job='大橋頭營運長' AND job_category='crime'
+          AND life_version=? AND updated_at=? AND reset_game_over='' AND game_over=''
           AND NOT EXISTS (SELECT 1 FROM players owner WHERE owner.territory_location=? AND owner.current_job='大橋頭營運長' AND owner.job_category='crime' AND owner.user_id<>?)
         RETURNING territory_location, territory_day, territory_visits, territory_income, territory_pending, updated_at`)
-        .bind(cityDay, cityDay, cityDay, cityDay, territory, Date.now(), user.userId, territory, user.userId)
+        .bind(cityDay, cityDay, cityDay, cityDay, territory, Date.now(), actionToken, user.userId,
+          current.life_version, expectedRevision, territory, user.userId)
         .first<{ territory_location: string; territory_day: number; territory_visits: number; territory_income: number; territory_pending: number; updated_at: number }>();
       if (!claimedTerritory) return json({ message: "這個地點剛被其他營運長選走，請選擇其他地盤。" }, 409);
       next.territory_location = claimedTerritory.territory_location;
@@ -2257,13 +2453,17 @@ async function takeAction(request: Request, env: Env) {
       const titleText = typeof body.title === "string" ? body.title.trim().replace(/\s+/g, " ") : "";
       if (next.job_category !== "literary" || price === null) return json({ message: "升至簽約作家後才能出版書籍。" }, 400);
       if (!titleText || titleText.length > 40) return json({ message: "書籍名稱需為 1～40 個字。" }, 400);
-      const bookCount = await env.DB.prepare("SELECT COUNT(*) AS count FROM writer_books WHERE author_id=?").bind(user.userId).first<{ count: number }>();
+      const bookCount = await env.DB.prepare("SELECT COUNT(*) AS count FROM writer_books WHERE author_id=? AND author_life_version=?").bind(user.userId, current.life_version).first<{ count: number }>();
       if (Number(bookCount?.count ?? 0) >= WRITER_MAX_ACTIVE_BOOKS) return json({ message: `每位作者最多建立 ${WRITER_MAX_ACTIVE_BOOKS} 本書；下架不會增加出版名額。` }, 409);
-      const duplicate = await env.DB.prepare("SELECT id FROM writer_books WHERE author_id=? AND title=? LIMIT 1").bind(user.userId, titleText).first<{ id: string }>();
+      const duplicate = await env.DB.prepare("SELECT id FROM writer_books WHERE author_id=? AND author_life_version=? AND title=? LIMIT 1").bind(user.userId, current.life_version, titleText).first<{ id: string }>();
       if (duplicate) return json({ message: "你已經建立過一本同名書籍。" }, 409);
       const now = Date.now();
-      await env.DB.prepare("INSERT INTO writer_books (id, author_id, author_name, title, price, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'active', ?, ?)")
-        .bind(crypto.randomUUID(), user.userId, user.displayName.slice(0, 40), titleText, price, now, now).run();
+      const published = await env.DB.prepare(`INSERT INTO writer_books (id, author_id, author_name, author_life_version, title, price, status, created_at, updated_at)
+        SELECT ?, ?, ?, ?, ?, ?, 'active', ?, ? WHERE EXISTS (
+          SELECT 1 FROM players WHERE user_id=? AND life_version=? AND reset_game_over='' AND game_over=''
+        ) RETURNING id`).bind(crypto.randomUUID(), user.userId, user.displayName.slice(0, 40), current.life_version,
+          titleText, price, now, now, user.userId, current.life_version).first<{ id: string }>();
+      if (!published) return json({ message: "人生狀態剛剛改變，新書沒有建立。" }, 409);
       title = "新書上架"; message = `《${titleText}》已上架書店，售價 NT$${price}。`;
       break;
     }
@@ -2271,8 +2471,11 @@ async function takeAction(request: Request, env: Env) {
       if (next.location !== "bookstore") return json({ message: "請先前往城市書店管理作品。" }, 400);
       if (!isLocationOpen("bookstore", sharedMinutes)) return json({ message: `城市書店營業時間為 ${OPENING_HOURS.bookstore?.label}。` }, 400);
       if (!body.bookId || !["active", "hidden"].includes(body.status || "")) return json({ message: "書籍上架狀態不正確。" }, 400);
-      const updatedBook = await env.DB.prepare("UPDATE writer_books SET status=?, updated_at=? WHERE id=? AND author_id=? RETURNING title, status")
-        .bind(body.status, Date.now(), body.bookId, user.userId).first<{ title: string; status: string }>();
+      const updatedBook = await env.DB.prepare(`UPDATE writer_books SET status=?, updated_at=?
+        WHERE id=? AND author_id=? AND author_life_version=?
+          AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND reset_game_over='' AND game_over='')
+        RETURNING title, status`).bind(body.status, Date.now(), body.bookId, user.userId, current.life_version,
+          user.userId, current.life_version).first<{ title: string; status: string }>();
       if (!updatedBook) return json({ message: "找不到這本書或你不是作者。" }, 404);
       title = updatedBook.status === "active" ? "書籍上架" : "書籍下架"; message = `《${updatedBook.title}》已${updatedBook.status === "active" ? "上架" : "下架"}。`;
       break;
@@ -2281,31 +2484,40 @@ async function takeAction(request: Request, env: Env) {
       if (next.location !== "bookstore") return json({ message: "請先前往城市書店。" }, 400);
       if (!isLocationOpen("bookstore", sharedMinutes)) return json({ message: `城市書店營業時間為 ${OPENING_HOURS.bookstore?.label}。` }, 400);
       if (!body.bookId) return json({ message: "請選擇要購買的書籍。" }, 400);
-      const book = await env.DB.prepare("SELECT id, author_id, author_name, title, price, status FROM writer_books WHERE id=?").bind(body.bookId).first<WriterBookRow>();
+      const book = await env.DB.prepare("SELECT id, author_id, author_name, author_life_version, title, price, status FROM writer_books WHERE id=?").bind(body.bookId).first<WriterBookRow>();
       if (!book || book.status !== "active") return json({ message: "這本書目前沒有上架。" }, 409);
       if (book.author_id === user.userId) return json({ message: "作者不能購買自己的書。" }, 400);
+      const author = await env.DB.prepare("SELECT life_version, reset_game_over, game_over FROM players WHERE user_id=?")
+        .bind(book.author_id).first<{ life_version: number; reset_game_over: string; game_over: string }>();
+      if (!author || author.life_version !== book.author_life_version || author.reset_game_over || author.game_over) return json({ message: "作者目前無法完成交易。" }, 409);
       const owned = await env.DB.prepare("SELECT quantity, updated_at FROM writer_book_purchases WHERE book_id=? AND buyer_id=?")
         .bind(book.id, user.userId).first<{ quantity: number; updated_at: number }>();
       if (Number(owned?.quantity ?? 0) >= WRITER_MAX_PURCHASES_PER_BOOK) return json({ message: `每位玩家每本書最多購買 ${WRITER_MAX_PURCHASES_PER_BOOK} 次。` }, 409);
       const purchaseNow = Math.max(Date.now(), Number(owned?.updated_at ?? 0) + 1);
       const purchaseToken = crypto.randomUUID();
       const purchase = await env.DB.batch([
-        env.DB.prepare(`INSERT INTO writer_book_purchases (book_id, buyer_id, author_id, quantity, updated_at, purchase_token)
-          SELECT ?, ?, ?, 1, ?, ? WHERE
-            EXISTS (SELECT 1 FROM writer_books WHERE id=? AND status='active' AND author_id=?)
-            AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND cash>=? AND game_over='')
+        env.DB.prepare(`INSERT INTO writer_book_purchases
+          (book_id, buyer_id, author_id, buyer_life_version, author_life_version, quantity, updated_at, purchase_token)
+          SELECT ?, ?, ?, ?, ?, 1, ?, ? WHERE
+            EXISTS (SELECT 1 FROM writer_books WHERE id=? AND status='active' AND author_id=? AND author_life_version=?)
+            AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND cash>=? AND reset_game_over='' AND game_over='')
+            AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND reset_game_over='' AND game_over='')
           ON CONFLICT(book_id, buyer_id) DO UPDATE SET quantity=quantity+1, updated_at=excluded.updated_at, purchase_token=excluded.purchase_token
-          WHERE writer_book_purchases.quantity < ?
-          RETURNING quantity`).bind(book.id, user.userId, book.author_id, purchaseNow, purchaseToken, book.id, book.author_id,
-            user.userId, book.price, WRITER_MAX_PURCHASES_PER_BOOK),
+          WHERE writer_book_purchases.quantity < ? AND writer_book_purchases.buyer_life_version=excluded.buyer_life_version
+            AND writer_book_purchases.author_life_version=excluded.author_life_version
+          RETURNING quantity`).bind(book.id, user.userId, book.author_id, current.life_version, book.author_life_version,
+            purchaseNow, purchaseToken, book.id, book.author_id, book.author_life_version,
+            user.userId, current.life_version, book.price, book.author_id, book.author_life_version, WRITER_MAX_PURCHASES_PER_BOOK),
         env.DB.prepare(`UPDATE players SET cash=cash-?, updated_at=MAX(updated_at+1, ?)
-          WHERE user_id=? AND cash>=? AND EXISTS (SELECT 1 FROM writer_book_purchases
+          WHERE user_id=? AND life_version=? AND cash>=? AND reset_game_over='' AND game_over=''
+            AND EXISTS (SELECT 1 FROM writer_book_purchases
             WHERE book_id=? AND buyer_id=? AND purchase_token=?) RETURNING user_id`)
-          .bind(book.price, purchaseNow, user.userId, book.price, book.id, user.userId, purchaseToken),
+          .bind(book.price, purchaseNow, user.userId, current.life_version, book.price, book.id, user.userId, purchaseToken),
         env.DB.prepare(`UPDATE players SET cash=cash+?, updated_at=MAX(updated_at+1, ?)
-          WHERE user_id=? AND EXISTS (SELECT 1 FROM writer_book_purchases
+          WHERE user_id=? AND life_version=? AND reset_game_over='' AND game_over=''
+            AND EXISTS (SELECT 1 FROM writer_book_purchases
             WHERE book_id=? AND buyer_id=? AND purchase_token=?) RETURNING user_id`)
-          .bind(book.price, purchaseNow, book.author_id, book.id, user.userId, purchaseToken),
+          .bind(book.price, purchaseNow, book.author_id, book.author_life_version, book.id, user.userId, purchaseToken),
       ]);
       if ((purchase[0]?.results?.length ?? 0) !== 1 || (purchase[1]?.results?.length ?? 0) !== 1 || (purchase[2]?.results?.length ?? 0) !== 1) {
         return json({ message: "購買條件剛剛改變，沒有扣款。" }, 409);
@@ -2325,11 +2537,11 @@ async function takeAction(request: Request, env: Env) {
       if (!Number.isSafeInteger(amount) || amount < (kind === "scam" ? 2 : 1)) return json({ message: kind === "scam" ? "詐騙金額至少需 NT$2。" : "請輸入有效的贈送金額。" }, 400);
       if (amount > current.cash) return json({ message: "金額不能超過你手上的現金。" }, 400);
       if (!body.targetId || body.targetId === user.userId) return json({ message: "請選擇其他玩家。" }, 400);
-      const target = await env.DB.prepare("SELECT user_id, last_seen_at, location, main_story, game_over FROM players WHERE user_id=?")
-        .bind(body.targetId).first<{ user_id: string; last_seen_at: number; location: LocationId; main_story: string; game_over: string }>();
+      const target = await env.DB.prepare("SELECT user_id, last_seen_at, location, main_story, game_over, reset_game_over, life_version FROM players WHERE user_id=?")
+        .bind(body.targetId).first<{ user_id: string; last_seen_at: number; location: LocationId; main_story: string; game_over: string; reset_game_over: string; life_version: number }>();
       if (!target || target.last_seen_at < Date.now() - ONLINE_HEARTBEAT_GRACE_MS) return json({ message: "這位玩家目前不在線上。" }, 409);
       if (target.location === "prison") return json({ message: "服刑中的玩家無法處理現金邀請。" }, 409);
-      if (target.main_story === "unselected" || target.game_over) return json({ message: "這位玩家目前無法處理邀請。" }, 409);
+      if (target.main_story === "unselected" || target.game_over || target.reset_game_over) return json({ message: "這位玩家目前無法處理邀請。" }, 409);
       const existing = await env.DB.prepare("SELECT id FROM player_transfer_requests WHERE recipient_id=? AND status='pending' AND expires_at>? LIMIT 1")
         .bind(target.user_id, Date.now()).first<{ id: string }>();
       if (existing) return json({ message: "這位玩家正在處理另一個現金邀請。" }, 409);
@@ -2340,9 +2552,15 @@ async function takeAction(request: Request, env: Env) {
         break;
       }
       const now = Date.now();
-      await env.DB.prepare(`INSERT INTO player_transfer_requests (id, sender_id, sender_name, recipient_id, kind, amount, status, outcome, resolution_token, created_at, expires_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'pending', '', '', ?, ?)`)
-        .bind(crypto.randomUUID(), user.userId, user.displayName.slice(0, 40), target.user_id, kind, amount, now, now + TRANSFER_REQUEST_TIMEOUT_MS).run();
+      const insertedRequest = await env.DB.prepare(`INSERT INTO player_transfer_requests
+        (id, sender_id, sender_name, recipient_id, kind, amount, sender_life_version, recipient_life_version, status, outcome, resolution_token, created_at, expires_at)
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, 'pending', '', '', ?, ?
+        WHERE EXISTS (SELECT 1 FROM players sender WHERE sender.user_id=? AND sender.life_version=? AND sender.reset_game_over='' AND sender.game_over='')
+          AND EXISTS (SELECT 1 FROM players recipient WHERE recipient.user_id=? AND recipient.life_version=? AND recipient.reset_game_over='' AND recipient.game_over='')
+        RETURNING id`).bind(crypto.randomUUID(), user.userId, user.displayName.slice(0, 40), target.user_id, kind, amount,
+          current.life_version, target.life_version, now, now + TRANSFER_REQUEST_TIMEOUT_MS,
+          user.userId, current.life_version, target.user_id, target.life_version).first<{ id: string }>();
+      if (!insertedRequest) return json({ message: "任一玩家的人生狀態剛剛改變，邀請沒有送出。" }, 409);
       title = kind === "gift" ? "送出贈送邀請" : "送出詐騙邀請";
       message = kind === "gift" ? `已向對方送出 NT$${amount} 的贈送邀請，等待對方決定。` : `已送出 NT$${amount} 的詐騙邀請，等待對方決定。`;
       break;
@@ -2351,10 +2569,13 @@ async function takeAction(request: Request, env: Env) {
       if (!body.requestId || !["accept", "decline"].includes(body.kind || "")) return json({ message: "邀請回覆不正確。" }, 400);
       const token = crypto.randomUUID();
       const request = await env.DB.prepare(`UPDATE player_transfer_requests
-        SET status='processing', resolution_token=?
+        SET status='processing', resolution_token=?, resolved_at=?
         WHERE id=? AND recipient_id=? AND status='pending' AND expires_at>?
-        RETURNING id, sender_id, sender_name, recipient_id, kind, amount, status, outcome, resolution_token, created_at, expires_at, resolved_at`)
-        .bind(token, body.requestId, user.userId, Date.now()).first<TransferRequestRow>();
+          AND EXISTS (SELECT 1 FROM players sender WHERE sender.user_id=sender_id AND sender.life_version=sender_life_version AND sender.reset_game_over='' AND sender.game_over='')
+          AND EXISTS (SELECT 1 FROM players recipient WHERE recipient.user_id=recipient_id AND recipient.life_version=recipient_life_version AND recipient.reset_game_over='' AND recipient.game_over='')
+        RETURNING id, sender_id, sender_name, recipient_id, kind, amount, sender_life_version, recipient_life_version,
+          status, outcome, resolution_token, created_at, expires_at, resolved_at`)
+        .bind(token, Date.now(), body.requestId, user.userId, Date.now()).first<TransferRequestRow>();
       if (!request) return transferActionResponse(env.DB, user, current, progress, "這個現金邀請已失效或已被處理。" );
       if (body.kind === "decline") {
         await env.DB.prepare("UPDATE player_transfer_requests SET status='declined', outcome='declined', resolved_at=? WHERE id=? AND resolution_token=?")
@@ -2365,14 +2586,18 @@ async function takeAction(request: Request, env: Env) {
         const transfer = await env.DB.batch([
           env.DB.prepare(`UPDATE player_transfer_requests SET status='accepted', outcome='gifted', resolved_at=?
             WHERE id=? AND resolution_token=? AND status='processing'
-              AND EXISTS (SELECT 1 FROM players sender WHERE sender.user_id=sender_id AND sender.cash>=amount AND sender.game_over='')
-              AND EXISTS (SELECT 1 FROM players recipient WHERE recipient.user_id=recipient_id AND recipient.game_over='')
+              AND EXISTS (SELECT 1 FROM players sender WHERE sender.user_id=sender_id AND sender.life_version=sender_life_version
+                AND sender.cash>=amount AND sender.game_over='' AND sender.reset_game_over='')
+              AND EXISTS (SELECT 1 FROM players recipient WHERE recipient.user_id=recipient_id AND recipient.life_version=recipient_life_version
+                AND recipient.game_over='' AND recipient.reset_game_over='')
             RETURNING id`).bind(Date.now(), request.id, token),
           env.DB.prepare(`UPDATE players SET cash=CASE WHEN user_id=? THEN cash-? ELSE cash+? END,
             updated_at=MAX(updated_at+1, ?)
-            WHERE user_id IN (?, ?) AND EXISTS (SELECT 1 FROM player_transfer_requests
+            WHERE user_id IN (?, ?) AND life_version=CASE WHEN user_id=? THEN ? ELSE ? END
+              AND reset_game_over='' AND game_over='' AND EXISTS (SELECT 1 FROM player_transfer_requests
               WHERE id=? AND resolution_token=? AND status='accepted' AND outcome='gifted')
-            RETURNING user_id`).bind(request.sender_id, request.amount, request.amount, Date.now(), request.sender_id, request.recipient_id, request.id, token),
+            RETURNING user_id`).bind(request.sender_id, request.amount, request.amount, Date.now(), request.sender_id, request.recipient_id,
+              request.sender_id, request.sender_life_version, request.recipient_life_version, request.id, token),
         ]);
         if ((transfer[0]?.results?.length ?? 0) !== 1 || (transfer[1]?.results?.length ?? 0) !== 2) {
           await env.DB.prepare("UPDATE player_transfer_requests SET status='cancelled', outcome='sender_insufficient', resolved_at=? WHERE id=? AND resolution_token=?")
@@ -2392,14 +2617,18 @@ async function takeAction(request: Request, env: Env) {
       const transfer = await env.DB.batch([
         env.DB.prepare(`UPDATE player_transfer_requests SET status='accepted', outcome='scam_success', resolved_at=?
           WHERE id=? AND resolution_token=? AND status='processing'
-            AND EXISTS (SELECT 1 FROM players sender WHERE sender.user_id=sender_id AND sender.cash>=amount AND sender.game_over='')
-            AND EXISTS (SELECT 1 FROM players recipient WHERE recipient.user_id=recipient_id AND recipient.cash>=? AND recipient.game_over='')
+            AND EXISTS (SELECT 1 FROM players sender WHERE sender.user_id=sender_id AND sender.life_version=sender_life_version
+              AND sender.cash>=amount AND sender.game_over='' AND sender.reset_game_over='')
+            AND EXISTS (SELECT 1 FROM players recipient WHERE recipient.user_id=recipient_id AND recipient.life_version=recipient_life_version
+              AND recipient.cash>=? AND recipient.game_over='' AND recipient.reset_game_over='')
           RETURNING id`).bind(Date.now(), request.id, token, stolen),
         env.DB.prepare(`UPDATE players SET cash=CASE WHEN user_id=? THEN cash+? ELSE cash-? END,
           updated_at=MAX(updated_at+1, ?)
-          WHERE user_id IN (?, ?) AND EXISTS (SELECT 1 FROM player_transfer_requests
+          WHERE user_id IN (?, ?) AND life_version=CASE WHEN user_id=? THEN ? ELSE ? END
+            AND reset_game_over='' AND game_over='' AND EXISTS (SELECT 1 FROM player_transfer_requests
             WHERE id=? AND resolution_token=? AND status='accepted' AND outcome='scam_success')
-          RETURNING user_id`).bind(request.sender_id, stolen, stolen, Date.now(), request.sender_id, request.recipient_id, request.id, token),
+          RETURNING user_id`).bind(request.sender_id, stolen, stolen, Date.now(), request.sender_id, request.recipient_id,
+            request.sender_id, request.sender_life_version, request.recipient_life_version, request.id, token),
       ]);
       if ((transfer[0]?.results?.length ?? 0) !== 1 || (transfer[1]?.results?.length ?? 0) !== 2) {
         await env.DB.prepare("UPDATE player_transfer_requests SET status='accepted', outcome='recipient_insufficient', resolved_at=? WHERE id=? AND resolution_token=?")
@@ -2413,19 +2642,25 @@ async function takeAction(request: Request, env: Env) {
     case "medical_request": {
       if (!body.targetId || body.targetId === user.userId) return json({ message: "請選擇其他玩家作為治療者。" }, 400);
       if (current.health >= 100) return json({ message: "健康已滿 100，現在不需要請求治療。" }, 400);
-      const target = await env.DB.prepare(`SELECT user_id, display_name, current_job, job_category, last_seen_at, main_story, game_over
-        FROM players WHERE user_id=?`).bind(body.targetId).first<{ user_id: string; display_name: string; current_job: string; job_category: string; last_seen_at: number; main_story: string; game_over: string }>();
+      const target = await env.DB.prepare(`SELECT user_id, display_name, current_job, job_category, last_seen_at, main_story, game_over, reset_game_over, life_version
+        FROM players WHERE user_id=?`).bind(body.targetId).first<{ user_id: string; display_name: string; current_job: string; job_category: string; last_seen_at: number; main_story: string; game_over: string; reset_game_over: string; life_version: number }>();
       const service = target ? medicalTreatmentFor(target.current_job) : null;
       if (!target || !service || target.job_category !== "medical" || target.last_seen_at < Date.now() - ONLINE_HEARTBEAT_GRACE_MS) return json({ message: "這位玩家目前無法提供線上治療。" }, 409);
-      if (target.main_story === "unselected" || target.game_over) return json({ message: "這位玩家目前無法處理治療請求。" }, 409);
+      if (target.main_story === "unselected" || target.game_over || target.reset_game_over) return json({ message: "這位玩家目前無法處理治療請求。" }, 409);
       const existing = await env.DB.prepare("SELECT id FROM player_medical_requests WHERE patient_id=? AND provider_id=? AND status='pending' AND expires_at>? LIMIT 1")
         .bind(user.userId, target.user_id, Date.now()).first<{ id: string }>();
       if (existing) return json({ message: "你已向這位玩家送出治療請求，請等待回覆。" }, 409);
       const now = Date.now();
-      await env.DB.prepare(`INSERT INTO player_medical_requests (id, patient_id, patient_name, provider_id, provider_name, provider_job, health_gain, amount, status, outcome, resolution_token, created_at, expires_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', '', '', ?, ?)`).bind(
-        crypto.randomUUID(), user.userId, user.displayName.slice(0, 40), target.user_id, target.display_name.slice(0, 40), target.current_job, service.health, service.price, now, now + MEDICAL_REQUEST_TIMEOUT_MS,
-      ).run();
+      const insertedMedical = await env.DB.prepare(`INSERT INTO player_medical_requests
+        (id, patient_id, patient_name, provider_id, provider_name, provider_job, health_gain, amount,
+          patient_life_version, provider_life_version, status, outcome, resolution_token, created_at, expires_at)
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', '', '', ?, ?
+        WHERE EXISTS (SELECT 1 FROM players patient WHERE patient.user_id=? AND patient.life_version=? AND patient.health<100 AND patient.reset_game_over='' AND patient.game_over='')
+          AND EXISTS (SELECT 1 FROM players provider WHERE provider.user_id=? AND provider.life_version=? AND provider.current_job=? AND provider.reset_game_over='' AND provider.game_over='')
+        RETURNING id`).bind(crypto.randomUUID(), user.userId, user.displayName.slice(0, 40), target.user_id,
+          target.display_name.slice(0, 40), target.current_job, service.health, service.price, current.life_version, target.life_version,
+          now, now + MEDICAL_REQUEST_TIMEOUT_MS, user.userId, current.life_version, target.user_id, target.life_version, target.current_job).first<{ id: string }>();
+      if (!insertedMedical) return json({ message: "任一玩家的人生或職業狀態剛剛改變，治療請求沒有送出。" }, 409);
       return transferActionResponse(env.DB, user, current, progress, `已向${target.display_name}送出治療請求，等待對方在 30 秒內回覆。`);
     }
     case "medical_response": {
@@ -2433,10 +2668,13 @@ async function takeAction(request: Request, env: Env) {
       if (!requestId || !["accept", "decline"].includes(body.kind || "")) return json({ message: "治療請求回覆不正確。" }, 400);
       const token = crypto.randomUUID();
       const medicalRequest = await env.DB.prepare(`UPDATE player_medical_requests
-        SET status='processing', resolution_token=?
+        SET status='processing', resolution_token=?, resolved_at=?
         WHERE id=? AND provider_id=? AND status='pending' AND expires_at>?
-        RETURNING id, patient_id, patient_name, provider_id, provider_name, provider_job, health_gain, amount, status, outcome, resolution_token, created_at, expires_at, resolved_at`)
-        .bind(token, requestId, user.userId, Date.now()).first<MedicalTreatmentRequestRow>();
+          AND EXISTS (SELECT 1 FROM players patient WHERE patient.user_id=patient_id AND patient.life_version=patient_life_version AND patient.reset_game_over='' AND patient.game_over='')
+          AND EXISTS (SELECT 1 FROM players provider WHERE provider.user_id=provider_id AND provider.life_version=provider_life_version AND provider.reset_game_over='' AND provider.game_over='')
+        RETURNING id, patient_id, patient_name, provider_id, provider_name, provider_job, health_gain, amount,
+          patient_life_version, provider_life_version, status, outcome, resolution_token, created_at, expires_at, resolved_at`)
+        .bind(token, Date.now(), requestId, user.userId, Date.now()).first<MedicalTreatmentRequestRow>();
       if (!medicalRequest) return transferActionResponse(env.DB, user, current, progress, "這個治療請求已失效或已被處理。");
       if (body.kind === "decline") {
         await env.DB.prepare("UPDATE player_medical_requests SET status='declined', outcome='declined', resolved_at=? WHERE id=? AND resolution_token=?")
@@ -2453,10 +2691,10 @@ async function takeAction(request: Request, env: Env) {
           .bind(outcome, Date.now(), medicalRequest.id, token).run();
         return transferActionResponse(db, user, provider ?? current, progress, responseMessage);
       };
-      if (!provider || provider.last_seen_at < now - ONLINE_HEARTBEAT_GRACE_MS || provider.game_over || provider.main_story === "unselected" || provider.current_job !== medicalRequest.provider_job || !medicalTreatmentFor(provider.current_job)) {
+      if (!provider || provider.life_version !== medicalRequest.provider_life_version || provider.reset_game_over || provider.last_seen_at < now - ONLINE_HEARTBEAT_GRACE_MS || provider.game_over || provider.main_story === "unselected" || provider.current_job !== medicalRequest.provider_job || !medicalTreatmentFor(provider.current_job)) {
         return cancel("provider_unavailable", "你的職業或在線狀態已變更，這次治療請求已失效。");
       }
-      if (!patient || patient.last_seen_at < now - ONLINE_HEARTBEAT_GRACE_MS || patient.game_over || patient.main_story === "unselected") return cancel("patient_unavailable", "病人目前不在線上或無法接受治療。");
+      if (!patient || patient.life_version !== medicalRequest.patient_life_version || patient.reset_game_over || patient.last_seen_at < now - ONLINE_HEARTBEAT_GRACE_MS || patient.game_over || patient.main_story === "unselected") return cancel("patient_unavailable", "病人目前不在線上或無法接受治療。");
       if (patient.health >= 100) return cancel("patient_full", "病人健康已滿 100，這次治療請求已取消。");
       if (patient.cash < medicalRequest.amount) return cancel("patient_insufficient", "病人現金不足，無法接受治療。");
       const service = medicalTreatmentFor(provider.current_job);
@@ -2467,20 +2705,22 @@ async function takeAction(request: Request, env: Env) {
       const settlement = await env.DB.batch([
         env.DB.prepare(`UPDATE player_medical_requests SET status='accepted', outcome='treated', resolved_at=?
           WHERE id=? AND resolution_token=? AND status='processing'
-            AND EXISTS (SELECT 1 FROM players patient WHERE patient.user_id=patient_id AND patient.cash>=amount AND patient.health<100
-              AND patient.last_seen_at>=? AND patient.game_over='' AND patient.main_story<>'unselected')
+            AND EXISTS (SELECT 1 FROM players patient WHERE patient.user_id=patient_id AND patient.life_version=patient_life_version
+              AND patient.cash>=amount AND patient.health<100 AND patient.last_seen_at>=? AND patient.reset_game_over=''
+              AND patient.game_over='' AND patient.main_story<>'unselected')
             AND EXISTS (SELECT 1 FROM players provider WHERE provider.user_id=provider_id AND provider.current_job=provider_job
-              AND provider.last_seen_at>=? AND provider.game_over='' AND provider.main_story<>'unselected')
+              AND provider.life_version=provider_life_version AND provider.last_seen_at>=? AND provider.reset_game_over=''
+              AND provider.game_over='' AND provider.main_story<>'unselected')
           RETURNING id`).bind(now, medicalRequest.id, token, now - ONLINE_HEARTBEAT_GRACE_MS, now - ONLINE_HEARTBEAT_GRACE_MS),
         env.DB.prepare(`UPDATE players SET cash=cash-?, health=MIN(100, health+?), updated_at=MAX(updated_at+1, ?),
           action_available_at=CASE WHEN action_available_at>? THEN action_available_at ELSE ? END, action_label=?
-          WHERE user_id=? AND EXISTS (SELECT 1 FROM player_medical_requests
+          WHERE user_id=? AND life_version=? AND reset_game_over='' AND game_over='' AND EXISTS (SELECT 1 FROM player_medical_requests
             WHERE id=? AND resolution_token=? AND status='accepted' AND outcome='treated')
-          RETURNING user_id`).bind(medicalRequest.amount, medicalRequest.health_gain, now, now, now + service.minutes * 1_000, `接受${medicalRequest.provider_job}玩家治療`, medicalRequest.patient_id, medicalRequest.id, token),
+          RETURNING user_id`).bind(medicalRequest.amount, medicalRequest.health_gain, now, now, now + service.minutes * 1_000, `接受${medicalRequest.provider_job}玩家治療`, medicalRequest.patient_id, medicalRequest.patient_life_version, medicalRequest.id, token),
         env.DB.prepare(`UPDATE players SET cash=cash+?, updated_at=MAX(updated_at+1, ?) WHERE user_id=?
-          AND EXISTS (SELECT 1 FROM player_medical_requests
+          AND life_version=? AND reset_game_over='' AND game_over='' AND EXISTS (SELECT 1 FROM player_medical_requests
             WHERE id=? AND resolution_token=? AND status='accepted' AND outcome='treated')
-          RETURNING user_id`).bind(medicalRequest.amount, now, medicalRequest.provider_id, medicalRequest.id, token),
+          RETURNING user_id`).bind(medicalRequest.amount, now, medicalRequest.provider_id, medicalRequest.provider_life_version, medicalRequest.id, token),
       ]);
       if ((settlement[0]?.results?.length ?? 0) !== 1 || (settlement[1]?.results?.length ?? 0) !== 1 || (settlement[2]?.results?.length ?? 0) !== 1) {
         return cancel("settlement_failed", "治療條件在結算時已變更，這次治療沒有完成。");
@@ -2495,19 +2735,28 @@ async function takeAction(request: Request, env: Env) {
       if (!Number.isSafeInteger(amount) || amount < 1 || amount > 50_000) return json({ message: "玩家貸款金額需為 NT$1～NT$50,000。" }, 400);
       if (current.loan_balance > 0) return json({ message: "你目前已有貸款，清償後才能申請新的玩家貸款。" }, 400);
       if (current.main_story === "prodigal_return") return json({ message: "《浪子回頭》主線債務不能轉為玩家貸款。" }, 400);
-      const target = await env.DB.prepare(`SELECT user_id, display_name, current_job, job_category, last_seen_at, main_story, game_over
-        FROM players WHERE user_id=?`).bind(body.targetId).first<{ user_id: string; display_name: string; current_job: string; job_category: string; last_seen_at: number; main_story: string; game_over: string }>();
+      const target = await env.DB.prepare(`SELECT user_id, display_name, current_job, job_category, last_seen_at, main_story, game_over, reset_game_over, life_version
+        FROM players WHERE user_id=?`).bind(body.targetId).first<{ user_id: string; display_name: string; current_job: string; job_category: string; last_seen_at: number; main_story: string; game_over: string; reset_game_over: string; life_version: number }>();
       const terms = target ? financeLoanTermsFor(target.current_job) : null;
       if (!target || !terms || target.job_category !== "finance" || target.last_seen_at < Date.now() - ONLINE_HEARTBEAT_GRACE_MS) return json({ message: "這位玩家目前無法提供玩家貸款方案。" }, 409);
-      if (target.main_story === "unselected" || target.game_over) return json({ message: "這位玩家目前無法處理貸款申請。" }, 409);
+      if (target.main_story === "unselected" || target.game_over || target.reset_game_over) return json({ message: "這位玩家目前無法處理貸款申請。" }, 409);
       const existing = await env.DB.prepare("SELECT id FROM player_loan_requests WHERE borrower_id=? AND status='pending' AND expires_at>? LIMIT 1")
         .bind(user.userId, Date.now()).first<{ id: string }>();
       if (existing) return json({ message: "你已經有一筆待處理的玩家貸款申請。" }, 409);
       const now = Date.now();
-      await env.DB.prepare(`INSERT INTO player_loan_requests (id, borrower_id, borrower_name, provider_id, provider_name, provider_job, amount, interest_rate_bp, spread_bp, status, outcome, resolution_token, created_at, expires_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', '', '', ?, ?)`).bind(
-        crypto.randomUUID(), user.userId, user.displayName.slice(0, 40), target.user_id, target.display_name.slice(0, 40), target.current_job, amount, terms.rateBp, terms.spreadBp, now, now + LOAN_REQUEST_TIMEOUT_MS,
-      ).run();
+      const insertedLoan = await env.DB.prepare(`INSERT INTO player_loan_requests
+        (id, borrower_id, borrower_name, provider_id, provider_name, provider_job, amount, interest_rate_bp, spread_bp,
+          borrower_life_version, provider_life_version, status, outcome, resolution_token, created_at, expires_at)
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', '', '', ?, ?
+        WHERE EXISTS (SELECT 1 FROM players borrower WHERE borrower.user_id=? AND borrower.life_version=? AND borrower.loan_balance=0
+          AND borrower.main_story<>'prodigal_return' AND borrower.reset_game_over='' AND borrower.game_over='')
+          AND EXISTS (SELECT 1 FROM players provider WHERE provider.user_id=? AND provider.life_version=? AND provider.current_job=?
+            AND provider.job_category='finance' AND provider.reset_game_over='' AND provider.game_over='')
+        RETURNING id`).bind(crypto.randomUUID(), user.userId, user.displayName.slice(0, 40), target.user_id,
+          target.display_name.slice(0, 40), target.current_job, amount, terms.rateBp, terms.spreadBp,
+          current.life_version, target.life_version, now, now + LOAN_REQUEST_TIMEOUT_MS,
+          user.userId, current.life_version, target.user_id, target.life_version, target.current_job).first<{ id: string }>();
+      if (!insertedLoan) return json({ message: "任一玩家的人生、貸款或職業狀態剛剛改變，申請沒有送出。" }, 409);
       return transferActionResponse(env.DB, user, current, progress, `已向${target.display_name}送出 NT$${amount} 的貸款申請，等待對方在 30 秒內回覆。`);
     }
     case "loan_response": {
@@ -2515,10 +2764,13 @@ async function takeAction(request: Request, env: Env) {
       if (!requestId || !["accept", "decline"].includes(body.kind || "")) return json({ message: "貸款申請回覆不正確。" }, 400);
       const token = crypto.randomUUID();
       const loanRequest = await env.DB.prepare(`UPDATE player_loan_requests
-        SET status='processing', resolution_token=?
+        SET status='processing', resolution_token=?, resolved_at=?
         WHERE id=? AND provider_id=? AND status='pending' AND expires_at>?
-        RETURNING id, borrower_id, borrower_name, provider_id, provider_name, provider_job, amount, interest_rate_bp, spread_bp, status, outcome, resolution_token, created_at, expires_at, resolved_at`)
-        .bind(token, requestId, user.userId, Date.now()).first<LoanRequestRow>();
+          AND EXISTS (SELECT 1 FROM players borrower WHERE borrower.user_id=borrower_id AND borrower.life_version=borrower_life_version AND borrower.reset_game_over='' AND borrower.game_over='')
+          AND EXISTS (SELECT 1 FROM players provider WHERE provider.user_id=provider_id AND provider.life_version=provider_life_version AND provider.reset_game_over='' AND provider.game_over='')
+        RETURNING id, borrower_id, borrower_name, provider_id, provider_name, provider_job, amount, interest_rate_bp, spread_bp,
+          borrower_life_version, provider_life_version, status, outcome, resolution_token, created_at, expires_at, resolved_at`)
+        .bind(token, Date.now(), requestId, user.userId, Date.now()).first<LoanRequestRow>();
       if (!loanRequest) return transferActionResponse(env.DB, user, current, progress, "這筆貸款申請已失效或已被處理。");
       if (body.kind === "decline") {
         await env.DB.prepare("UPDATE player_loan_requests SET status='declined', outcome='declined', resolved_at=? WHERE id=? AND resolution_token=?")
@@ -2536,10 +2788,10 @@ async function takeAction(request: Request, env: Env) {
         return transferActionResponse(db, user, provider ?? current, progress, responseMessage);
       };
       const currentTerms = provider ? financeLoanTermsFor(provider.current_job) : null;
-      if (!provider || provider.last_seen_at < now - ONLINE_HEARTBEAT_GRACE_MS || provider.game_over || provider.main_story === "unselected" || provider.job_category !== "finance" || provider.current_job !== loanRequest.provider_job || !currentTerms || currentTerms.rateBp !== loanRequest.interest_rate_bp || currentTerms.spreadBp !== loanRequest.spread_bp) {
+      if (!provider || provider.life_version !== loanRequest.provider_life_version || provider.reset_game_over || provider.last_seen_at < now - ONLINE_HEARTBEAT_GRACE_MS || provider.game_over || provider.main_story === "unselected" || provider.job_category !== "finance" || provider.current_job !== loanRequest.provider_job || !currentTerms || currentTerms.rateBp !== loanRequest.interest_rate_bp || currentTerms.spreadBp !== loanRequest.spread_bp) {
         return cancel("provider_unavailable", "你的職業或在線狀態已變更，這筆貸款申請已失效。");
       }
-      if (!borrower || borrower.last_seen_at < now - ONLINE_HEARTBEAT_GRACE_MS || borrower.game_over || borrower.main_story === "unselected") return cancel("borrower_unavailable", "借款玩家目前不在線上或無法接受貸款。");
+      if (!borrower || borrower.life_version !== loanRequest.borrower_life_version || borrower.reset_game_over || borrower.last_seen_at < now - ONLINE_HEARTBEAT_GRACE_MS || borrower.game_over || borrower.main_story === "unselected") return cancel("borrower_unavailable", "借款玩家目前不在線上或無法接受貸款。");
       if (borrower.main_story === "prodigal_return") return cancel("story_restricted", "《浪子回頭》主線債務不能使用玩家貸款。");
       if (borrower.loan_balance > 0) return cancel("borrower_has_loan", "借款玩家已有貸款，這筆申請已取消。");
       const contractId = crypto.randomUUID();
@@ -2548,21 +2800,22 @@ async function takeAction(request: Request, env: Env) {
         funded = await db.batch([
           db.prepare(`UPDATE player_loan_requests SET status='accepted', outcome='funded', resolved_at=?
             WHERE id=? AND resolution_token=? AND status='processing'
-              AND EXISTS (SELECT 1 FROM players borrower WHERE borrower.user_id=borrower_id AND borrower.loan_balance=0
-                AND borrower.main_story<>'prodigal_return' AND borrower.game_over='')
+              AND EXISTS (SELECT 1 FROM players borrower WHERE borrower.user_id=borrower_id AND borrower.life_version=borrower_life_version
+                AND borrower.loan_balance=0 AND borrower.main_story<>'prodigal_return' AND borrower.reset_game_over='' AND borrower.game_over='')
               AND EXISTS (SELECT 1 FROM players provider WHERE provider.user_id=provider_id AND provider.current_job=provider_job
-                AND provider.job_category='finance' AND provider.game_over='')
+                AND provider.life_version=provider_life_version AND provider.job_category='finance' AND provider.reset_game_over='' AND provider.game_over='')
             RETURNING id`).bind(now, loanRequest.id, token),
           db.prepare(`UPDATE players SET loan_balance=?, cash=cash+?, updated_at=MAX(updated_at+1, ?)
-            WHERE user_id=? AND loan_balance=0 AND main_story<>'prodigal_return' AND game_over=''
+            WHERE user_id=? AND life_version=? AND loan_balance=0 AND main_story<>'prodigal_return' AND reset_game_over='' AND game_over=''
               AND EXISTS (SELECT 1 FROM player_loan_requests WHERE id=? AND resolution_token=? AND status='accepted' AND outcome='funded')
-            RETURNING user_id`).bind(loanRequest.amount, loanRequest.amount, now, loanRequest.borrower_id, loanRequest.id, token),
+            RETURNING user_id`).bind(loanRequest.amount, loanRequest.amount, now, loanRequest.borrower_id, loanRequest.borrower_life_version, loanRequest.id, token),
           db.prepare(`INSERT INTO player_loan_contracts (id, borrower_id, borrower_name, provider_id, provider_name, provider_job,
-            principal_amount, outstanding_balance, interest_rate_bp, spread_bp, status, opened_at)
-            SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?
+            principal_amount, outstanding_balance, interest_rate_bp, spread_bp, borrower_life_version, provider_life_version, revision, mutation_token, status, opened_at)
+            SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'active', ?
             WHERE EXISTS (SELECT 1 FROM player_loan_requests WHERE id=? AND resolution_token=? AND status='accepted' AND outcome='funded')
             RETURNING id`).bind(contractId, loanRequest.borrower_id, loanRequest.borrower_name, loanRequest.provider_id, loanRequest.provider_name,
-              loanRequest.provider_job, loanRequest.amount, loanRequest.amount, loanRequest.interest_rate_bp, loanRequest.spread_bp, now, loanRequest.id, token),
+              loanRequest.provider_job, loanRequest.amount, loanRequest.amount, loanRequest.interest_rate_bp, loanRequest.spread_bp,
+              loanRequest.borrower_life_version, loanRequest.provider_life_version, token, now, loanRequest.id, token),
         ]);
       } catch {
         return cancel("contract_failed", "貸款合約建立失敗，銀行沒有撥款。");
@@ -2606,8 +2859,7 @@ async function takeAction(request: Request, env: Env) {
       next.intelligence_exp = Math.min(ABILITY_MAX, next.intelligence_exp + ("intelligence" in choice ? choice.intelligence ?? 0 : 0));
       if ("rentalDays" in choice && choice.rentalDays) next.rented_until = Math.max(next.elapsed_minutes, next.rented_until) + choice.rentalDays * 1440;
       const gained = "talentExp" in choice ? choice.talentExp ?? 0 : 0;
-      await env.DB.prepare("UPDATE player_progress SET talent_exp=MIN(1099,talent_exp+?), pending_event='', updated_at=? WHERE user_id=?")
-        .bind(gained, Date.now(), user.userId).run();
+      pendingCityEvent = { eventId: event.id, talentExp: gained };
       progress = { ...progress, talent_exp: Math.min(1099, progress.talent_exp + gained), pending_event: "" };
       title = event.title; message = choice.result; tone = cashChange < 0 || ("health" in choice && (choice.health ?? 0) < 0) ? "warn" : "good"; break;
     }
@@ -2677,7 +2929,7 @@ async function takeAction(request: Request, env: Env) {
           if (!wasMinimumComplete && next.daily_payment_made >= next.daily_minimum_payment) talentExpGain += 3;
         }
         const loanContract = await activeLoanContract(env.DB, user.userId);
-        if (loanContract) pendingLoanContractUpdate = { id: loanContract.id, previousBalance: loanContract.outstanding_balance, balance: next.loan_balance, closedAt: next.loan_balance > 0 ? null : Date.now() };
+        if (loanContract) pendingLoanContractUpdate = { id: loanContract.id, previousBalance: loanContract.outstanding_balance, previousRevision: loanContract.revision, balance: next.loan_balance, closedAt: next.loan_balance > 0 ? null : Date.now() };
         title = "償還貸款"; message = `已償還 NT$${amount}，剩餘貸款 NT$${next.loan_balance}。${next.main_story === "prodigal_return" ? ` 本日累計已繳 NT$${next.daily_payment_made}／最低 NT$${next.daily_minimum_payment}。` : ""}`;
       } else return json({ message: "銀行服務不存在。" }, 400);
       break;
@@ -2713,8 +2965,7 @@ async function takeAction(request: Request, env: Env) {
       if (category.id !== "unfixed" && selected.job !== category.jobs[0]) return json({ message: `進入${category.label}必須從${category.jobs[0]}開始。` }, 400);
       const entryRequirements = careerRequirements(category.id, 0);
       if (category.id !== "unfixed" && !meetsCareerRequirements(abilitiesFor(next), entryRequirements)) return json({ message: `進入${category.label}需要${formatRequirements(entryRequirements)}。` }, 400);
-      await env.DB.prepare("UPDATE player_medical_requests SET status='cancelled', outcome='provider_job_changed', resolved_at=? WHERE provider_id=? AND status='pending'").bind(Date.now(), user.userId).run();
-      await env.DB.prepare("UPDATE player_loan_requests SET status='cancelled', outcome='provider_job_changed', resolved_at=? WHERE provider_id=? AND status='pending'").bind(Date.now(), user.userId).run();
+      pendingProviderJobCancellation = true;
       if (next.current_job === "大橋頭營運長" && next.territory_location) {
         // Release the territory from the current database row so a visit
         // arriving at the same time is either included in this payout or is
@@ -2723,9 +2974,10 @@ async function takeAction(request: Request, env: Env) {
         const released = await env.DB.prepare(`UPDATE players SET
           cash=cash+territory_pending+territory_income, territory_location='', territory_day=0,
           territory_payout_day=0, territory_visits=0, territory_income=0, territory_pending=0,
-          updated_at=MAX(updated_at+1, ?)
+          updated_at=MAX(updated_at+1, ?), mutation_token=?
           WHERE user_id=? AND current_job='大橋頭營運長' AND territory_location<>''
-          RETURNING *`).bind(Date.now(), user.userId).first<PlayerRow>();
+            AND life_version=? AND updated_at=? AND reset_game_over='' AND game_over=''
+          RETURNING *`).bind(Date.now(), actionToken, user.userId, current.life_version, expectedRevision).first<PlayerRow>();
         if (released) {
           next.cash = released.cash; next.territory_location = released.territory_location;
           next.territory_day = released.territory_day; next.territory_payout_day = released.territory_payout_day;
@@ -2844,18 +3096,18 @@ async function takeAction(request: Request, env: Env) {
       const previousGameOver = next.reset_game_over || (next.game_over === "__resetting__" ? "" : next.game_over);
       const resetRevision = Math.max(resetNow, next.updated_at + 1);
       const resetMarker = previousGameOver || "__empty__";
-      const resetClaimed = await env.DB.prepare(`UPDATE players SET game_over='__resetting__', reset_game_over=?, life_version=life_version+1, updated_at=?
+      const resetClaimed = await env.DB.prepare(`UPDATE players SET game_over='__resetting__', reset_game_over=?, life_version=life_version+1, updated_at=?, mutation_token=?
         WHERE user_id=? AND updated_at=? AND (reset_game_over='' OR updated_at<?)
-        RETURNING life_version, updated_at`).bind(resetMarker, resetRevision, user.userId, next.updated_at, resetNow - 30_000).first<{ life_version: number; updated_at: number }>();
+        RETURNING life_version, updated_at`).bind(resetMarker, resetRevision, actionToken, user.userId, next.updated_at, resetNow - 30_000).first<{ life_version: number; updated_at: number }>();
       if (!resetClaimed) return json({ message: "玩家資料剛剛有更新，請重新整理後再重試。" }, 409);
       expectedLifeVersion = resetClaimed.life_version;
       expectedRevision = resetClaimed.updated_at;
       expectedResetMarker = resetMarker;
       const restoreResetClaim = async () => {
-        await env.DB!.prepare("UPDATE players SET game_over=?, reset_game_over='', updated_at=? WHERE user_id=? AND game_over='__resetting__' AND reset_game_over=? AND life_version=? AND updated_at>=?")
-          .bind(previousGameOver, Date.now(), user.userId, resetMarker, expectedLifeVersion, resetRevision).run();
+        await env.DB!.prepare("UPDATE players SET game_over=?, reset_game_over='', updated_at=?, mutation_token=? WHERE user_id=? AND game_over='__resetting__' AND reset_game_over=? AND life_version=? AND updated_at>=? AND mutation_token=?")
+          .bind(previousGameOver, Date.now(), crypto.randomUUID(), user.userId, resetMarker, expectedLifeVersion, resetRevision, actionToken).run();
       };
-      const [activeBlackjack, activePoker, activeBingo, activeTournament] = await Promise.all([
+      const [activeBlackjack, activePoker, activeBingo, activeTournament, activeRequest] = await Promise.all([
         env.DB.prepare("SELECT 1 AS active FROM casino_hands WHERE user_id=? AND status IN ('waiting','dealing','playing','drawing','stood','settling') LIMIT 1").bind(user.userId).first<{ active: number }>(),
         env.DB.prepare(`SELECT 1 AS active FROM poker_hands h JOIN poker_table_state t ON t.id='table-01'
           WHERE h.user_id=? AND h.status IN ('ready','playing','all_in','folded','settling') AND t.status IN ('starting','playing','settling') LIMIT 1`).bind(user.userId).first<{ active: number }>(),
@@ -2863,36 +3115,39 @@ async function takeAction(request: Request, env: Env) {
           WHERE e.user_id=? AND s.status='drawing' LIMIT 1`).bind(user.userId).first<{ active: number }>(),
         env.DB.prepare(`SELECT 1 AS active FROM casino_tournament_entries e JOIN casino_tournament_state s ON s.id='tournament-01' AND s.round_no=e.tournament_no
           WHERE e.user_id=? AND s.status='playing' LIMIT 1`).bind(user.userId).first<{ active: number }>(),
+        env.DB.prepare(`SELECT 1 AS active FROM (
+          SELECT id FROM player_transfer_requests WHERE status='processing' AND (sender_id=? OR recipient_id=?)
+          UNION ALL SELECT id FROM player_medical_requests WHERE status='processing' AND (patient_id=? OR provider_id=?)
+          UNION ALL SELECT id FROM player_loan_requests WHERE status='processing' AND (borrower_id=? OR provider_id=?)) LIMIT 1`)
+          .bind(user.userId, user.userId, user.userId, user.userId, user.userId, user.userId).first<{ active: number }>(),
       ]);
-      if (activeBlackjack || activePoker || activeBingo || activeTournament) {
+      if (activeBlackjack || activePoker || activeBingo || activeTournament || activeRequest) {
         await restoreResetClaim();
-        return json({ message: "你正在進行多人賭場牌局；請等待本局或賽事結束後再重新開始人生，避免獎池與新人生混在一起。" }, 409);
+        return json({ message: activeRequest ? "你有一筆多人交易正在結算，請稍候再重新開始人生。" : "你正在進行多人賭場牌局；請等待本局或賽事結束後再重新開始人生，避免獎池與新人生混在一起。" }, 409);
       }
+      const previousLifeVersion = expectedLifeVersion - 1;
+      const resetGate = `EXISTS (SELECT 1 FROM players reset_owner WHERE reset_owner.user_id=? AND reset_owner.life_version=? AND reset_owner.mutation_token=?)`;
       resetStatements = [
-        env.DB.prepare("DELETE FROM casino_hands WHERE user_id=? AND status IN ('seated','expired','complete','left')").bind(user.userId),
-        env.DB.prepare(`DELETE FROM poker_hands WHERE user_id=? AND status IN ('seated','ready','expired','left')
-          AND EXISTS (SELECT 1 FROM poker_table_state WHERE id='table-01' AND status='idle')`).bind(user.userId),
-        env.DB.prepare(`DELETE FROM casino_bingo_entries WHERE user_id=? AND EXISTS (
-          SELECT 1 FROM casino_bingo_state WHERE id='bingo-01' AND round_no=casino_bingo_entries.round_no AND status='lobby')`).bind(user.userId),
-        env.DB.prepare(`DELETE FROM casino_tournament_entries WHERE user_id=? AND EXISTS (
-          SELECT 1 FROM casino_tournament_state WHERE id='tournament-01' AND round_no=casino_tournament_entries.tournament_no AND status='lobby')`).bind(user.userId),
-        env.DB.prepare("DELETE FROM player_transfer_requests WHERE sender_id=? OR recipient_id=?").bind(user.userId, user.userId),
-        env.DB.prepare("DELETE FROM player_medical_requests WHERE patient_id=? OR provider_id=?").bind(user.userId, user.userId),
-        env.DB.prepare("DELETE FROM player_loan_requests WHERE borrower_id=? OR provider_id=?").bind(user.userId, user.userId),
-        env.DB.prepare("UPDATE player_loan_contracts SET outstanding_balance=0, status='reset', closed_at=? WHERE borrower_id=? AND status='active'").bind(resetNow, user.userId),
-        env.DB.prepare("UPDATE player_loan_contracts SET provider_id='bank', provider_name='城市銀行', provider_job='', spread_bp=0 WHERE provider_id=? AND borrower_id<>? AND status='active'").bind(user.userId, user.userId),
-        env.DB.prepare("DELETE FROM writer_book_purchases WHERE author_id=? OR buyer_id=?").bind(user.userId, user.userId),
-        env.DB.prepare("DELETE FROM writer_books WHERE author_id=?").bind(user.userId),
-        env.DB.prepare("DELETE FROM mystery_clues WHERE user_id=?").bind(user.userId),
-        env.DB.prepare("DELETE FROM territory_visit_log WHERE owner_id=? OR visitor_id=?").bind(user.userId, user.userId),
-        env.DB.prepare("DELETE FROM casino_hands WHERE user_id=?").bind(user.userId),
-        env.DB.prepare("DELETE FROM poker_hands WHERE user_id=?").bind(user.userId),
-        env.DB.prepare("DELETE FROM casino_bingo_entries WHERE user_id=?").bind(user.userId),
-        env.DB.prepare("DELETE FROM casino_tournament_hands WHERE user_id=?").bind(user.userId),
-        env.DB.prepare("DELETE FROM casino_tournament_entries WHERE user_id=?").bind(user.userId),
-        env.DB.prepare("UPDATE casino_bingo_state SET host_user_id=COALESCE((SELECT user_id FROM casino_bingo_entries WHERE round_no=casino_bingo_state.round_no ORDER BY rowid LIMIT 1), ''), updated_at=? WHERE id='bingo-01' AND status='lobby'").bind(resetNow),
-        env.DB.prepare("UPDATE casino_tournament_state SET host_user_id=COALESCE((SELECT user_id FROM casino_tournament_entries WHERE tournament_no=casino_tournament_state.round_no ORDER BY rowid LIMIT 1), ''), updated_at=? WHERE id='tournament-01' AND status='lobby'").bind(resetNow),
-        env.DB.prepare("UPDATE player_progress SET talent_exp=0, talents='[]', story_chapter=0, last_event_day=0, pending_event='', updated_at=? WHERE user_id=?").bind(resetNow, user.userId),
+        env.DB.prepare(`DELETE FROM player_transfer_requests WHERE (sender_id=? OR recipient_id=?) AND ${resetGate}`).bind(user.userId, user.userId, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`DELETE FROM player_medical_requests WHERE (patient_id=? OR provider_id=?) AND ${resetGate}`).bind(user.userId, user.userId, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`DELETE FROM player_loan_requests WHERE (borrower_id=? OR provider_id=?) AND ${resetGate}`).bind(user.userId, user.userId, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`UPDATE player_loan_contracts SET outstanding_balance=0, status='reset', closed_at=?, revision=revision+1, mutation_token=?
+          WHERE borrower_id=? AND borrower_life_version=? AND status='active' AND ${resetGate}`).bind(resetNow, actionToken, user.userId, previousLifeVersion, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`UPDATE player_loan_contracts SET provider_id='bank', provider_name='城市銀行', provider_job='', provider_life_version=0,
+          spread_bp=0, revision=revision+1, mutation_token=?
+          WHERE provider_id=? AND provider_life_version=? AND borrower_id<>? AND status='active' AND ${resetGate}`).bind(actionToken, user.userId, previousLifeVersion, user.userId, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`DELETE FROM writer_book_purchases WHERE ((author_id=? AND author_life_version=?) OR (buyer_id=? AND buyer_life_version=?)) AND ${resetGate}`).bind(user.userId, previousLifeVersion, user.userId, previousLifeVersion, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`DELETE FROM writer_books WHERE author_id=? AND author_life_version=? AND ${resetGate}`).bind(user.userId, previousLifeVersion, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`DELETE FROM mystery_clues WHERE user_id=? AND ${resetGate}`).bind(user.userId, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`DELETE FROM territory_visit_log WHERE (owner_id=? OR visitor_id=?) AND ${resetGate}`).bind(user.userId, user.userId, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`DELETE FROM casino_hands WHERE user_id=? AND life_version=? AND ${resetGate}`).bind(user.userId, previousLifeVersion, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`DELETE FROM poker_hands WHERE user_id=? AND life_version=? AND ${resetGate}`).bind(user.userId, previousLifeVersion, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`DELETE FROM casino_bingo_entries WHERE user_id=? AND life_version=? AND ${resetGate}`).bind(user.userId, previousLifeVersion, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`DELETE FROM casino_tournament_hands WHERE user_id=? AND life_version=? AND ${resetGate}`).bind(user.userId, previousLifeVersion, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`DELETE FROM casino_tournament_entries WHERE user_id=? AND life_version=? AND ${resetGate}`).bind(user.userId, previousLifeVersion, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`UPDATE casino_bingo_state SET host_user_id=COALESCE((SELECT user_id FROM casino_bingo_entries WHERE round_no=casino_bingo_state.round_no ORDER BY rowid LIMIT 1), ''), updated_at=? WHERE id='bingo-01' AND status='lobby' AND ${resetGate}`).bind(resetNow, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`UPDATE casino_tournament_state SET host_user_id=COALESCE((SELECT user_id FROM casino_tournament_entries WHERE tournament_no=casino_tournament_state.round_no ORDER BY rowid LIMIT 1), ''), updated_at=? WHERE id='tournament-01' AND status='lobby' AND ${resetGate}`).bind(resetNow, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`UPDATE player_progress SET talent_exp=0, talents='[]', story_chapter=0, last_event_day=0, pending_event='', updated_at=? WHERE user_id=? AND ${resetGate}`).bind(resetNow, user.userId, user.userId, expectedLifeVersion, actionToken),
       ];
       Object.assign(next, { cash: next.main_story === "prodigal_return" ? 37 : 10000, bank_balance: 0, loan_balance: next.main_story === "prodigal_return" ? 250_000 : 0, finance_day: 1, daily_minimum_payment: next.main_story === "prodigal_return" ? 750 : 0, daily_payment_made: 0, missed_payment_days: 0, writer_fans: 0, writer_day: 1, writer_writes: 0, owns_restaurant: 0, prison_until: 0, prison_crime: "", territory_location: "", territory_day: 0, territory_payout_day: 0, territory_visits: 0, territory_income: 0, territory_pending: 0, hack_day: 0, hack_uses: 0, game_over: "", reset_game_over: "", elapsed_remainder_ms: 0, energy: 100, health: 100, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", elapsed_minutes: 0, location: "realtor" });
       progress = { ...progress, talent_exp: 0, talents: "[]", story_chapter: 0, last_event_day: 0, pending_event: "" }; talents = new Set();
@@ -2911,17 +3166,11 @@ async function takeAction(request: Request, env: Env) {
     minutes = 0;
     arrested = true;
   }
-  if (!arrested && pendingHack) {
-    const stolen = await env.DB.prepare("UPDATE players SET cash=cash-?, updated_at=MAX(updated_at+1, ?) WHERE user_id=? AND cash>=? AND last_seen_at>=? AND reset_game_over='' RETURNING user_id")
-      .bind(pendingHack.amount, Date.now(), pendingHack.targetId, pendingHack.amount, Date.now() - ONLINE_HEARTBEAT_GRACE_MS).first<{ user_id: string }>();
-    if (!stolen) {
-      message = `你嘗試竊取${pendingHack.targetName}的現金，但對方的現金狀態已改變，行動沒有成功。`;
-      tone = "neutral";
-    } else {
-      next.cash += pendingHack.amount;
-      message = `你成功從${pendingHack.targetName}手上竊取 NT$${pendingHack.amount}；這次行動仍可能在稍後被追查。`;
-      tone = "warn";
-    }
+  if (arrested) pendingHack = null;
+  else if (pendingHack) {
+    next.cash += pendingHack.amount;
+    message = `你成功從${pendingHack.targetName}手上竊取 NT$${pendingHack.amount}；這次行動仍可能在稍後被追查。`;
+    tone = "warn";
   }
 
   const bypassVitalityEffects = body.action === "move" || body.action === "restaurant" || (body.action === "hotel" && body.kind === "work") || ["book_publish", "book_toggle", "book_buy"].includes(body.action || "");
@@ -2961,48 +3210,82 @@ async function takeAction(request: Request, env: Env) {
   // Every normal action must preserve the current database values; only a
   // reset intentionally clears them.
   const preserveTerritoryState = body.action === "reset" ? 0 : 1;
-  const statements = [...resetStatements, env.DB.prepare(`UPDATE players SET cash=?, bank_balance=?, loan_balance=?, finance_day=?, daily_minimum_payment=?, daily_payment_made=?, missed_payment_days=?, writer_fans=?, writer_day=?, writer_writes=?, owns_restaurant=?, prison_until=?, prison_crime=?,
+  const playerStatement = env.DB.prepare(`UPDATE players SET cash=?, bank_balance=?, loan_balance=?, finance_day=?, daily_minimum_payment=?, daily_payment_made=?, missed_payment_days=?, writer_fans=?, writer_day=?, writer_writes=?, owns_restaurant=?, prison_until=?, prison_crime=?,
     territory_location=CASE WHEN ?=1 THEN territory_location ELSE ? END,
     territory_day=CASE WHEN ?=1 THEN territory_day ELSE ? END,
     territory_payout_day=CASE WHEN ?=1 THEN territory_payout_day ELSE ? END,
     territory_visits=CASE WHEN ?=1 THEN territory_visits ELSE ? END,
     territory_income=CASE WHEN ?=1 THEN territory_income ELSE ? END,
     territory_pending=CASE WHEN ?=1 THEN territory_pending ELSE ? END,
-    hack_day=?, hack_uses=?, game_over=?, main_story=?, energy=?, health=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, charisma_exp=?, current_job=?, job_category=?, job_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, action_available_at=?, action_label=?, elapsed_minutes=?, elapsed_remainder_ms=?, location=?, updated_at=?, last_seen_at=?, reset_game_over=?
-    WHERE user_id=? AND life_version=? AND updated_at=? AND reset_game_over=? RETURNING user_id`)
+    hack_day=?, hack_uses=?, game_over=?, main_story=?, energy=?, health=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, charisma_exp=?, current_job=?, job_category=?, job_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, action_available_at=?, action_label=?, elapsed_minutes=?, elapsed_remainder_ms=?, location=?, updated_at=?, last_seen_at=?, reset_game_over=?, mutation_token=?
+    WHERE user_id=? AND life_version=? AND updated_at=? AND reset_game_over=?
+      AND (?=0 OR EXISTS (SELECT 1 FROM player_loan_contracts WHERE id=? AND status='active' AND outstanding_balance=? AND revision=?))
+      AND (?=0 OR EXISTS (SELECT 1 FROM players target WHERE target.user_id=? AND target.life_version=? AND target.mutation_token=?))
+    RETURNING user_id`)
     .bind(next.cash, next.bank_balance, next.loan_balance, next.finance_day, next.daily_minimum_payment, next.daily_payment_made, next.missed_payment_days, next.writer_fans, next.writer_day, next.writer_writes, next.owns_restaurant, next.prison_until, next.prison_crime,
       preserveTerritoryState, next.territory_location, preserveTerritoryState, next.territory_day, preserveTerritoryState, next.territory_payout_day,
       preserveTerritoryState, next.territory_visits, preserveTerritoryState, next.territory_income, preserveTerritoryState, next.territory_pending,
-      next.hack_day, next.hack_uses, next.game_over, next.main_story, next.energy, next.health, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.charisma_exp, next.current_job, next.job_category, next.job_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.action_available_at, next.action_label, next.elapsed_minutes, next.elapsed_remainder_ms, next.location, now, now, next.reset_game_over, user.userId, expectedLifeVersion, expectedRevision, expectedResetMarker)];
-  if (pendingLoanContractUpdate) statements.push(env.DB.prepare(`UPDATE player_loan_contracts SET outstanding_balance=?, status=?, closed_at=?
-    WHERE id=? AND status='active' AND outstanding_balance=? AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND reset_game_over=? AND updated_at=?) RETURNING id`)
-    .bind(pendingLoanContractUpdate.balance, pendingLoanContractUpdate.balance > 0 ? "active" : "paid", pendingLoanContractUpdate.closedAt,
-      pendingLoanContractUpdate.id, pendingLoanContractUpdate.previousBalance, user.userId, expectedLifeVersion, next.reset_game_over, now));
-  if (body.action !== "move") statements.push(env.DB.prepare("INSERT INTO game_events (id, user_id, player_name, room_id, title, detail, tone, game_time, created_at) VALUES (?, ?, ?, 'lobby-01', ?, ?, ?, ?, ?)")
-    .bind(eventId, user.userId, user.displayName.slice(0, 40), title, message, tone, gameTime, now));
+      next.hack_day, next.hack_uses, next.game_over, next.main_story, next.energy, next.health, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.charisma_exp, next.current_job, next.job_category, next.job_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.action_available_at, next.action_label, next.elapsed_minutes, next.elapsed_remainder_ms, next.location, now, now, next.reset_game_over, actionToken,
+      user.userId, expectedLifeVersion, expectedRevision, expectedResetMarker,
+      pendingLoanContractUpdate ? 1 : 0, pendingLoanContractUpdate?.id ?? "", pendingLoanContractUpdate?.previousBalance ?? 0, pendingLoanContractUpdate?.previousRevision ?? 0,
+      pendingHack ? 1 : 0, pendingHack?.targetId ?? "", pendingHack?.targetLifeVersion ?? 0, actionToken);
+  const statements: D1PreparedStatement[] = [];
+  if (pendingHack) statements.push(env.DB.prepare(`UPDATE players SET cash=cash-?, updated_at=MAX(updated_at+1, ?), mutation_token=?
+    WHERE user_id=? AND life_version=? AND updated_at=? AND cash>=? AND last_seen_at>=?
+      AND reset_game_over='' AND game_over='' AND EXISTS (
+        SELECT 1 FROM players actor WHERE actor.user_id=? AND actor.life_version=? AND actor.updated_at=? AND actor.reset_game_over=?
+      ) RETURNING user_id`).bind(pendingHack.amount, now, actionToken, pendingHack.targetId, pendingHack.targetLifeVersion,
+      pendingHack.targetRevision, pendingHack.amount, Date.now() - ONLINE_HEARTBEAT_GRACE_MS,
+      user.userId, expectedLifeVersion, expectedRevision, expectedResetMarker));
+  const playerResultIndex = statements.length;
+  statements.push(playerStatement, ...resetStatements);
+  let loanContractResultIndex = -1;
+  if (pendingLoanContractUpdate) {
+    loanContractResultIndex = statements.length;
+    statements.push(env.DB.prepare(`UPDATE player_loan_contracts SET outstanding_balance=?, status=?, closed_at=?, revision=revision+1, mutation_token=?
+      WHERE id=? AND status='active' AND outstanding_balance=? AND revision=?
+        AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=? AND updated_at=?)
+      RETURNING id`).bind(pendingLoanContractUpdate.balance, pendingLoanContractUpdate.balance > 0 ? "active" : "paid", pendingLoanContractUpdate.closedAt,
+        actionToken, pendingLoanContractUpdate.id, pendingLoanContractUpdate.previousBalance, pendingLoanContractUpdate.previousRevision,
+        user.userId, expectedLifeVersion, actionToken, now));
+  }
+  if (pendingProviderJobCancellation) {
+    statements.push(env.DB.prepare(`UPDATE player_medical_requests SET status='cancelled', outcome='provider_job_changed', resolved_at=?
+      WHERE provider_id=? AND status='pending' AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?)`)
+      .bind(now, user.userId, user.userId, expectedLifeVersion, actionToken));
+    statements.push(env.DB.prepare(`UPDATE player_loan_requests SET status='cancelled', outcome='provider_job_changed', resolved_at=?
+      WHERE provider_id=? AND status='pending' AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?)`)
+      .bind(now, user.userId, user.userId, expectedLifeVersion, actionToken));
+  }
+  if (pendingTalentSet !== null) statements.push(env.DB.prepare(`UPDATE player_progress SET talents=?, updated_at=?
+    WHERE user_id=? AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?)`)
+    .bind(pendingTalentSet, now, user.userId, user.userId, expectedLifeVersion, actionToken));
+  if (pendingCityEvent) statements.push(env.DB.prepare(`UPDATE player_progress SET talent_exp=MIN(1099,talent_exp+?), pending_event='', updated_at=?
+    WHERE user_id=? AND pending_event=? AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?)`)
+    .bind(pendingCityEvent.talentExp, now, user.userId, pendingCityEvent.eventId, user.userId, expectedLifeVersion, actionToken));
+  if (talentExpGain > 0) statements.push(env.DB.prepare(`UPDATE player_progress SET talent_exp=MIN(1099,talent_exp+?), updated_at=?
+    WHERE user_id=? AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?)`)
+    .bind(talentExpGain, now, user.userId, user.userId, expectedLifeVersion, actionToken));
+  if (body.action !== "move") statements.push(env.DB.prepare(`INSERT INTO game_events
+    (id, user_id, player_name, room_id, title, detail, tone, game_time, created_at)
+    SELECT ?, ?, ?, 'lobby-01', ?, ?, ?, ?, ? WHERE EXISTS (
+      SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?
+    )`).bind(eventId, user.userId, user.displayName.slice(0, 40), title, message, tone, gameTime, now,
+      user.userId, expectedLifeVersion, actionToken));
   const savedBatch = await env.DB.batch(statements);
-  if ((savedBatch[resetStatements.length]?.results?.length ?? 0) !== 1) {
+  if ((savedBatch[playerResultIndex]?.results?.length ?? 0) !== 1) {
     return json({ message: "玩家資料剛剛被其他操作更新，這次行動未套用；請重新整理後再試。" }, 409);
   }
-  if (pendingLoanContractUpdate && (savedBatch[resetStatements.length + 1]?.results?.length ?? 0) !== 1) {
+  if (pendingLoanContractUpdate && (savedBatch[loanContractResultIndex]?.results?.length ?? 0) !== 1) {
     return json({ message: "貸款合約同步失敗，請重新整理確認還款狀態。" }, 409);
   }
   const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id = ?").bind(user.userId).first<PlayerRow>();
   if (pendingTerritoryVisit) {
-    const territoryVisit = await recordTerritoryVisit(env.DB, user.userId, pendingTerritoryVisit.location, pendingTerritoryVisit.cycleDay, pendingTerritoryVisit.worldMinute);
+    const territoryVisit = await recordTerritoryVisit(env.DB, user.userId, saved!.life_version, pendingTerritoryVisit.location, pendingTerritoryVisit.cycleDay, pendingTerritoryVisit.worldMinute);
     if (territoryVisit) message += " 進入紀錄已留下，但你沒有被扣除任何費用。";
-  }
-  if (pendingTalentSet !== null) {
-    await env.DB.prepare("UPDATE player_progress SET talents=?, updated_at=? WHERE user_id=?")
-      .bind(pendingTalentSet, Date.now(), user.userId).run();
   }
   const metric = ["work", "writer_write"].includes(body.action || "") ? "work" : body.action === "hospital" ? "hospital" : body.action === "housing" ? "housing" : body.action === "study" ? "study" : body.action === "city_event" ? "event" : null;
   if (metric) await recordCityMemory(env.DB, user.userId, metric);
-  if (talentExpGain > 0) {
-    await env.DB.prepare("UPDATE player_progress SET talent_exp=MIN(1099,talent_exp+?), updated_at=? WHERE user_id=?")
-      .bind(talentExpGain, Date.now(), user.userId).run();
-    progress = { ...progress, talent_exp: Math.min(1099, progress.talent_exp + talentExpGain) };
-  }
   const chapterBefore = progress.story_chapter;
   progress = await ensureProgress(env.DB, saved!);
   if (progress.story_chapter > chapterBefore) {

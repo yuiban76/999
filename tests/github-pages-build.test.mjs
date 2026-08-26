@@ -434,15 +434,40 @@ test("critical multiplayer integrity fixes stay wired", async () => {
   assert.match(worker, /\["playing", "all_in", "folded", "settling"\]\.includes\(active\.status\)/);
   assert.match(worker, /DELETE FROM writer_books WHERE author_id=\?/);
   assert.match(worker, /DELETE FROM casino_tournament_entries WHERE user_id=\?/);
-  assert.match(worker, /provider_id='bank'.*spread_bp=0/);
+  assert.match(worker, /provider_id='bank'[^]*spread_bp=0/);
   assert.match(worker, /Math\.min\(ABILITY_MAX, next\.fitness_exp \+ gain\)/);
   assert.match(worker, /cash=cash\+territory_pending, territory_pending=0/);
   assert.match(worker, /status IN \('dealing','playing','drawing','stood','settling'\)/);
-  assert.match(worker, /INSERT INTO casino_bingo_entries[\s\S]*SELECT \?, \?, \?, \? WHERE/);
-  assert.match(worker, /INSERT INTO casino_tournament_entries[\s\S]*SELECT \?, \?, \? WHERE/);
+  assert.match(worker, /INSERT INTO casino_bingo_entries[\s\S]*life_version[\s\S]*SELECT \?, \?, \?, \?, \? WHERE/);
+  assert.match(worker, /INSERT INTO casino_tournament_entries[\s\S]*life_version[\s\S]*SELECT \?, \?, \?, \? WHERE/);
   assert.match(worker, /game_over='__resetting__'/);
-  assert.match(worker, /finance_day=\? AND updated_at=\? RETURNING user_id/);
+  assert.match(worker, /finance_day=\? AND updated_at=\?[^]*RETURNING user_id/);
   assert.doesNotMatch(worker, /UPDATE players SET cash=cash\+\?, updated_at=\?, last_seen_at=\? WHERE user_id=\?/);
+});
+
+test("money mutations and new-life multiplayer data are guarded", async () => {
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+  const schema = await readFile(new URL("db/schema.ts", root), "utf8");
+
+  assert.match(schema, /lifeVersion: integer\("life_version"\)/);
+  assert.match(schema, /mutationToken: text\("mutation_token"\)/);
+  assert.match(worker, /sender_life_version, recipient_life_version/);
+  assert.match(worker, /patient_life_version, provider_life_version/);
+  assert.match(worker, /borrower_life_version, provider_life_version, revision, mutation_token/);
+  assert.match(worker, /buyer_life_version, author_life_version/);
+  assert.match(worker, /const resetGate = `EXISTS \(SELECT 1 FROM players reset_owner/);
+  assert.match(worker, /mutation_token=\?[^]*reset_game_over=''[^]*game_over<>'__resetting__'/);
+});
+
+test("casino draw operations use atomic round and action tokens", async () => {
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+
+  assert.match(worker, /INSERT INTO casino_table_state \(id, deck, round_token, action_token, updated_at\)/);
+  assert.match(worker, /UPDATE casino_table_state SET deck=\?, action_token=\?, updated_at=\?/);
+  assert.match(worker, /EXISTS \(SELECT 1 FROM casino_table_state WHERE id='table-01' AND round_token=\? AND action_token=\?\)/);
+  assert.match(worker, /UPDATE casino_tournament_rounds SET deck=\?, next_action_at=\?, action_token=\?, updated_at=\?/);
+  assert.match(worker, /if \(previousTurn < 0\)[^]*action_token=''/);
+  assert.doesNotMatch(worker, /UPDATE casino_hands SET status='drawing'/);
 });
 
 test("placeholder weather and age labels are not shown", async () => {
