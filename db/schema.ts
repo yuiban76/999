@@ -221,6 +221,31 @@ export const mysteryClues = sqliteTable("mystery_clues", {
   foundAt: integer("found_at").notNull(),
 }, (table) => [primaryKey({ columns: [table.userId, table.clueKey] }), index("idx_mystery_clues_key").on(table.clueKey)]);
 
+export const playerReputation = sqliteTable("player_reputation", {
+  userId: text("user_id").notNull(),
+  faction: text("faction").notNull(),
+  points: integer("points").notNull().default(0),
+  updatedAt: integer("updated_at").notNull(),
+}, (table) => [primaryKey({ columns: [table.userId, table.faction] }), index("idx_reputation_user_points").on(table.userId, table.points)]);
+
+export const cityCommissionClaims = sqliteTable("city_commission_claims", {
+  userId: text("user_id").notNull(),
+  cycleDay: integer("cycle_day").notNull(),
+  commissionId: text("commission_id").notNull(),
+  lifeVersion: integer("life_version").notNull().default(0),
+  completedAt: integer("completed_at").notNull(),
+}, (table) => [primaryKey({ columns: [table.userId, table.cycleDay, table.commissionId] }), index("idx_commission_claim_day").on(table.cycleDay, table.commissionId)]);
+
+export const lifeContracts = sqliteTable("life_contracts", {
+  id: text("id").primaryKey(),
+  creatorId: text("creator_id").notNull(), creatorName: text("creator_name").notNull(), creatorLifeVersion: integer("creator_life_version").notNull().default(0),
+  partnerId: text("partner_id").notNull(), partnerName: text("partner_name").notNull(), partnerLifeVersion: integer("partner_life_version").notNull().default(0),
+  targetPerPlayer: integer("target_per_player").notNull().default(1000), stake: integer("stake").notNull().default(200),
+  creatorDeposit: integer("creator_deposit").notNull().default(0), partnerDeposit: integer("partner_deposit").notNull().default(0),
+  status: text("status").notNull().default("pending"), expiresDay: integer("expires_day").notNull(),
+  resolutionToken: text("resolution_token").notNull().default(""), createdAt: integer("created_at").notNull(), updatedAt: integer("updated_at").notNull(),
+}, (table) => [index("idx_contract_member_status").on(table.creatorId, table.status), index("idx_contract_partner_status").on(table.partnerId, table.status)]);
+
 export const playerTransferRequests = sqliteTable("player_transfer_requests", {
   id: text("id").primaryKey(),
   senderId: text("sender_id").notNull(),

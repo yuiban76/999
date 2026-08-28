@@ -1343,6 +1343,21 @@ input:focus-visible { outline: 3px solid rgba(0, 113, 227, .38); outline-offset:
   .career-preview-footer { padding: 0 16px 25px; }
 }
 
+.innovation-card { margin-top: 14px; border: 1px solid var(--line); border-radius: 17px; padding: 15px; background: linear-gradient(145deg, #fff, #f5f7fa); }
+.innovation-card > span { display: block; margin-bottom: 5px; font-size: 10px; letter-spacing: .12em; color: var(--muted); }
+.innovation-card > strong { display: block; margin-bottom: 9px; font-size: 16px; }
+.innovation-card > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.innovation-row { display: grid; gap: 5px; padding: 10px 0; border-top: 1px solid var(--line); }
+.innovation-row b { font-size: 13px; }
+.innovation-row small, .reputation-row small, .life-ledger small { color: var(--muted); font-size: 11px; line-height: 1.45; }
+.innovation-row button { justify-self: start; border: 0; border-radius: 9px; padding: 7px 10px; background: #1d5d93; color: white; font-size: 11px; font-weight: 700; }
+.innovation-row button:disabled { opacity: .5; }
+.reputation-row { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
+.reputation-row small { border-radius: 99px; padding: 4px 7px; background: #eef2f6; }
+.life-ledger { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
+.life-ledger li { display: grid; gap: 2px; padding-top: 8px; border-top: 1px solid var(--line); }
+.life-ledger b { font-size: 11px; }
+
 @media (prefers-color-scheme: dark) {
   :root {
     --ink: #f5f5f7;

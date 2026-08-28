@@ -511,3 +511,23 @@ test("casino uses the cropped photo icon", async () => {
   assert.match(page, /className="location-photo"/);
   assert.ok(icon.length > 0);
 });
+
+test("innovative city systems keep their multiplayer rules and personal records", async () => {
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const schema = await readFile(new URL("db/schema.ts", root), "utf8");
+
+  assert.match(schema, /export const playerReputation/);
+  assert.match(schema, /export const cityCommissionClaims/);
+  assert.match(schema, /export const lifeContracts/);
+  assert.match(worker, /case "city_commission"/);
+  assert.match(worker, /case "contract_create"/);
+  assert.match(worker, /case "contract_accept"/);
+  assert.match(worker, /case "contract_deposit"/);
+  assert.match(worker, /async function lifeLedgerState/);
+  assert.match(worker, /Math\.min\(30, Math\.floor\(points \/ 50\) \* 10\)/);
+  assert.match(page, /城市委託/);
+  assert.match(page, /人生契約/);
+  assert.match(page, /城市傳聞/);
+  assert.match(page, /人生紀錄/);
+});

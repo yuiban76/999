@@ -80,6 +80,7 @@ type LoanRequestRow = { id: string; borrower_id: string; borrower_name: string; 
 type LoanContractRow = { id: string; borrower_id: string; borrower_name: string; provider_id: string; provider_name: string; provider_job: string; principal_amount: number; outstanding_balance: number; interest_rate_bp: number; spread_bp: number; borrower_life_version: number; provider_life_version: number; revision: number; mutation_token: string; status: string; opened_at: number; closed_at: number | null };
 type WriterBookRow = { id: string; author_id: string; author_name: string; author_life_version: number; title: string; price: number; status: "active" | "hidden"; created_at: number; updated_at: number; sales_count?: number; owned_count?: number };
 type BegRequestRow = { id: string; requester_id: string; requester_name: string; recipient_id: string; requester_job: string; requester_life_version: number; recipient_life_version: number; status: string; outcome: string; amount: number; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
+type LifeContractRow = { id: string; creator_id: string; creator_name: string; creator_life_version: number; partner_id: string; partner_name: string; partner_life_version: number; target_per_player: number; stake: number; creator_deposit: number; partner_deposit: number; status: string; expires_day: number; resolution_token: string; created_at: number; updated_at: number };
 
 const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "bank", "business", "shopping", "bookstore", "hotel", "casino", "school", "hospital", "underpass", "prison"]);
 const TERRITORY_LOCATIONS = new Set<LocationId>(["realtor", "bank", "business", "shopping", "bookstore", "hotel", "casino", "school", "hospital", "underpass"]);
@@ -103,6 +104,16 @@ const formatRequirements = (requirements: Partial<Abilities>) => Object.entries(
   .map(([key, value]) => `${ABILITY_LABELS[key as keyof Abilities]} ${value}`)
   .join("、");
 const PRODIGAL_FAILURE_ENDING = "prodigal_insolvent";
+const REPUTATION_FACTIONS = ["居民", "商家", "文化", "街頭"] as const;
+const CITY_COMMISSIONS = [
+  { id: "office_support", category: "office", location: "business" as LocationId, title: "行政支援", detail: "協助社區整理今日的公共資料。", reward: 450, faction: "商家" },
+  { id: "medical_outreach", category: "medical", location: "hospital" as LocationId, title: "健康關懷", detail: "支援社區健康宣導與基本照護。", reward: 500, faction: "居民" },
+  { id: "finance_clinic", category: "finance", location: "bank" as LocationId, title: "財務諮詢", detail: "協助居民整理不安的帳單與還款順序。", reward: 500, faction: "商家" },
+  { id: "literary_stage", category: "literary", location: "bookstore" as LocationId, title: "故事朗讀", detail: "在書店分享一段能讓人停下腳步的故事。", reward: 400, faction: "文化" },
+  { id: "hospitality_relief", category: "hospitality", location: "hotel" as LocationId, title: "深夜供餐", detail: "替需要的人準備一份溫熱餐點。", reward: 450, faction: "居民" },
+  { id: "freelance_fix", category: "freelance", location: "business" as LocationId, title: "緊急修復委託", detail: "完成一項臨時、需要專業的社區委託。", reward: 450, faction: "商家" },
+  { id: "street_guide", category: "street", location: "underpass" as LocationId, title: "地下道引路", detail: "協助陌生人安全走過複雜的地下道。", reward: 350, faction: "街頭" },
+] as const;
 const prodigalMinimumPayment = (balance: number) => balance > 0 ? Math.max(1, Math.ceil(balance * .003)) : 0;
 function scratchPrize() {
   const roll = crypto.getRandomValues(new Uint32Array(1))[0] / 4_294_967_296;
@@ -341,6 +352,23 @@ async function ensureSchema(db: D1Database) {
       user_id TEXT NOT NULL, clue_key TEXT NOT NULL, found_at INTEGER NOT NULL,
       PRIMARY KEY (user_id, clue_key)
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS player_reputation (
+      user_id TEXT NOT NULL, faction TEXT NOT NULL, points INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, faction)
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS city_commission_claims (
+      user_id TEXT NOT NULL, cycle_day INTEGER NOT NULL, commission_id TEXT NOT NULL,
+      life_version INTEGER NOT NULL DEFAULT 0, completed_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, cycle_day, commission_id)
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS life_contracts (
+      id TEXT PRIMARY KEY, creator_id TEXT NOT NULL, creator_name TEXT NOT NULL, creator_life_version INTEGER NOT NULL DEFAULT 0,
+      partner_id TEXT NOT NULL, partner_name TEXT NOT NULL, partner_life_version INTEGER NOT NULL DEFAULT 0,
+      target_per_player INTEGER NOT NULL DEFAULT 1000, stake INTEGER NOT NULL DEFAULT 200,
+      creator_deposit INTEGER NOT NULL DEFAULT 0, partner_deposit INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending', expires_day INTEGER NOT NULL,
+      resolution_token TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS player_inventory (
       user_id TEXT NOT NULL, item_key TEXT NOT NULL, quantity INTEGER NOT NULL DEFAULT 0,
       life_version INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL,
@@ -472,6 +500,10 @@ async function ensureSchema(db: D1Database) {
     db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_poker_seat ON poker_hands(seat_no)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_city_memory_cycle ON city_memory_contributions(cycle_day)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_mystery_clues_key ON mystery_clues(clue_key)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_reputation_user_points ON player_reputation(user_id, points)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_commission_claim_day ON city_commission_claims(cycle_day, commission_id)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_contract_member_status ON life_contracts(creator_id, status)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_contract_partner_status ON life_contracts(partner_id, status)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_inventory_user_life ON player_inventory(user_id, life_version)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_beg_recipient_status ON street_beg_requests(recipient_id, status, expires_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_beg_pair_created ON street_beg_requests(requester_id, recipient_id, created_at)"),
@@ -1041,15 +1073,73 @@ async function coopState(db: D1Database, player: PlayerRow) {
     roles: COOP_ROLES.map((role) => ({ id: role.id, label: role.label, playerName: byRole.get(role.id)?.player_name ?? "" })) };
 }
 
+async function reputationState(db: D1Database, player: PlayerRow) {
+  const rows = await db.prepare("SELECT faction, points FROM player_reputation WHERE user_id=? ORDER BY points DESC").bind(player.user_id).all<{ faction: string; points: number }>();
+  const pointsByFaction = new Map(rows.results.map((row) => [row.faction, row.points]));
+  return { factions: REPUTATION_FACTIONS.map((faction) => {
+    const points = pointsByFaction.get(faction) ?? 0;
+    const rank = points >= 150 ? "城市名望" : points >= 75 ? "值得信任" : points >= 30 ? "熟識" : "陌生";
+    return { faction, points, rank, bonusPercent: Math.min(30, Math.floor(points / 50) * 10) };
+  }) };
+}
+
+async function commissionState(db: D1Database, player: PlayerRow) {
+  const day = cityCycleDay();
+  const rows = await db.prepare("SELECT commission_id FROM city_commission_claims WHERE user_id=? AND cycle_day=? AND life_version=?")
+    .bind(player.user_id, day, player.life_version).all<{ commission_id: string }>();
+  const completed = new Set(rows.results.map((row) => row.commission_id));
+  return { cycleDay: day, commissions: CITY_COMMISSIONS.filter((commission) => commission.category === player.job_category).map((commission) => ({
+    id: commission.id, title: commission.title, detail: commission.detail, location: commission.location, reward: commission.reward,
+    faction: commission.faction, completed: completed.has(commission.id),
+  })) };
+}
+
+async function mysteryState(db: D1Database, userId: string) {
+  const rows = await db.prepare("SELECT clue_key FROM mystery_clues WHERE user_id=? ORDER BY found_at").bind(userId).all<{ clue_key: string }>();
+  const whispers: Record<string, string> = { address: "有人說，地圖上被塗掉的地址會在雨天浮現。", loan: "銀行深夜偶爾會出現一筆沒有名字的舊帳。", record: "醫院有人看過一份沒有姓名的病歷。", key: "旅店櫃台下的舊鑰匙還沒有對應房號。", company: "停業公司的資料都指向同一棟房子。", map: "一張舊地圖上少了一整個街區。", joker: "賭場裡的人說，鬼牌從來不只是一張牌。" };
+  return { found: rows.results.length, total: 7, whispers: rows.results.map((row) => whispers[row.clue_key]).filter(Boolean) };
+}
+
+async function contractState(db: D1Database, player: PlayerRow) {
+  const day = cityCycleDay();
+  const rows = await db.prepare(`SELECT * FROM life_contracts WHERE (creator_id=? OR partner_id=?) AND status IN ('pending','active') ORDER BY updated_at DESC LIMIT 6`)
+    .bind(player.user_id, player.user_id).all<LifeContractRow>();
+  const contracts = [] as Array<Record<string, unknown>>;
+  for (const row of rows.results) {
+    if (row.status === "active" && day > row.expires_day) {
+      const token = crypto.randomUUID();
+      const expired = await db.prepare(`UPDATE life_contracts SET status='expired', resolution_token=?, updated_at=? WHERE id=? AND status='active' AND expires_day<? RETURNING *`)
+        .bind(token, Date.now(), row.id, day).first<LifeContractRow>();
+      if (expired) await db.batch([
+        db.prepare("UPDATE players SET cash=cash+? WHERE user_id=? AND life_version=?").bind(expired.creator_deposit, expired.creator_id, expired.creator_life_version),
+        db.prepare("UPDATE players SET cash=cash+? WHERE user_id=? AND life_version=?").bind(expired.partner_deposit, expired.partner_id, expired.partner_life_version),
+      ]);
+      continue;
+    }
+    const mineCreator = row.creator_id === player.user_id;
+    contracts.push({ id: row.id, status: row.status, partnerName: mineCreator ? row.partner_name : row.creator_name, isCreator: mineCreator,
+      targetPerPlayer: row.target_per_player, stake: row.stake, mineDeposit: mineCreator ? row.creator_deposit : row.partner_deposit,
+      partnerDeposit: mineCreator ? row.partner_deposit : row.creator_deposit, expiresDay: row.expires_day });
+  }
+  return { contracts };
+}
+
 async function refreshedGameResponse(db: D1Database, user: AuthUser, message: string, extras: Record<string, unknown> = {}) {
   const player = await db.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
   if (!player) return json({ message: "找不到玩家資料。" }, 404);
-  const [progress, contract, world, transfers, medical, loans, begs, street, aidBoxes, coop] = await Promise.all([
+  const [progress, contract, world, transfers, medical, loans, begs, street, aidBoxes, coop, reputation, commissions, mystery, contracts, ledger] = await Promise.all([
     ensureProgress(db, player), activeLoanContract(db, user.userId), multiplayer(db), pendingTransferRequests(db, user.userId),
     pendingMedicalRequests(db, user.userId), pendingLoanRequests(db, user.userId), pendingBegRequests(db, user.userId),
     streetState(db, player), aidBoxState(db, user.userId), coopState(db, player),
+    reputationState(db, player), commissionState(db, player), mysteryState(db, user.userId), contractState(db, player), lifeLedgerState(db, user.userId),
   ]);
-  return json({ player: serializePlayer(player, progress, contract), message, transferRequests: transfers, medicalRequests: medical, loanRequests: loans, begRequests: begs, street, aidBoxes, coop, ...world, ...extras });
+  return json({ player: serializePlayer(player, progress, contract), message, transferRequests: transfers, medicalRequests: medical, loanRequests: loans, begRequests: begs, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, ...world, ...extras });
+}
+
+async function lifeLedgerState(db: D1Database, userId: string) {
+  const rows = await db.prepare(`SELECT title, detail, tone, game_time FROM game_events WHERE user_id=? ORDER BY created_at DESC LIMIT 12`)
+    .bind(userId).all<{ title: string; detail: string; tone: "good" | "neutral" | "warn"; game_time: string }>();
+  return { entries: rows.results.map((row) => ({ title: row.title, detail: row.detail, tone: row.tone, gameTime: row.game_time })) };
 }
 
 async function transferActionResponse(db: D1Database, user: AuthUser, player: PlayerRow, progress: ProgressRow, message: string) {
@@ -2406,7 +2496,7 @@ async function getAvatar(userId: string, env: Env) {
 
 async function bootstrap(request: Request, env: Env) {
   const user = await identity(request, env.DB);
-  if (!user || !env.DB) return json({ serverNow: Date.now(), authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [], casino: { capacity: 5, activeCount: 0, seats: [], hand: null }, poker: { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 }, bingo: { status: "lobby", players: [], drawn: [] }, tournament: { status: "lobby", players: [] }, medicalRequests: [], loanRequests: [], begRequests: [], street: { items: [], scavengesUsed: 0, scavengesMax: 4, begIncome: 0, begCap: 500 }, aidBoxes: { cycleDay: 1, dailyCap: 2000, boxes: [] }, coop: { cycleDay: 1, status: "open", reward: 600, talentExp: 8, eligibleRole: "", contributed: false, roles: [] }, bookStore: { books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK } });
+  if (!user || !env.DB) return json({ serverNow: Date.now(), authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [], casino: { capacity: 5, activeCount: 0, seats: [], hand: null }, poker: { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 }, bingo: { status: "lobby", players: [], drawn: [] }, tournament: { status: "lobby", players: [] }, medicalRequests: [], loanRequests: [], begRequests: [], street: { items: [], scavengesUsed: 0, scavengesMax: 4, begIncome: 0, begCap: 500 }, aidBoxes: { cycleDay: 1, dailyCap: 2000, boxes: [] }, coop: { cycleDay: 1, status: "open", reward: 600, talentExp: 8, eligibleRole: "", contributed: false, roles: [] }, reputation: { factions: [] }, commissions: { cycleDay: 1, commissions: [] }, mystery: { found: 0, total: 7, whispers: [] }, contracts: { contracts: [] }, lifeLedger: { entries: [] }, bookStore: { books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK } });
   await ensureSchemaOnce(env.DB);
   const row = await upsertPlayer(env.DB, user);
   if (!row) return json({ message: "無法載入玩家資料" }, 500);
@@ -2414,7 +2504,7 @@ async function bootstrap(request: Request, env: Env) {
   const world = await multiplayer(env.DB);
   const emptyCasino = { capacity: 5, activeCount: 0, seats: [], hand: null };
   const emptyPoker = { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 };
-  const [casino, poker, memory, transferRequests, medicalRequests, loanRequests, begRequests, street, aidBoxes, coop, bingo, tournament, loanContract, bookStoreState] = await Promise.all([
+  const [casino, poker, memory, transferRequests, medicalRequests, loanRequests, begRequests, street, aidBoxes, coop, bingo, tournament, loanContract, bookStoreState, reputation, commissions, mystery, contracts, ledger] = await Promise.all([
     row.location === "casino" ? casinoState(env.DB, user.userId) : Promise.resolve(emptyCasino),
     row.location === "casino" ? pokerState(env.DB, user.userId) : Promise.resolve(emptyPoker),
     cityMemory(env.DB),
@@ -2429,8 +2519,9 @@ async function bootstrap(request: Request, env: Env) {
     row.location === "casino" ? tournamentState(env.DB, user.userId) : Promise.resolve({ status: "lobby", players: [] }),
     activeLoanContract(env.DB, user.userId),
     row.location === "bookstore" ? bookStore(env.DB, user.userId) : Promise.resolve({ books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK }),
+    reputationState(env.DB, row), commissionState(env.DB, row), mysteryState(env.DB, user.userId), contractState(env.DB, row), lifeLedgerState(env.DB, user.userId),
   ]);
-  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress, loanContract), room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, bingo, tournament, cityMemory: memory, transferRequests, medicalRequests, loanRequests, begRequests, street, aidBoxes, coop, bookStore: bookStoreState });
+  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress, loanContract), room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, bingo, tournament, cityMemory: memory, transferRequests, medicalRequests, loanRequests, begRequests, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, bookStore: bookStoreState });
 }
 
 async function takeAction(request: Request, env: Env) {
@@ -2444,12 +2535,12 @@ async function takeAction(request: Request, env: Env) {
   let talents = new Set(parseList(progress.talents));
   const clampEnergy = (value: number) => Math.max(0, Math.min(talents.has("strong_body") ? 120 : 100, value));
 
-  let body: { action?: string; location?: string; territoryLocation?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; quantity?: number; itemKey?: string; academy?: string; story?: string; talent?: string; choice?: string; targetId?: string; ownerId?: string; requestId?: string; medicalRequestId?: string; loanRequestId?: string; bookId?: string; title?: string; status?: string };
+  let body: { action?: string; location?: string; territoryLocation?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; quantity?: number; itemKey?: string; academy?: string; story?: string; talent?: string; choice?: string; targetId?: string; ownerId?: string; requestId?: string; medicalRequestId?: string; loanRequestId?: string; bookId?: string; commissionId?: string; contractId?: string; title?: string; status?: string };
   try { body = await request.json(); } catch { return json({ message: "行動資料格式錯誤。" }, 400); }
   if ((current.game_over || current.reset_game_over) && body.action !== "reset") return json({ message: current.reset_game_over ? "人生資料正在重置，請稍候再試。" : "這段人生已經結束，請重新開始。" }, 409);
   if (current.main_story === "unselected" && body.action !== "choose_story") return json({ message: "請先選擇人生主線。" }, 409);
   if (current.prison_until > current.elapsed_minutes && body.action !== "reset") return json({ message: `你目前因「${current.prison_crime || "違法行為"}」在監獄服刑，還需在線遊玩 ${Math.ceil((current.prison_until - current.elapsed_minutes) / 60)} 小時。` }, 409);
-  if (!["move", "choose_story", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy", "beg_response", "inventory_use", "street_share_food", "aid_box_donate", "coop_contribute", "story_ack"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
+  if (!["move", "choose_story", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy", "beg_response", "inventory_use", "street_share_food", "aid_box_donate", "coop_contribute", "story_ack", "contract_create", "contract_accept", "contract_decline", "contract_deposit"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
   const next = { ...current };
   const sharedMinutes = worldMinutes();
   const memoryBefore = await cityMemory(env.DB);
@@ -2477,6 +2568,110 @@ async function takeAction(request: Request, env: Env) {
   let expectedResetMarker = current.reset_game_over || "";
 
   switch (body.action) {
+    case "city_commission": {
+      const commission = CITY_COMMISSIONS.find((item) => item.id === body.commissionId);
+      if (!commission || commission.category !== current.job_category) return json({ message: "目前職業沒有這項城市委託。" }, 400);
+      if (current.location !== commission.location) return json({ message: "請先前往委託指定地點。" }, 400);
+      if (current.illness) return json({ message: "生病時不能接城市委託，請先治療。" }, 409);
+      const day = cityCycleDay();
+      const existing = await env.DB.prepare("SELECT 1 AS used FROM city_commission_claims WHERE user_id=? AND cycle_day=? AND commission_id=? AND life_version=?")
+        .bind(user.userId, day, commission.id, current.life_version).first<{ used: number }>();
+      if (existing) return json({ message: "這份委託今天已完成，明天會有新的機會。" }, 409);
+      const reputation = await env.DB.prepare("SELECT points FROM player_reputation WHERE user_id=? AND faction=?").bind(user.userId, commission.faction).first<{ points: number }>();
+      const bonus = Math.min(30, Math.floor((reputation?.points ?? 0) / 50) * 10);
+      const reward = Math.floor(commission.reward * (1 + bonus / 100));
+      const jobExp = current.job_category === "literary" ? current.job_exp : current.job_exp + 10;
+      const job = current.job_category === "literary" ? current.current_job : careerForCategory(current.job_category, jobExp, current.current_job).title;
+      const now = Math.max(Date.now(), current.updated_at + 1); const token = crypto.randomUUID();
+      const results = await env.DB.batch([
+        env.DB.prepare(`UPDATE players SET cash=cash+?, job_exp=?, current_job=?, action_available_at=?, action_label='城市委託中', updated_at=?, last_seen_at=?, mutation_token=?
+          WHERE user_id=? AND life_version=? AND updated_at=? AND location=? RETURNING user_id`)
+          .bind(reward, jobExp, job, Date.now() + 45_000, now, now, token, user.userId, current.life_version, current.updated_at, commission.location),
+        env.DB.prepare(`INSERT INTO city_commission_claims (user_id, cycle_day, commission_id, life_version, completed_at)
+          SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?)
+          ON CONFLICT(user_id, cycle_day, commission_id) DO NOTHING RETURNING commission_id`)
+          .bind(user.userId, day, commission.id, current.life_version, now, user.userId, current.life_version, token),
+        env.DB.prepare(`INSERT INTO player_reputation (user_id, faction, points, updated_at) SELECT ?, ?, 15, ?
+          WHERE EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?)
+          ON CONFLICT(user_id, faction) DO UPDATE SET points=player_reputation.points+15, updated_at=excluded.updated_at`)
+          .bind(user.userId, commission.faction, now, user.userId, current.life_version, token),
+        env.DB.prepare(`UPDATE player_progress SET talent_exp=MIN(1099,talent_exp+5), updated_at=? WHERE user_id=?
+          AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?)`)
+          .bind(now, user.userId, user.userId, current.life_version, token),
+      ]);
+      if ((results[0]?.results?.length ?? 0) !== 1 || (results[1]?.results?.length ?? 0) !== 1) return json({ message: "委託剛被更新，請重新整理後再試。" }, 409);
+      await recordTransferEvent(env.DB, user.userId, current.display_name, "完成城市委託", `${commission.title}完成，獲得 NT$${reward}，${commission.faction}聲望 +15。`, "good");
+      return refreshedGameResponse(env.DB, user, `完成「${commission.title}」，獲得 NT$${reward}、${commission.faction}聲望 +15、天賦經驗 +5。`);
+    }
+    case "contract_create": {
+      const target = body.targetId ? await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(body.targetId).first<PlayerRow>() : null;
+      if (!target || target.user_id === user.userId || target.last_seen_at < Date.now() - ONLINE_HEARTBEAT_GRACE_MS || target.game_over || target.reset_game_over || target.main_story === "unselected") return json({ message: "對方目前無法建立人生契約。" }, 400);
+      const stake = 200; const targetPerPlayer = 1000;
+      if (current.cash < stake) return json({ message: "建立人生契約需要 NT$200 保證金。" }, 409);
+      const busyContract = await env.DB.prepare(`SELECT 1 AS active FROM life_contracts WHERE status IN ('pending','active') AND
+        (creator_id IN (?, ?) OR partner_id IN (?, ?)) LIMIT 1`).bind(user.userId, target.user_id, user.userId, target.user_id).first<{ active: number }>();
+      if (busyContract) return json({ message: "你或對方已有進行中的人生契約。" }, 409);
+      const id = crypto.randomUUID(); const now = Math.max(Date.now(), current.updated_at + 1); const token = crypto.randomUUID();
+      const results = await env.DB.batch([
+        env.DB.prepare("UPDATE players SET cash=cash-?, updated_at=?, mutation_token=? WHERE user_id=? AND life_version=? AND updated_at=? AND cash>=? RETURNING user_id")
+          .bind(stake, now, token, user.userId, current.life_version, current.updated_at, stake),
+        env.DB.prepare(`INSERT INTO life_contracts (id, creator_id, creator_name, creator_life_version, partner_id, partner_name, partner_life_version, target_per_player, stake, status, expires_day, resolution_token, created_at, updated_at)
+          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, '', ?, ? WHERE EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?)`)
+          .bind(id, user.userId, current.display_name, current.life_version, target.user_id, target.display_name, target.life_version, targetPerPlayer, stake, cityCycleDay() + 3, now, now, user.userId, current.life_version, token),
+      ]);
+      if ((results[0]?.results?.length ?? 0) !== 1) return json({ message: "建立契約失敗，請重新整理後再試。" }, 409);
+      return refreshedGameResponse(env.DB, user, `已向${target.display_name}送出人生契約：各存 NT$1,000，三個城市日內完成可各得 NT$150 獎勵。`);
+    }
+    case "contract_accept": {
+      if (!body.contractId || current.cash < 200) return json({ message: "接受契約需要 NT$200 保證金。" }, 409);
+      const contract = await env.DB.prepare("SELECT * FROM life_contracts WHERE id=? AND partner_id=? AND partner_life_version=? AND status='pending'").bind(body.contractId, user.userId, current.life_version).first<LifeContractRow>();
+      if (!contract) return json({ message: "這份人生契約已失效。" }, 409);
+      const now = Math.max(Date.now(), current.updated_at + 1); const token = crypto.randomUUID();
+      const results = await env.DB.batch([
+        env.DB.prepare("UPDATE players SET cash=cash-?, updated_at=?, mutation_token=? WHERE user_id=? AND life_version=? AND updated_at=? AND cash>=? RETURNING user_id").bind(contract.stake, now, token, user.userId, current.life_version, current.updated_at, contract.stake),
+        env.DB.prepare("UPDATE life_contracts SET status='active', updated_at=? WHERE id=? AND status='pending' AND partner_id=? AND partner_life_version=? AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?) RETURNING id")
+          .bind(now, contract.id, user.userId, current.life_version, user.userId, current.life_version, token),
+      ]);
+      if ((results[0]?.results?.length ?? 0) !== 1 || (results[1]?.results?.length ?? 0) !== 1) return json({ message: "契約狀態剛剛改變，請重新整理後再試。" }, 409);
+      return refreshedGameResponse(env.DB, user, "人生契約已生效；雙方各存滿 NT$1,000 前，保證金會暫時保留。 ");
+    }
+    case "contract_decline": {
+      if (!body.contractId) return json({ message: "找不到人生契約。" }, 400);
+      const row = await env.DB.prepare("UPDATE life_contracts SET status='declined', updated_at=? WHERE id=? AND partner_id=? AND partner_life_version=? AND status='pending' RETURNING *")
+        .bind(Date.now(), body.contractId, user.userId, current.life_version).first<LifeContractRow>();
+      if (!row) return json({ message: "這份人生契約已失效。" }, 409);
+      await env.DB.prepare("UPDATE players SET cash=cash+? WHERE user_id=? AND life_version=?").bind(row.stake, row.creator_id, row.creator_life_version).run();
+      return refreshedGameResponse(env.DB, user, "已拒絕人生契約，對方的保證金已退回。 ");
+    }
+    case "contract_deposit": {
+      if (!body.contractId) return json({ message: "找不到人生契約。" }, 400);
+      const row = await env.DB.prepare("SELECT * FROM life_contracts WHERE id=? AND status='active' AND (creator_id=? OR partner_id=?)").bind(body.contractId, user.userId, user.userId).first<LifeContractRow>();
+      if (!row || cityCycleDay() > row.expires_day) return json({ message: "這份人生契約已到期。" }, 409);
+      const mineCreator = row.creator_id === user.userId; const mineDeposit = mineCreator ? row.creator_deposit : row.partner_deposit;
+      const amount = Math.min(Math.max(100, Math.floor(body.amount ?? 100)), row.target_per_player - mineDeposit);
+      if (amount <= 0) return json({ message: "你的存入目標已完成。" }, 409);
+      if (current.cash < amount) return json({ message: "現金不足，無法存入人生契約。" }, 409);
+      const now = Math.max(Date.now(), current.updated_at + 1); const token = crypto.randomUUID();
+      const column = mineCreator ? "creator_deposit" : "partner_deposit";
+      const results = await env.DB.batch([
+        env.DB.prepare("UPDATE players SET cash=cash-?, updated_at=?, mutation_token=? WHERE user_id=? AND life_version=? AND updated_at=? AND cash>=? RETURNING user_id").bind(amount, now, token, user.userId, current.life_version, current.updated_at, amount),
+        env.DB.prepare(`UPDATE life_contracts SET ${column}=${column}+?, updated_at=? WHERE id=? AND status='active' AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?) RETURNING *`)
+          .bind(amount, now, row.id, user.userId, current.life_version, token),
+      ]);
+      const updated = results[1]?.results?.[0] as LifeContractRow | undefined;
+      if ((results[0]?.results?.length ?? 0) !== 1 || !updated) return json({ message: "契約存入失敗，請重新整理後再試。" }, 409);
+      if (updated.creator_deposit >= updated.target_per_player && updated.partner_deposit >= updated.target_per_player) {
+        const settled = await env.DB.prepare("UPDATE life_contracts SET status='completed', resolution_token=?, updated_at=? WHERE id=? AND status='active' AND creator_deposit>=target_per_player AND partner_deposit>=target_per_player RETURNING *")
+          .bind(crypto.randomUUID(), Date.now(), updated.id).first<LifeContractRow>();
+        if (settled) await env.DB.batch([
+          env.DB.prepare("UPDATE players SET cash=cash+? WHERE user_id=? AND life_version=?").bind(settled.creator_deposit + settled.stake + 150, settled.creator_id, settled.creator_life_version),
+          env.DB.prepare("UPDATE players SET cash=cash+? WHERE user_id=? AND life_version=?").bind(settled.partner_deposit + settled.stake + 150, settled.partner_id, settled.partner_life_version),
+        ]);
+        await recordTransferEvent(env.DB, user.userId, current.display_name, "人生契約完成", `你和${mineCreator ? updated.partner_name : updated.creator_name}一起達成目標，各獲 NT$150 獎勵。`, "good");
+        return refreshedGameResponse(env.DB, user, "人生契約完成！雙方的存入金與保證金已退回，並各獲 NT$150 獎勵。 ");
+      }
+      return refreshedGameResponse(env.DB, user, `已存入 NT$${amount}；你目前 NT$${mineDeposit + amount}／${row.target_per_player}。`);
+    }
     case "street_scavenge": {
       if (current.job_category !== "street" || current.location !== "underpass") return json({ message: "只有街頭生存職業能在車站地下道拾荒。" }, 400);
       const personalDay = Math.floor(current.elapsed_minutes / 1440) + 1;
@@ -3649,7 +3844,7 @@ async function takeAction(request: Request, env: Env) {
   }
   if (eligibleEvent) message += await maybeFindMysteryClue(env.DB, user.userId, saved!.location);
   const world = await multiplayer(env.DB);
-  const [loanContract, loanRequests, begRequests, street, aidBoxes, coop, bookStoreState] = await Promise.all([
+  const [loanContract, loanRequests, begRequests, street, aidBoxes, coop, bookStoreState, reputation, commissions, mystery, contracts, ledger] = await Promise.all([
     activeLoanContract(env.DB, user.userId),
     pendingLoanRequests(env.DB, user.userId),
     pendingBegRequests(env.DB, user.userId),
@@ -3657,11 +3852,12 @@ async function takeAction(request: Request, env: Env) {
     aidBoxState(env.DB, user.userId),
     coopState(env.DB, saved!),
     saved!.location === "bookstore" ? bookStore(env.DB, user.userId) : Promise.resolve({ books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK }),
+    reputationState(env.DB, saved!), commissionState(env.DB, saved!), mysteryState(env.DB, user.userId), contractState(env.DB, saved!), lifeLedgerState(env.DB, user.userId),
   ]);
   const casinoSnapshot = body.action === "move" && saved!.location === "casino"
     ? await Promise.all([casinoState(env.DB, user.userId), pokerState(env.DB, user.userId), bingoState(env.DB, user.userId), tournamentState(env.DB, user.userId)])
     : null;
-  return json({ player: serializePlayer(saved!, progress, loanContract), message, scratch, loanRequests, begRequests, street, aidBoxes, coop, bookStore: bookStoreState, cityMemory: await cityMemory(env.DB), ...world,
+  return json({ player: serializePlayer(saved!, progress, loanContract), message, scratch, loanRequests, begRequests, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, bookStore: bookStoreState, cityMemory: await cityMemory(env.DB), ...world,
     ...(casinoSnapshot ? { casino: casinoSnapshot[0], poker: casinoSnapshot[1], bingo: casinoSnapshot[2], tournament: casinoSnapshot[3] } : {}) });
 }
 
