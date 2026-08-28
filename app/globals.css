@@ -10,6 +10,11 @@
   --muted: #74786f;
 }
 
+.street-inventory,.street-aid-card,.coop-card{border:1px solid rgba(78,63,45,.14);border-radius:18px;background:rgba(255,255,255,.82);padding:16px;box-shadow:0 12px 28px rgba(57,45,31,.07)}
+.street-inventory{grid-column:1/-1}.street-inventory header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.street-inventory header span,.coop-card>span,.street-aid-card>span{font-size:.68rem;letter-spacing:.16em;color:#89755d}.street-inventory>div{display:grid;grid-template-columns:38px 1fr auto;gap:10px;align-items:center;padding:9px 0;border-top:1px solid rgba(78,63,45,.09)}.street-inventory p{margin:0}.street-inventory p small{display:block;color:#7a6c5b}.inventory-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:#efe8dc;font-weight:800}.street-inventory button,.street-aid-card button,.coop-card button,.beg-response button{border:0;border-radius:10px;padding:8px 11px;background:#25231f;color:#fff;font-weight:700;cursor:pointer}.street-inventory button:disabled,.street-aid-card button:disabled,.coop-card button:disabled,.beg-response button:disabled{opacity:.42;cursor:not-allowed}
+.street-aid-card{display:flex;flex-direction:column;gap:7px}.street-aid-card>div{display:flex;gap:7px;flex-wrap:wrap}.coop-card{margin:18px 0}.coop-card>strong{display:block;font-size:1.05rem;margin:4px 0}.coop-card>p{font-size:.78rem;color:#6f6254;line-height:1.55}.coop-card>div{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:10px 0}.coop-card>div small{display:flex;flex-direction:column;border-radius:10px;background:#f3eee5;padding:8px}.coop-card>div small.done{background:#e3efe5;color:#285f3a}.coop-card>div b{font-size:.68rem;margin-top:3px}.coop-card>em{font-size:.75rem;color:#756959}.coop-card.completed{border-color:rgba(47,126,75,.28);background:#f4fbf5}
+.beg-response{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}.story-chapter-card{max-height:min(78vh,720px);overflow:auto}.story-chapter-card>button{width:100%;margin-top:12px;border:0;border-radius:12px;padding:12px;background:#25231f;color:#fff;font-weight:800}
+
 * {
   box-sizing: border-box;
 }

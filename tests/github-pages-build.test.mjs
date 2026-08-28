@@ -164,8 +164,8 @@ test("administrative actions are instant and gameplay waits stay shortened", asy
   assert.match(page, /睡眠 8 小時" meta="現實等待 2 分鐘/);
   assert.match(page, /旅店臨時工 · 30 秒/);
   assert.match(page, /不扣體力、飽足、健康/);
-  assert.match(page, /const canActDuringWait = \["move", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy"\]/);
-  assert.match(worker, /\["move", "choose_story", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy"\]/);
+  assert.match(page, /const canActDuringWait = \[.*"bank".*"beg_response".*"coop_contribute"/);
+  assert.match(worker, /\[.*"bank".*"beg_response".*"coop_contribute".*\]\.includes\(body\.action/);
   assert.match(page, /期間可移動、換職、使用銀行、處理贈送／詐騙／治療／貸款請求，或前往賭場遊玩/);
   assert.match(page, /BankPanel player=\{player\} busy=\{busy \|\| !bankOpen\}/);
   assert.match(page, /<CasinoTable state=\{casino\} signedIn=\{Boolean\(profile\)\} busy=\{busy\}/);
@@ -218,7 +218,7 @@ test("every defined special shift has one shared real-time wait", async () => {
   const worker = await readFile(new URL("worker/index.ts", root), "utf8");
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   const entries = [...jobs.matchAll(/"([^"]+)": \{ name: "[^"]+", hours: (\d+), minutes: (\d+) \}/g)];
-  assert.equal(entries.length, 20);
+  assert.equal(entries.length, 24);
   for (const [, job, hours, minutes] of entries) {
     assert.ok(Number(hours) >= 1 && Number(hours) <= 11, `${job} has an invalid special-shift length`);
     assert.ok(Number(minutes) >= 2 && Number(minutes) <= 5, `${job} has an invalid real wait`);
@@ -227,6 +227,32 @@ test("every defined special shift has one shared real-time wait", async () => {
   assert.match(worker, /minutes = careerWorkWaitSeconds\(next\.current_job, hours/);
   assert.match(page, /workWaitMinutes\(workSpecial\.hours\)/);
   assert.match(worker, /going offline must not extend a work\/sleep\/class wait/);
+});
+
+test("street survival, freelance ranks, story chapters, career events, and city co-op are wired", async () => {
+  const jobs = await readFile(new URL("shared/jobs.ts", root), "utf8");
+  const progression = await readFile(new URL("shared/progression.ts", root), "utf8");
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const migration = await readFile(new URL("drizzle/0026_slimy_black_tom.sql", root), "utf8");
+
+  assert.match(jobs, /jobs: \["街友", "丐幫成員", "丐幫長老", "丐幫幫主"\]/);
+  assert.match(jobs, /jobs: \["接案助理", "自由工作者", "資深接案者", "自由工作顧問"\]/);
+  assert.match(worker, /case "street_scavenge"/);
+  assert.match(worker, /case "beg_request"/);
+  assert.match(worker, /case "street_share_food"/);
+  assert.match(worker, /case "aid_box_open"/);
+  assert.match(worker, /case "coop_contribute"/);
+  assert.match(worker, /completion_token/);
+  assert.match(page, /車站地下道/);
+  assert.match(page, /城市聯合支援/);
+  assert.match(page, /STREET BAG/);
+  assert.match(progression, /PRODIGAL_SUCCESS_STORY/);
+  assert.match(progression, /categories: \["street"\]/);
+  assert.match(migration, /CREATE TABLE `player_inventory`/);
+  assert.match(migration, /CREATE TABLE `street_beg_requests`/);
+  assert.match(migration, /CREATE TABLE `city_coop_contributions`/);
+  assert.match(migration, /story_seen_chapter/);
 });
 
 test("hospitality career has four ranks, hunger specials, and a daily-settled restaurant", async () => {

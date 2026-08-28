@@ -1,8 +1,8 @@
-import { ABILITY_LABELS, ABILITY_MAX, ACADEMIES, BANK_LOAN_RATE_BP, careerForCategory, careerRequirements, careerWorkSpecialFor, careerWorkWaitSeconds, categoryInfo, crimeArrestChanceFor, crimeSentenceMinutesFor, financeDepositRateFor, financeLoanTermsFor, HACK_DAILY_LIMIT, HACK_MAX_STEAL, HACK_STEAL_RATE, HACK_SUCCESS_CHANCE, hospitalitySpecialHungerFor, jobInfo, medicalHospitalDiscountFor, medicalTreatmentFor, medicalWorkHealthBonusFor, meetsCareerRequirements, RESTAURANT_DAILY_NET, RESTAURANT_PURCHASE_PRICE, TERRITORY_DAILY_CAP, TERRITORY_VISIT_COOLDOWN_MINUTES, TERRITORY_VISIT_REWARD, WRITER_DAILY_FAN_RATE, WRITER_DAILY_WRITING_LIMIT, WRITER_MAX_ACTIVE_BOOKS, WRITER_MAX_PURCHASES_PER_BOOK, writerBookPriceFor, writerFanRangeFor, type Abilities } from "../shared/jobs";
+import { ABILITY_LABELS, ABILITY_MAX, ACADEMIES, BANK_LOAN_RATE_BP, careerForCategory, careerRequirements, careerWorkSpecialFor, careerWorkWaitSeconds, categoryInfo, crimeArrestChanceFor, crimeSentenceMinutesFor, financeDepositRateFor, financeLoanTermsFor, HACK_DAILY_LIMIT, HACK_MAX_STEAL, HACK_STEAL_RATE, HACK_SUCCESS_CHANCE, hospitalitySpecialHungerFor, jobInfo, medicalHospitalDiscountFor, medicalTreatmentFor, medicalWorkHealthBonusFor, meetsCareerRequirements, RESTAURANT_DAILY_NET, RESTAURANT_PURCHASE_PRICE, STREET_BEG_PAIR_COOLDOWN_MS, STREET_BEG_REQUEST_TIMEOUT_MS, STREET_INVENTORY, STREET_SCAVENGE_WAIT_SECONDS, streetBegDailyCapFor, streetBegDonationsFor, streetCanSellPriceFor, streetRankIndex, streetScavengeLimitFor, TERRITORY_DAILY_CAP, TERRITORY_VISIT_COOLDOWN_MINUTES, TERRITORY_VISIT_REWARD, WRITER_DAILY_FAN_RATE, WRITER_DAILY_WRITING_LIMIT, WRITER_MAX_ACTIVE_BOOKS, WRITER_MAX_PURCHASES_PER_BOOK, writerBookPriceFor, writerFanRangeFor, type Abilities } from "../shared/jobs";
 import { CITY_EVENTS, STORY_CHAPTERS, storyChapterForDebt, talentInfo } from "../shared/progression";
 import { isHospitalRegularOpen, isLocationOpen, minuteOfDay, OPENING_HOURS, worldMinutes } from "../shared/world";
 
-type LocationId = "home" | "realtor" | "bank" | "business" | "shopping" | "bookstore" | "hotel" | "casino" | "school" | "hospital" | "prison";
+type LocationId = "home" | "realtor" | "bank" | "business" | "shopping" | "bookstore" | "hotel" | "casino" | "school" | "hospital" | "underpass" | "prison";
 
 interface Env { DB?: D1Database; ASSETS?: Fetcher; FRONTEND_ORIGIN?: string }
 
@@ -33,6 +33,9 @@ type PlayerRow = {
   territory_pending: number;
   hack_day: number;
   hack_uses: number;
+  street_day: number;
+  street_scavenges: number;
+  street_beg_income: number;
   game_over: string;
   main_story: string;
   energy: number;
@@ -69,16 +72,17 @@ type PokerTableRow = { id: string; deck: string; community_cards: string; street
 type TournamentRoundRow = { tournament_no: number; round_no: number; game: "blackjack" | "poker"; status: string; deck: string; dealer_cards: string; community_cards: string; street: string; current_bet: number; turn_seat: number; pot: number; next_action_at: number; action_token: string; updated_at: number };
 type TournamentHandRow = { tournament_no: number; round_no: number; user_id: string; player_name: string; seat_no: number; player_cards: string; hole_cards: string; bet: number; street_bet: number; stack: number; status: string; acted: number; result: string; life_version: number; action_token: string; updated_at: number };
 type TournamentStateRow = { round_no: number; current_round: number; game: "blackjack" | "poker"; status: string; host_user_id: string; entry_fee: number; round_limit: number; next_round_at: number; latest_result: string };
-type ProgressRow = { user_id: string; talent_exp: number; talents: string; story_chapter: number; last_event_day: number; pending_event: string; updated_at: number };
+type ProgressRow = { user_id: string; talent_exp: number; talents: string; story_chapter: number; story_seen_chapter: number; last_event_day: number; pending_event: string; updated_at: number };
 type MemoryRow = { cycle_day: number; work_count: number; hospital_count: number; housing_count: number; casino_count: number; study_count: number; event_count: number };
 type TransferRequestRow = { id: string; sender_id: string; sender_name: string; recipient_id: string; kind: "gift" | "scam"; amount: number; sender_life_version: number; recipient_life_version: number; status: string; outcome: string; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
 type MedicalTreatmentRequestRow = { id: string; patient_id: string; patient_name: string; provider_id: string; provider_name: string; provider_job: string; health_gain: number; amount: number; patient_life_version: number; provider_life_version: number; status: string; outcome: string; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
 type LoanRequestRow = { id: string; borrower_id: string; borrower_name: string; provider_id: string; provider_name: string; provider_job: string; amount: number; interest_rate_bp: number; spread_bp: number; borrower_life_version: number; provider_life_version: number; status: string; outcome: string; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
 type LoanContractRow = { id: string; borrower_id: string; borrower_name: string; provider_id: string; provider_name: string; provider_job: string; principal_amount: number; outstanding_balance: number; interest_rate_bp: number; spread_bp: number; borrower_life_version: number; provider_life_version: number; revision: number; mutation_token: string; status: string; opened_at: number; closed_at: number | null };
 type WriterBookRow = { id: string; author_id: string; author_name: string; author_life_version: number; title: string; price: number; status: "active" | "hidden"; created_at: number; updated_at: number; sales_count?: number; owned_count?: number };
+type BegRequestRow = { id: string; requester_id: string; requester_name: string; recipient_id: string; requester_job: string; requester_life_version: number; recipient_life_version: number; status: string; outcome: string; amount: number; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
 
-const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "bank", "business", "shopping", "bookstore", "hotel", "casino", "school", "hospital", "prison"]);
-const TERRITORY_LOCATIONS = new Set<LocationId>(["realtor", "bank", "business", "shopping", "bookstore", "hotel", "casino", "school", "hospital"]);
+const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "bank", "business", "shopping", "bookstore", "hotel", "casino", "school", "hospital", "underpass", "prison"]);
+const TERRITORY_LOCATIONS = new Set<LocationId>(["realtor", "bank", "business", "shopping", "bookstore", "hotel", "casino", "school", "hospital", "underpass"]);
 // Persist at most one idle heartbeat every ten seconds. Only a short,
 // continuous gap counts as online play; returning after going offline adds no time.
 const HEARTBEAT_WRITE_INTERVAL_MS = 10_000;
@@ -184,7 +188,7 @@ async function identity(request: Request, db?: D1Database): Promise<AuthUser | n
 }
 
 function guestPlayer() {
-  return { cash: 10000, bankBalance: 0, loanBalance: 0, loanProviderName: "", loanRateBp: null, loanSpreadBp: null, dailyMinimumPayment: 0, dailyPaymentMade: 0, missedPaymentDays: 0, writerFans: 0, writingUses: 0, ownsRestaurant: false, prisonUntil: 0, prisonCrime: "", territoryLocation: "", territoryDay: 0, territoryPayoutDay: 0, territoryVisits: 0, territoryIncome: 0, territoryPending: 0, hackDay: 0, hackUses: 0, gameOver: "", mainStory: "legacy", energy: 100, health: 100, hunger: 80, intelligenceExp: 0, creativityExp: 0, physicalExp: 0, socialExp: 0, charismaExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, actionAvailableAt: 0, actionLabel: "", elapsedMinutes: 0, location: "realtor" as LocationId, talentExp: 0, talentLevel: 0, talentPoints: 0, talents: [] as string[], storyChapter: 0, pendingEvent: "" };
+  return { cash: 10000, bankBalance: 0, loanBalance: 0, loanProviderName: "", loanRateBp: null, loanSpreadBp: null, dailyMinimumPayment: 0, dailyPaymentMade: 0, missedPaymentDays: 0, writerFans: 0, writingUses: 0, ownsRestaurant: false, prisonUntil: 0, prisonCrime: "", territoryLocation: "", territoryDay: 0, territoryPayoutDay: 0, territoryVisits: 0, territoryIncome: 0, territoryPending: 0, hackDay: 0, hackUses: 0, streetDay: 0, streetScavenges: 0, streetBegIncome: 0, gameOver: "", mainStory: "legacy", energy: 100, health: 100, hunger: 80, intelligenceExp: 0, creativityExp: 0, physicalExp: 0, socialExp: 0, charismaExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, actionAvailableAt: 0, actionLabel: "", elapsedMinutes: 0, location: "realtor" as LocationId, talentExp: 0, talentLevel: 0, talentPoints: 0, talents: [] as string[], storyChapter: 0, storySeenChapter: 0, pendingEvent: "" };
 }
 
 function parseList(value: string) {
@@ -196,7 +200,7 @@ function serializePlayer(row: PlayerRow, progress?: ProgressRow | null, loanCont
   const location = VALID_LOCATIONS.has(row.location) ? row.location : "casino";
   const talents = progress ? parseList(progress.talents) : [];
   const talentLevel = Math.min(10, Math.floor((progress?.talent_exp ?? 0) / 100));
-  return { cash: row.cash, bankBalance: row.bank_balance, loanBalance: row.loan_balance, loanProviderName: loanContract?.provider_name ?? "", loanRateBp: loanContract?.interest_rate_bp ?? null, loanSpreadBp: loanContract?.spread_bp ?? null, dailyMinimumPayment: row.daily_minimum_payment, dailyPaymentMade: row.daily_payment_made, missedPaymentDays: row.missed_payment_days, writerFans: row.writer_fans, writingUses: row.writer_writes, ownsRestaurant: Boolean(row.owns_restaurant), prisonUntil: row.prison_until, prisonCrime: row.prison_crime, territoryLocation: row.territory_location, territoryDay: row.territory_day, territoryPayoutDay: row.territory_payout_day, territoryVisits: row.territory_visits, territoryIncome: row.territory_income, territoryPending: row.territory_pending, hackDay: row.hack_day, hackUses: row.hack_uses, gameOver: row.game_over, mainStory: row.main_story, energy: row.energy, health: row.health, hunger: row.hunger, intelligenceExp: row.intelligence_exp, creativityExp: row.programming_exp, physicalExp: row.fitness_exp, socialExp: row.work_exp, charismaExp: row.charisma_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, actionAvailableAt: row.action_available_at, actionLabel: row.action_label, elapsedMinutes: row.elapsed_minutes, location, talentExp: progress?.talent_exp ?? 0, talentLevel, talentPoints: Math.max(0, talentLevel - talents.length), talents, storyChapter: progress?.story_chapter ?? 0, pendingEvent: progress?.pending_event ?? "" };
+  return { cash: row.cash, bankBalance: row.bank_balance, loanBalance: row.loan_balance, loanProviderName: loanContract?.provider_name ?? "", loanRateBp: loanContract?.interest_rate_bp ?? null, loanSpreadBp: loanContract?.spread_bp ?? null, dailyMinimumPayment: row.daily_minimum_payment, dailyPaymentMade: row.daily_payment_made, missedPaymentDays: row.missed_payment_days, writerFans: row.writer_fans, writingUses: row.writer_writes, ownsRestaurant: Boolean(row.owns_restaurant), prisonUntil: row.prison_until, prisonCrime: row.prison_crime, territoryLocation: row.territory_location, territoryDay: row.territory_day, territoryPayoutDay: row.territory_payout_day, territoryVisits: row.territory_visits, territoryIncome: row.territory_income, territoryPending: row.territory_pending, hackDay: row.hack_day, hackUses: row.hack_uses, streetDay: row.street_day, streetScavenges: row.street_scavenges, streetBegIncome: row.street_beg_income, gameOver: row.game_over, mainStory: row.main_story, energy: row.energy, health: row.health, hunger: row.hunger, intelligenceExp: row.intelligence_exp, creativityExp: row.programming_exp, physicalExp: row.fitness_exp, socialExp: row.work_exp, charismaExp: row.charisma_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, actionAvailableAt: row.action_available_at, actionLabel: row.action_label, elapsedMinutes: row.elapsed_minutes, location, talentExp: progress?.talent_exp ?? 0, talentLevel, talentPoints: Math.max(0, talentLevel - talents.length), talents, storyChapter: progress?.story_chapter ?? 0, storySeenChapter: progress?.story_seen_chapter ?? 0, pendingEvent: progress?.pending_event ?? "" };
 }
 
 async function activeLoanContract(db: D1Database, borrowerId: string) {
@@ -264,6 +268,8 @@ async function ensureSchema(db: D1Database) {
       territory_payout_day INTEGER NOT NULL DEFAULT 0, territory_visits INTEGER NOT NULL DEFAULT 0,
       territory_income INTEGER NOT NULL DEFAULT 0, territory_pending INTEGER NOT NULL DEFAULT 0,
       hack_day INTEGER NOT NULL DEFAULT 0, hack_uses INTEGER NOT NULL DEFAULT 0,
+      street_day INTEGER NOT NULL DEFAULT 0, street_scavenges INTEGER NOT NULL DEFAULT 0,
+      street_beg_income INTEGER NOT NULL DEFAULT 0,
       main_story TEXT NOT NULL DEFAULT 'legacy',
       energy INTEGER NOT NULL DEFAULT 100,
       health INTEGER NOT NULL DEFAULT 100,
@@ -320,6 +326,7 @@ async function ensureSchema(db: D1Database) {
     db.prepare(`CREATE TABLE IF NOT EXISTS player_progress (
       user_id TEXT PRIMARY KEY, talent_exp INTEGER NOT NULL DEFAULT 0,
       talents TEXT NOT NULL DEFAULT '[]', story_chapter INTEGER NOT NULL DEFAULT 0,
+      story_seen_chapter INTEGER NOT NULL DEFAULT 0,
       last_event_day INTEGER NOT NULL DEFAULT 0, pending_event TEXT NOT NULL DEFAULT '',
       updated_at INTEGER NOT NULL
     )`),
@@ -333,6 +340,38 @@ async function ensureSchema(db: D1Database) {
     db.prepare(`CREATE TABLE IF NOT EXISTS mystery_clues (
       user_id TEXT NOT NULL, clue_key TEXT NOT NULL, found_at INTEGER NOT NULL,
       PRIMARY KEY (user_id, clue_key)
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS player_inventory (
+      user_id TEXT NOT NULL, item_key TEXT NOT NULL, quantity INTEGER NOT NULL DEFAULT 0,
+      life_version INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, item_key)
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS street_beg_requests (
+      id TEXT PRIMARY KEY, requester_id TEXT NOT NULL, requester_name TEXT NOT NULL,
+      recipient_id TEXT NOT NULL, requester_job TEXT NOT NULL,
+      requester_life_version INTEGER NOT NULL DEFAULT 0, recipient_life_version INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending', outcome TEXT NOT NULL DEFAULT '', amount INTEGER NOT NULL DEFAULT 0,
+      resolution_token TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, resolved_at INTEGER
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS street_aid_boxes (
+      owner_id TEXT NOT NULL, cycle_day INTEGER NOT NULL, owner_name TEXT NOT NULL,
+      owner_life_version INTEGER NOT NULL DEFAULT 0, total_received INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'active', updated_at INTEGER NOT NULL,
+      PRIMARY KEY (owner_id, cycle_day)
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS street_aid_donations (
+      owner_id TEXT NOT NULL, cycle_day INTEGER NOT NULL, donor_id TEXT NOT NULL,
+      amount INTEGER NOT NULL, action_token TEXT NOT NULL DEFAULT '', donated_at INTEGER NOT NULL,
+      PRIMARY KEY (owner_id, cycle_day, donor_id)
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS city_coop_projects (
+      cycle_day INTEGER PRIMARY KEY, status TEXT NOT NULL DEFAULT 'open', completed_at INTEGER,
+      completion_token TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS city_coop_contributions (
+      cycle_day INTEGER NOT NULL, role TEXT NOT NULL, user_id TEXT NOT NULL, player_name TEXT NOT NULL,
+      job_category TEXT NOT NULL, life_version INTEGER NOT NULL DEFAULT 0, contributed_at INTEGER NOT NULL,
+      PRIMARY KEY (cycle_day, role), UNIQUE (cycle_day, user_id)
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS player_transfer_requests (
       id TEXT PRIMARY KEY, sender_id TEXT NOT NULL, sender_name TEXT NOT NULL,
@@ -433,6 +472,11 @@ async function ensureSchema(db: D1Database) {
     db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_poker_seat ON poker_hands(seat_no)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_city_memory_cycle ON city_memory_contributions(cycle_day)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_mystery_clues_key ON mystery_clues(clue_key)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_inventory_user_life ON player_inventory(user_id, life_version)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_beg_recipient_status ON street_beg_requests(recipient_id, status, expires_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_beg_pair_created ON street_beg_requests(requester_id, recipient_id, created_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_aid_boxes_day_status ON street_aid_boxes(cycle_day, status)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_aid_donations_donor_day ON street_aid_donations(donor_id, cycle_day)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_transfer_requests_recipient_status ON player_transfer_requests(recipient_id, status, expires_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_medical_requests_provider_status ON player_medical_requests(provider_id, status, expires_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_loan_requests_provider_status ON player_loan_requests(provider_id, status, expires_at)"),
@@ -468,6 +512,9 @@ async function ensureSchema(db: D1Database) {
     !columnNames.has("mutation_token") ? "ALTER TABLE players ADD COLUMN mutation_token TEXT NOT NULL DEFAULT ''" : null,
     !columnNames.has("hack_day") ? "ALTER TABLE players ADD COLUMN hack_day INTEGER NOT NULL DEFAULT 0" : null,
     !columnNames.has("hack_uses") ? "ALTER TABLE players ADD COLUMN hack_uses INTEGER NOT NULL DEFAULT 0" : null,
+    !columnNames.has("street_day") ? "ALTER TABLE players ADD COLUMN street_day INTEGER NOT NULL DEFAULT 0" : null,
+    !columnNames.has("street_scavenges") ? "ALTER TABLE players ADD COLUMN street_scavenges INTEGER NOT NULL DEFAULT 0" : null,
+    !columnNames.has("street_beg_income") ? "ALTER TABLE players ADD COLUMN street_beg_income INTEGER NOT NULL DEFAULT 0" : null,
   ].filter((item): item is string => Boolean(item))) await db.prepare(statement).run();
   const extraColumns: Record<string, Record<string, string>> = {
     writer_books: { author_life_version: "INTEGER NOT NULL DEFAULT 0" },
@@ -507,6 +554,8 @@ async function ensureSchema(db: D1Database) {
     casino_tournament_entries: { life_version: "INTEGER NOT NULL DEFAULT 0" },
     casino_tournament_rounds: { action_token: "TEXT NOT NULL DEFAULT ''" },
     casino_tournament_hands: { life_version: "INTEGER NOT NULL DEFAULT 0", action_token: "TEXT NOT NULL DEFAULT ''" },
+    player_progress: { story_seen_chapter: "INTEGER NOT NULL DEFAULT 0" },
+    city_coop_projects: { completion_token: "TEXT NOT NULL DEFAULT ''" },
   };
   for (const [table, definitions] of Object.entries(extraColumns)) {
     const tableColumns = await db.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
@@ -519,6 +568,13 @@ async function ensureSchema(db: D1Database) {
   await db.prepare("UPDATE players SET current_job='寫作助理', job_category='literary', job_exp=0 WHERE job_category='creative' OR current_job IN ('作家','畫家','設計師','演員','歌手','導演','實況主','網紅')").run();
   await db.prepare("UPDATE players SET current_job='廚房助理', job_category='hospitality', job_exp=0 WHERE current_job IN ('咖啡師','調酒師','旅館經理','導遊')").run();
   await db.prepare("UPDATE players SET current_job='unemployed', job_category='unfixed', job_exp=0 WHERE current_job IN ('職業球員','賽車手','格鬥選手','教練','裁判','健身教練')").run();
+  await db.prepare("UPDATE players SET current_job='街友', job_category='street' WHERE current_job='流浪者'").run();
+  await db.prepare(`UPDATE players SET current_job=CASE
+      WHEN current_job IN ('攝影師','翻譯') THEN '接案助理'
+      WHEN current_job='接案設計師' THEN '自由工作者'
+      WHEN current_job IN ('顧問','家教') THEN '資深接案者'
+      WHEN current_job='街頭藝人' THEN '自由工作顧問' END,
+    job_category='freelance' WHERE current_job IN ('攝影師','翻譯','接案設計師','顧問','家教','街頭藝人')`).run();
 }
 
 let schemaReady: Promise<void> | null = null;
@@ -923,6 +979,77 @@ async function pendingLoanRequests(db: D1Database, providerId: string) {
     WHERE provider_id=? AND status='pending' AND expires_at>?
     ORDER BY created_at ASC LIMIT 1`).bind(providerId, now).all<LoanRequestRow>();
   return requests.results.map((request) => ({ id: request.id, borrowerName: request.borrower_name, providerName: request.provider_name, providerJob: request.provider_job, amount: request.amount, interestRateBp: request.interest_rate_bp, spreadBp: request.spread_bp, expiresAt: request.expires_at }));
+}
+
+const cityCycleDay = () => Math.floor(worldMinutes() / 1440) + 1;
+
+async function streetState(db: D1Database, player: PlayerRow) {
+  const rows = await db.prepare(`SELECT item_key, quantity FROM player_inventory
+    WHERE user_id=? AND life_version=? AND quantity>0 ORDER BY item_key`).bind(player.user_id, player.life_version)
+    .all<{ item_key: keyof typeof STREET_INVENTORY; quantity: number }>();
+  const items = rows.results.flatMap((row) => {
+    const definition = STREET_INVENTORY[row.item_key];
+    if (!definition) return [];
+    return [{ key: row.item_key, ...definition, sellPrice: row.item_key === "can" ? streetCanSellPriceFor(player.current_job) : ("sellPrice" in definition ? definition.sellPrice : 0), quantity: row.quantity }];
+  });
+  const personalDay = Math.floor(player.elapsed_minutes / 1440) + 1;
+  const used = player.street_day === personalDay ? player.street_scavenges : 0;
+  const income = player.street_day === personalDay ? player.street_beg_income : 0;
+  return { items, scavengesUsed: used, scavengesMax: streetScavengeLimitFor(player.current_job), begIncome: income, begCap: streetBegDailyCapFor(player.current_job) };
+}
+
+async function pendingBegRequests(db: D1Database, recipientId: string) {
+  const now = Date.now();
+  await db.batch([
+    db.prepare("UPDATE street_beg_requests SET status='cancelled', outcome='expired', resolved_at=? WHERE recipient_id=? AND status='pending' AND expires_at<=?").bind(now, recipientId, now),
+    db.prepare("UPDATE street_beg_requests SET status='cancelled', outcome='processing_timeout', resolved_at=? WHERE recipient_id=? AND status='processing' AND resolved_at<=?").bind(now, recipientId, now - REQUEST_PROCESSING_TIMEOUT_MS),
+  ]);
+  const rows = await db.prepare(`SELECT id, requester_id, requester_name, recipient_id, requester_job, requester_life_version, recipient_life_version,
+      status, outcome, amount, resolution_token, created_at, expires_at, resolved_at
+    FROM street_beg_requests WHERE recipient_id=? AND status='pending' AND expires_at>?
+    ORDER BY created_at LIMIT 1`).bind(recipientId, now).all<BegRequestRow>();
+  return rows.results.map((row) => ({ id: row.id, requesterName: row.requester_name, requesterJob: row.requester_job, amounts: streetBegDonationsFor(row.requester_job), expiresAt: row.expires_at }));
+}
+
+async function aidBoxState(db: D1Database, userId: string) {
+  const day = cityCycleDay();
+  const rows = await db.prepare(`SELECT b.owner_id, b.owner_name, b.total_received,
+      EXISTS(SELECT 1 FROM street_aid_donations d WHERE d.owner_id=b.owner_id AND d.cycle_day=b.cycle_day AND d.donor_id=?) AS donated
+    FROM street_aid_boxes b WHERE b.cycle_day=? AND b.status='active' ORDER BY b.updated_at DESC LIMIT 12`)
+    .bind(userId, day).all<{ owner_id: string; owner_name: string; total_received: number; donated: number }>();
+  return { cycleDay: day, dailyCap: 2_000, boxes: rows.results.map((row) => ({ ownerId: row.owner_id, ownerName: row.owner_name, totalReceived: row.total_received, donated: Boolean(row.donated), isMine: row.owner_id === userId })) };
+}
+
+const COOP_ROLES = [
+  { id: "medical", label: "醫療照護", category: "medical" },
+  { id: "finance", label: "資金規劃", category: "finance" },
+  { id: "literary", label: "故事宣傳", category: "literary" },
+  { id: "hospitality", label: "餐飲支援", category: "hospitality" },
+] as const;
+
+async function coopState(db: D1Database, player: PlayerRow) {
+  const day = cityCycleDay(); const now = Date.now();
+  await db.prepare("INSERT INTO city_coop_projects (cycle_day, status, updated_at) VALUES (?, 'open', ?) ON CONFLICT(cycle_day) DO NOTHING").bind(day, now).run();
+  const [project, rows] = await Promise.all([
+    db.prepare("SELECT status, completed_at FROM city_coop_projects WHERE cycle_day=?").bind(day).first<{ status: string; completed_at: number | null }>(),
+    db.prepare("SELECT role, user_id, player_name FROM city_coop_contributions WHERE cycle_day=?").bind(day).all<{ role: string; user_id: string; player_name: string }>(),
+  ]);
+  const byRole = new Map(rows.results.map((row) => [row.role, row]));
+  const eligible = COOP_ROLES.find((role) => role.category === player.job_category)?.id ?? "";
+  return { cycleDay: day, status: project?.status ?? "open", reward: 600, talentExp: 8, eligibleRole: eligible,
+    contributed: rows.results.some((row) => row.user_id === player.user_id),
+    roles: COOP_ROLES.map((role) => ({ id: role.id, label: role.label, playerName: byRole.get(role.id)?.player_name ?? "" })) };
+}
+
+async function refreshedGameResponse(db: D1Database, user: AuthUser, message: string, extras: Record<string, unknown> = {}) {
+  const player = await db.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
+  if (!player) return json({ message: "找不到玩家資料。" }, 404);
+  const [progress, contract, world, transfers, medical, loans, begs, street, aidBoxes, coop] = await Promise.all([
+    ensureProgress(db, player), activeLoanContract(db, user.userId), multiplayer(db), pendingTransferRequests(db, user.userId),
+    pendingMedicalRequests(db, user.userId), pendingLoanRequests(db, user.userId), pendingBegRequests(db, user.userId),
+    streetState(db, player), aidBoxState(db, user.userId), coopState(db, player),
+  ]);
+  return json({ player: serializePlayer(player, progress, contract), message, transferRequests: transfers, medicalRequests: medical, loanRequests: loans, begRequests: begs, street, aidBoxes, coop, ...world, ...extras });
 }
 
 async function transferActionResponse(db: D1Database, user: AuthUser, player: PlayerRow, progress: ProgressRow, message: string) {
@@ -2279,7 +2406,7 @@ async function getAvatar(userId: string, env: Env) {
 
 async function bootstrap(request: Request, env: Env) {
   const user = await identity(request, env.DB);
-  if (!user || !env.DB) return json({ serverNow: Date.now(), authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [], casino: { capacity: 5, activeCount: 0, seats: [], hand: null }, poker: { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 }, bingo: { status: "lobby", players: [], drawn: [] }, tournament: { status: "lobby", players: [] }, medicalRequests: [], loanRequests: [], bookStore: { books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK } });
+  if (!user || !env.DB) return json({ serverNow: Date.now(), authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [], casino: { capacity: 5, activeCount: 0, seats: [], hand: null }, poker: { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 }, bingo: { status: "lobby", players: [], drawn: [] }, tournament: { status: "lobby", players: [] }, medicalRequests: [], loanRequests: [], begRequests: [], street: { items: [], scavengesUsed: 0, scavengesMax: 4, begIncome: 0, begCap: 500 }, aidBoxes: { cycleDay: 1, dailyCap: 2000, boxes: [] }, coop: { cycleDay: 1, status: "open", reward: 600, talentExp: 8, eligibleRole: "", contributed: false, roles: [] }, bookStore: { books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK } });
   await ensureSchemaOnce(env.DB);
   const row = await upsertPlayer(env.DB, user);
   if (!row) return json({ message: "無法載入玩家資料" }, 500);
@@ -2287,19 +2414,23 @@ async function bootstrap(request: Request, env: Env) {
   const world = await multiplayer(env.DB);
   const emptyCasino = { capacity: 5, activeCount: 0, seats: [], hand: null };
   const emptyPoker = { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 };
-  const [casino, poker, memory, transferRequests, medicalRequests, loanRequests, bingo, tournament, loanContract, bookStoreState] = await Promise.all([
+  const [casino, poker, memory, transferRequests, medicalRequests, loanRequests, begRequests, street, aidBoxes, coop, bingo, tournament, loanContract, bookStoreState] = await Promise.all([
     row.location === "casino" ? casinoState(env.DB, user.userId) : Promise.resolve(emptyCasino),
     row.location === "casino" ? pokerState(env.DB, user.userId) : Promise.resolve(emptyPoker),
     cityMemory(env.DB),
     pendingTransferRequests(env.DB, user.userId),
     pendingMedicalRequests(env.DB, user.userId),
     pendingLoanRequests(env.DB, user.userId),
+    pendingBegRequests(env.DB, user.userId),
+    streetState(env.DB, row),
+    aidBoxState(env.DB, user.userId),
+    coopState(env.DB, row),
     row.location === "casino" ? bingoState(env.DB, user.userId) : Promise.resolve({ status: "lobby", players: [], drawn: [] }),
     row.location === "casino" ? tournamentState(env.DB, user.userId) : Promise.resolve({ status: "lobby", players: [] }),
     activeLoanContract(env.DB, user.userId),
     row.location === "bookstore" ? bookStore(env.DB, user.userId) : Promise.resolve({ books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK }),
   ]);
-  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress, loanContract), room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, bingo, tournament, cityMemory: memory, transferRequests, medicalRequests, loanRequests, bookStore: bookStoreState });
+  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress, loanContract), room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, bingo, tournament, cityMemory: memory, transferRequests, medicalRequests, loanRequests, begRequests, street, aidBoxes, coop, bookStore: bookStoreState });
 }
 
 async function takeAction(request: Request, env: Env) {
@@ -2313,12 +2444,12 @@ async function takeAction(request: Request, env: Env) {
   let talents = new Set(parseList(progress.talents));
   const clampEnergy = (value: number) => Math.max(0, Math.min(talents.has("strong_body") ? 120 : 100, value));
 
-  let body: { action?: string; location?: string; territoryLocation?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; academy?: string; story?: string; talent?: string; choice?: string; targetId?: string; requestId?: string; medicalRequestId?: string; loanRequestId?: string; bookId?: string; title?: string; status?: string };
+  let body: { action?: string; location?: string; territoryLocation?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; quantity?: number; itemKey?: string; academy?: string; story?: string; talent?: string; choice?: string; targetId?: string; ownerId?: string; requestId?: string; medicalRequestId?: string; loanRequestId?: string; bookId?: string; title?: string; status?: string };
   try { body = await request.json(); } catch { return json({ message: "行動資料格式錯誤。" }, 400); }
   if ((current.game_over || current.reset_game_over) && body.action !== "reset") return json({ message: current.reset_game_over ? "人生資料正在重置，請稍候再試。" : "這段人生已經結束，請重新開始。" }, 409);
   if (current.main_story === "unselected" && body.action !== "choose_story") return json({ message: "請先選擇人生主線。" }, 409);
   if (current.prison_until > current.elapsed_minutes && body.action !== "reset") return json({ message: `你目前因「${current.prison_crime || "違法行為"}」在監獄服刑，還需在線遊玩 ${Math.ceil((current.prison_until - current.elapsed_minutes) / 60)} 小時。` }, 409);
-  if (!["move", "choose_story", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
+  if (!["move", "choose_story", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy", "beg_response", "inventory_use", "street_share_food", "aid_box_donate", "coop_contribute", "story_ack"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
   const next = { ...current };
   const sharedMinutes = worldMinutes();
   const memoryBefore = await cityMemory(env.DB);
@@ -2346,6 +2477,209 @@ async function takeAction(request: Request, env: Env) {
   let expectedResetMarker = current.reset_game_over || "";
 
   switch (body.action) {
+    case "street_scavenge": {
+      if (current.job_category !== "street" || current.location !== "underpass") return json({ message: "只有街頭生存職業能在車站地下道拾荒。" }, 400);
+      const personalDay = Math.floor(current.elapsed_minutes / 1440) + 1;
+      const used = current.street_day === personalDay ? current.street_scavenges : 0;
+      const maximum = streetScavengeLimitFor(current.current_job);
+      if (used >= maximum) return json({ message: `今天已完成 ${maximum} 次拾荒，下一個玩家遊玩日再來。` }, 409);
+      const rank = streetRankIndex(current.current_job);
+      const roll = crypto.getRandomValues(new Uint32Array(1))[0] / 4_294_967_296;
+      let itemKey: keyof typeof STREET_INVENTORY | "" = ""; let quantity = 0; let cashGain = 0; let findText = "什麼也沒找到";
+      if (roll < .28) { itemKey = "can"; quantity = 1 + Math.floor(Math.random() * 3); findText = `${quantity} 個空罐`; }
+      else if (roll < .50) { itemKey = "food"; quantity = 1; findText = "一份還能食用的食物"; }
+      else if (roll < .70) { cashGain = 20 + Math.floor(Math.random() * 61); findText = `NT$${cashGain}`; }
+      else if (rank >= 1 && roll < .82) { itemKey = "scratch"; quantity = 1; findText = "一張免費彩券"; }
+      else if (rank >= 2 && roll < .94) { itemKey = "secondhand"; quantity = 1; findText = "一件二手物品"; }
+      else if (rank >= 3 && roll < .98) { itemKey = "rare"; quantity = 1; findText = "一件稀有收藏品"; }
+      const newExp = current.job_exp + 10; const newJob = careerForCategory("street", newExp, current.current_job).title;
+      const now = Math.max(Date.now(), current.updated_at + 1); const token = crypto.randomUUID();
+      const statements = [env.DB.prepare(`UPDATE players SET cash=cash+?, street_day=?, street_scavenges=?, job_exp=?, current_job=?,
+          action_available_at=?, action_label='拾荒中', updated_at=?, last_seen_at=?, mutation_token=?
+        WHERE user_id=? AND life_version=? AND updated_at=? AND job_category='street' AND location='underpass'
+        RETURNING user_id`).bind(cashGain, personalDay, used + 1, newExp, newJob, Date.now() + STREET_SCAVENGE_WAIT_SECONDS * 1000,
+          now, now, token, user.userId, current.life_version, current.updated_at)];
+      if (itemKey) statements.push(env.DB.prepare(`INSERT INTO player_inventory (user_id,item_key,quantity,life_version,updated_at)
+        SELECT ?,?,?,?,? WHERE EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?)
+        ON CONFLICT(user_id,item_key) DO UPDATE SET quantity=player_inventory.quantity+excluded.quantity,
+          life_version=excluded.life_version, updated_at=excluded.updated_at
+        RETURNING item_key`).bind(user.userId, itemKey, quantity, current.life_version, now, user.userId, current.life_version, token));
+      const results = await env.DB.batch(statements);
+      if ((results[0]?.results?.length ?? 0) !== 1 || (itemKey && (results[1]?.results?.length ?? 0) !== 1)) return json({ message: "拾荒狀態剛剛改變，請再試一次。" }, 409);
+      return refreshedGameResponse(env.DB, user, `拾荒找到${findText}，街頭聲望 +10。${newJob !== current.current_job ? ` 你已晉升為${newJob}。` : ""}`);
+    }
+    case "inventory_use": {
+      const key = body.itemKey as keyof typeof STREET_INVENTORY;
+      if (!["food", "scratch"].includes(key)) return json({ message: "這項物品不能直接使用。" }, 400);
+      const now = Date.now(); const token = crypto.randomUUID(); const prize = key === "scratch" ? scratchPrize() : 0;
+      const results = await env.DB.batch([
+        env.DB.prepare(`UPDATE player_inventory SET quantity=quantity-1, updated_at=?
+          WHERE user_id=? AND item_key=? AND life_version=? AND quantity>0 RETURNING quantity`).bind(now, user.userId, key, current.life_version),
+        env.DB.prepare(`UPDATE players SET hunger=MIN(100,hunger+?), cash=cash+?, updated_at=MAX(updated_at+1,?), mutation_token=?
+          WHERE user_id=? AND life_version=? AND EXISTS (SELECT 1 FROM player_inventory WHERE user_id=? AND item_key=? AND life_version=? AND updated_at=?)
+          RETURNING user_id`).bind(key === "food" ? STREET_INVENTORY.food.hunger : 0, prize, now, token, user.userId, current.life_version,
+            user.userId, key, current.life_version, now),
+      ]);
+      if ((results[0]?.results?.length ?? 0) !== 1 || (results[1]?.results?.length ?? 0) !== 1) return json({ message: "背包裡沒有這項物品。" }, 409);
+      return refreshedGameResponse(env.DB, user, key === "food" ? `吃下街頭食物，飽食度 +${STREET_INVENTORY.food.hunger}。` : `免費彩券開獎：${prize ? `獲得 NT$${prize}` : "這次沒有中獎"}。`, { scratch: key === "scratch" ? { price: 0, prize } : null });
+    }
+    case "inventory_sell": {
+      const key = body.itemKey as keyof typeof STREET_INVENTORY; const quantity = Math.floor(Number(body.quantity ?? 1));
+      if (current.location !== "shopping" || !isLocationOpen("shopping", sharedMinutes)) return json({ message: `請在購物街營業時間內出售物品（${OPENING_HOURS.shopping?.label}）。` }, 400);
+      if (!["can", "secondhand", "rare"].includes(key) || quantity < 1 || quantity > 99) return json({ message: "出售物品或數量不正確。" }, 400);
+      const sellPrices: Partial<Record<keyof typeof STREET_INVENTORY, number>> = { can: streetCanSellPriceFor(current.current_job), secondhand: STREET_INVENTORY.secondhand.sellPrice, rare: STREET_INVENTORY.rare.sellPrice };
+      const price = sellPrices[key] ?? 0;
+      const now = Date.now(); const token = crypto.randomUUID();
+      const results = await env.DB.batch([
+        env.DB.prepare(`UPDATE player_inventory SET quantity=quantity-?, updated_at=? WHERE user_id=? AND item_key=? AND life_version=? AND quantity>=? RETURNING quantity`)
+          .bind(quantity, now, user.userId, key, current.life_version, quantity),
+        env.DB.prepare(`UPDATE players SET cash=cash+?, updated_at=MAX(updated_at+1,?), mutation_token=? WHERE user_id=? AND life_version=?
+          AND EXISTS (SELECT 1 FROM player_inventory WHERE user_id=? AND item_key=? AND life_version=? AND updated_at=?) RETURNING user_id`)
+          .bind(price * quantity, now, token, user.userId, current.life_version, user.userId, key, current.life_version, now),
+      ]);
+      if ((results[0]?.results?.length ?? 0) !== 1 || (results[1]?.results?.length ?? 0) !== 1) return json({ message: "物品數量不足，沒有完成出售。" }, 409);
+      return refreshedGameResponse(env.DB, user, `出售 ${quantity} 件${STREET_INVENTORY[key].name}，獲得 NT$${price * quantity}。`);
+    }
+    case "beg_request": {
+      if (current.job_category !== "street") return json({ message: "只有街頭生存職業可以向其他玩家乞討。" }, 400);
+      if (!body.targetId || body.targetId === user.userId) return json({ message: "請選擇另一位在線玩家。" }, 400);
+      const personalDay = Math.floor(current.elapsed_minutes / 1440) + 1;
+      const income = current.street_day === personalDay ? current.street_beg_income : 0;
+      if (income >= streetBegDailyCapFor(current.current_job)) return json({ message: "今天的乞討收入已達上限。" }, 409);
+      const target = await env.DB.prepare(`SELECT user_id,life_version FROM players WHERE user_id=? AND last_seen_at>=? AND game_over='' AND reset_game_over='' AND main_story<>'unselected'`)
+        .bind(body.targetId, Date.now() - ONLINE_HEARTBEAT_GRACE_MS).first<{ user_id: string; life_version: number }>();
+      if (!target) return json({ message: "對方目前不在線上。" }, 409);
+      const recent = await env.DB.prepare("SELECT id FROM street_beg_requests WHERE requester_id=? AND recipient_id=? AND created_at>? LIMIT 1")
+        .bind(user.userId, target.user_id, Date.now() - STREET_BEG_PAIR_COOLDOWN_MS).first<{ id: string }>();
+      if (recent) return json({ message: "同一位玩家 10 分鐘內只能乞討一次。" }, 409);
+      const pending = await env.DB.prepare("SELECT id FROM street_beg_requests WHERE recipient_id=? AND status='pending' AND expires_at>? LIMIT 1").bind(target.user_id, Date.now()).first<{ id: string }>();
+      if (pending) return json({ message: "對方正在處理另一個乞討請求。" }, 409);
+      const now = Date.now();
+      await env.DB.prepare(`INSERT INTO street_beg_requests (id,requester_id,requester_name,recipient_id,requester_job,requester_life_version,recipient_life_version,created_at,expires_at)
+        VALUES (?,?,?,?,?,?,?,?,?)`).bind(crypto.randomUUID(), user.userId, user.displayName.slice(0, 40), target.user_id, current.current_job, current.life_version, target.life_version, now, now + STREET_BEG_REQUEST_TIMEOUT_MS).run();
+      return refreshedGameResponse(env.DB, user, "乞討請求已送出，對方可選擇給錢、拒絕或羞辱；30 秒後自動失效。");
+    }
+    case "beg_response": {
+      if (!body.requestId || !["give", "decline", "humiliate"].includes(body.kind || "")) return json({ message: "乞討回覆不正確。" }, 400);
+      const now = Date.now(); const token = crypto.randomUUID();
+      const requestRow = await env.DB.prepare(`UPDATE street_beg_requests SET status='processing', resolution_token=?, resolved_at=?
+        WHERE id=? AND recipient_id=? AND recipient_life_version=? AND status='pending' AND expires_at>? RETURNING *`)
+        .bind(token, now, body.requestId, user.userId, current.life_version, now).first<BegRequestRow>();
+      if (!requestRow) return json({ message: "這項乞討請求已失效或處理完畢。" }, 409);
+      if (body.kind !== "give") {
+        await env.DB.prepare("UPDATE street_beg_requests SET status='resolved', outcome=?, resolved_at=? WHERE id=? AND status='processing' AND resolution_token=?")
+          .bind(body.kind, now, requestRow.id, token).run();
+        return refreshedGameResponse(env.DB, user, body.kind === "decline" ? "你拒絕了這次乞討。" : "你選擇羞辱對方；不會造成任何數值損失。");
+      }
+      const amount = Math.floor(Number(body.amount ?? 0));
+      if (!streetBegDonationsFor(requestRow.requester_job).includes(amount as never)) {
+        await env.DB.prepare("UPDATE street_beg_requests SET status='pending', resolution_token='', resolved_at=NULL WHERE id=? AND resolution_token=?").bind(requestRow.id, token).run();
+        return json({ message: "給予金額不在可選範圍。" }, 400);
+      }
+      const requester = await env.DB.prepare("SELECT * FROM players WHERE user_id=? AND life_version=? AND job_category='street' AND game_over='' AND reset_game_over=''")
+        .bind(requestRow.requester_id, requestRow.requester_life_version).first<PlayerRow>();
+      const requesterDay = requester ? Math.floor(requester.elapsed_minutes / 1440) + 1 : 0;
+      const requesterIncome = requester && requester.street_day === requesterDay ? requester.street_beg_income : 0;
+      const cap = requester ? streetBegDailyCapFor(requester.current_job) : 0;
+      const granted = Math.min(amount, Math.max(0, cap - requesterIncome));
+      if (!requester || granted <= 0 || current.cash < granted) {
+        await env.DB.prepare("UPDATE street_beg_requests SET status='cancelled', outcome='unavailable', resolved_at=? WHERE id=? AND resolution_token=?").bind(now, requestRow.id, token).run();
+        return json({ message: current.cash < granted ? "你的現金不足，無法給予這筆金額。" : "對方已離線、換職或達到今日上限。" }, 409);
+      }
+      const nextExp = requester.job_exp + 10; const nextJob = careerForCategory("street", nextExp, requester.current_job).title;
+      const results = await env.DB.batch([
+        env.DB.prepare("UPDATE players SET cash=cash-?, updated_at=MAX(updated_at+1,?), mutation_token=? WHERE user_id=? AND life_version=? AND cash>=? RETURNING user_id")
+          .bind(granted, now, token, user.userId, current.life_version, granted),
+        env.DB.prepare(`UPDATE players SET cash=cash+?, street_day=?, street_beg_income=?, job_exp=?, current_job=?, updated_at=MAX(updated_at+1,?), mutation_token=?
+          WHERE user_id=? AND life_version=? AND job_category='street' AND game_over='' AND reset_game_over=''
+          AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?) RETURNING user_id`)
+          .bind(granted, requesterDay, requesterIncome + granted, nextExp, nextJob, now, token, requester.user_id, requester.life_version,
+            user.userId, current.life_version, token),
+        env.DB.prepare(`UPDATE street_beg_requests SET status='resolved', outcome='give', amount=?, resolved_at=?
+          WHERE id=? AND status='processing' AND resolution_token=?
+          AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?) RETURNING id`)
+          .bind(granted, now, requestRow.id, token, requester.user_id, requester.life_version, token),
+      ]);
+      if (results.some((result) => (result?.results?.length ?? 0) !== 1)) return json({ message: "付款狀態剛剛改變，請重新整理確認。" }, 409);
+      return refreshedGameResponse(env.DB, user, `你給了${requestRow.requester_name} NT$${granted}。`);
+    }
+    case "street_share_food": {
+      if (current.job_category !== "street" || streetRankIndex(current.current_job) < 2 || !body.targetId || body.targetId === user.userId) return json({ message: "丐幫長老以上才能分享食物給其他玩家。" }, 400);
+      const target = await env.DB.prepare("SELECT user_id,life_version FROM players WHERE user_id=? AND last_seen_at>=? AND game_over='' AND reset_game_over=''")
+        .bind(body.targetId, Date.now() - ONLINE_HEARTBEAT_GRACE_MS).first<{ user_id: string; life_version: number }>();
+      if (!target) return json({ message: "對方目前不在線上。" }, 409);
+      const now = Date.now(); const token = crypto.randomUUID();
+      const results = await env.DB.batch([
+        env.DB.prepare("UPDATE player_inventory SET quantity=quantity-1, updated_at=? WHERE user_id=? AND item_key='food' AND life_version=? AND quantity>0 RETURNING quantity").bind(now, user.userId, current.life_version),
+        env.DB.prepare(`UPDATE players SET hunger=MIN(100,hunger+25), updated_at=MAX(updated_at+1,?), mutation_token=? WHERE user_id=? AND life_version=?
+          AND EXISTS (SELECT 1 FROM player_inventory WHERE user_id=? AND item_key='food' AND life_version=? AND updated_at=?) RETURNING user_id`)
+          .bind(now, token, target.user_id, target.life_version, user.userId, current.life_version, now),
+      ]);
+      if (results.some((result) => (result?.results?.length ?? 0) !== 1)) return json({ message: "食物不足或對方狀態已改變。" }, 409);
+      return refreshedGameResponse(env.DB, user, "已分享一份食物，對方飽食度 +25。");
+    }
+    case "aid_box_open": {
+      if (current.current_job !== "丐幫幫主" || current.job_category !== "street" || current.location !== "underpass") return json({ message: "只有丐幫幫主能在車站地下道開設互助箱。" }, 400);
+      const day = cityCycleDay(); const result = await env.DB.prepare(`INSERT INTO street_aid_boxes (owner_id,cycle_day,owner_name,owner_life_version,updated_at)
+        VALUES (?,?,?,?,?) ON CONFLICT(owner_id,cycle_day) DO NOTHING RETURNING owner_id`)
+        .bind(user.userId, day, user.displayName.slice(0, 40), current.life_version, Date.now()).first<{ owner_id: string }>();
+      if (!result) return json({ message: "今天已開設過互助箱。" }, 409);
+      return refreshedGameResponse(env.DB, user, "今日互助箱已開放，其他玩家可自願捐助，每人一次、每日最多累積 NT$2,000。");
+    }
+    case "aid_box_donate": {
+      const amount = Math.floor(Number(body.amount ?? 0)); const day = cityCycleDay();
+      if (current.location !== "underpass" || !body.ownerId || body.ownerId === user.userId || ![50, 100, 200].includes(amount)) return json({ message: "請在車站地下道選擇有效互助箱與捐助金額。" }, 400);
+      const box = await env.DB.prepare("SELECT owner_id,owner_life_version,total_received FROM street_aid_boxes WHERE owner_id=? AND cycle_day=? AND status='active'")
+        .bind(body.ownerId, day).first<{ owner_id: string; owner_life_version: number; total_received: number }>();
+      const granted = box ? Math.min(amount, 2_000 - box.total_received) : 0;
+      if (!box || granted <= 0 || current.cash < granted) return json({ message: "互助箱已滿、已失效，或你的現金不足。" }, 409);
+      const now = Date.now(); const token = crypto.randomUUID();
+      const results = await env.DB.batch([
+        env.DB.prepare(`INSERT INTO street_aid_donations (owner_id,cycle_day,donor_id,amount,action_token,donated_at)
+          VALUES (?,?,?,?,?,?) ON CONFLICT(owner_id,cycle_day,donor_id) DO NOTHING RETURNING donor_id`).bind(box.owner_id, day, user.userId, granted, token, now),
+        env.DB.prepare(`UPDATE players SET cash=cash-?, updated_at=MAX(updated_at+1,?), mutation_token=? WHERE user_id=? AND life_version=? AND cash>=?
+          AND EXISTS (SELECT 1 FROM street_aid_donations WHERE owner_id=? AND cycle_day=? AND donor_id=? AND action_token=?) RETURNING user_id`)
+          .bind(granted, now, token, user.userId, current.life_version, granted, box.owner_id, day, user.userId, token),
+        env.DB.prepare(`UPDATE players SET cash=cash+?, updated_at=MAX(updated_at+1,?), mutation_token=? WHERE user_id=? AND life_version=? AND current_job='丐幫幫主'
+          AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?) RETURNING user_id`)
+          .bind(granted, now, token, box.owner_id, box.owner_life_version, user.userId, current.life_version, token),
+        env.DB.prepare(`UPDATE street_aid_boxes SET total_received=total_received+?, updated_at=? WHERE owner_id=? AND cycle_day=? AND total_received+?<=2000
+          AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?) RETURNING total_received`)
+          .bind(granted, now, box.owner_id, day, granted, box.owner_id, box.owner_life_version, token),
+      ]);
+      if (results.some((result) => (result?.results?.length ?? 0) !== 1)) return json({ message: "你今天已捐過，或互助箱狀態剛剛改變。" }, 409);
+      return refreshedGameResponse(env.DB, user, `已自願捐助 NT$${granted}。`);
+    }
+    case "coop_contribute": {
+      const role = COOP_ROLES.find((item) => item.category === current.job_category);
+      if (!role) return json({ message: "目前職業無法承擔今日合作計畫的四個分工。" }, 400);
+      const day = cityCycleDay(); const now = Date.now();
+      const inserted = await env.DB.prepare(`INSERT INTO city_coop_contributions (cycle_day,role,user_id,player_name,job_category,life_version,contributed_at)
+        SELECT ?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM city_coop_projects WHERE cycle_day=? AND status='open')
+        ON CONFLICT DO NOTHING RETURNING role`).bind(day, role.id, user.userId, user.displayName.slice(0, 40), current.job_category, current.life_version, now, day).first<{ role: string }>();
+      if (!inserted) return json({ message: "這個分工已有人完成，或你今天已參與過。" }, 409);
+      const count = await env.DB.prepare("SELECT COUNT(*) AS count FROM city_coop_contributions WHERE cycle_day=?").bind(day).first<{ count: number }>();
+      let messageText = `已完成「${role.label}」分工。`;
+      if ((count?.count ?? 0) >= COOP_ROLES.length) {
+        const completionToken = crypto.randomUUID();
+        const claimed = await env.DB.prepare("UPDATE city_coop_projects SET status='completed',completed_at=?,completion_token=?,updated_at=? WHERE cycle_day=? AND status='open' RETURNING cycle_day")
+          .bind(now, completionToken, now, day).first<{ cycle_day: number }>();
+        if (claimed) {
+          const contributors = await env.DB.prepare("SELECT user_id,life_version FROM city_coop_contributions WHERE cycle_day=?").bind(day).all<{ user_id: string; life_version: number }>();
+          await env.DB.batch(contributors.results.map((contributor) => env.DB!.prepare(`UPDATE players SET cash=cash+600, updated_at=MAX(updated_at+1,?)
+            WHERE user_id=? AND life_version=? AND EXISTS (SELECT 1 FROM city_coop_projects WHERE cycle_day=? AND completion_token=?)`).bind(now, contributor.user_id, contributor.life_version, day, completionToken)));
+          await env.DB.batch(contributors.results.map((contributor) => env.DB!.prepare(`UPDATE player_progress SET talent_exp=MIN(1099,talent_exp+8),updated_at=?
+            WHERE user_id=? AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=?)
+              AND EXISTS (SELECT 1 FROM city_coop_projects WHERE cycle_day=? AND completion_token=?)`).bind(now, contributor.user_id, contributor.user_id, contributor.life_version, day, completionToken)));
+          messageText += " 四種職業已共同完成計畫，全員獲得 NT$600 與天賦經驗 +8。";
+        }
+      }
+      return refreshedGameResponse(env.DB, user, messageText);
+    }
+    case "story_ack": {
+      await env.DB.prepare("UPDATE player_progress SET story_seen_chapter=story_chapter,updated_at=? WHERE user_id=?").bind(Date.now(), user.userId).run();
+      return refreshedGameResponse(env.DB, user, "主線章節已收進人生紀錄。");
+    }
     case "crime_hack": {
       if (next.job_category !== "crime" || next.current_job !== "駭客") return json({ message: "只有駭客可以執行這項行動。" }, 400);
       if (!body.targetId || body.targetId === user.userId) return json({ message: "請選擇其他玩家。" }, 400);
@@ -2857,6 +3191,10 @@ async function takeAction(request: Request, env: Env) {
       next.energy = Math.min(talents.has("strong_body") ? 120 : 100, Math.max(0, next.energy + ("energy" in choice ? choice.energy ?? 0 : 0)));
       next.health = clamp(next.health + ("health" in choice ? choice.health ?? 0 : 0));
       next.intelligence_exp = Math.min(ABILITY_MAX, next.intelligence_exp + ("intelligence" in choice ? choice.intelligence ?? 0 : 0));
+      next.programming_exp = Math.min(ABILITY_MAX, next.programming_exp + Number("creativity" in choice ? choice.creativity ?? 0 : 0));
+      next.fitness_exp = Math.min(ABILITY_MAX, next.fitness_exp + Number("physical" in choice ? choice.physical ?? 0 : 0));
+      next.work_exp = Math.min(ABILITY_MAX, next.work_exp + Number("social" in choice ? choice.social ?? 0 : 0));
+      next.charisma_exp = Math.min(ABILITY_MAX, next.charisma_exp + Number("charisma" in choice ? choice.charisma ?? 0 : 0));
       if ("rentalDays" in choice && choice.rentalDays) next.rented_until = Math.max(next.elapsed_minutes, next.rented_until) + choice.rentalDays * 1440;
       const gained = "talentExp" in choice ? choice.talentExp ?? 0 : 0;
       pendingCityEvent = { eventId: event.id, talentExp: gained };
@@ -2866,7 +3204,7 @@ async function takeAction(request: Request, env: Env) {
     case "choose_story":
       if (next.main_story !== "unselected") return json({ message: "人生主線選定後不能再次更換。" }, 409);
       if (body.story !== "prodigal_return") return json({ message: "這條人生主線目前尚未開放。" }, 400);
-      Object.assign(next, { cash: 37, bank_balance: 0, loan_balance: 250_000, main_story: "prodigal_return", finance_day: Math.floor(next.elapsed_minutes / 1440) + 1, daily_minimum_payment: 750, daily_payment_made: 0, missed_payment_days: 0, writer_fans: 0, writer_day: Math.floor(next.elapsed_minutes / 1440) + 1, writer_writes: 0, owns_restaurant: 0, prison_until: 0, prison_crime: "", territory_location: "", territory_day: 0, territory_payout_day: 0, territory_visits: 0, territory_income: 0, territory_pending: 0, hack_day: 0, hack_uses: 0, game_over: "", energy: 100, health: 100, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", location: "realtor" });
+      Object.assign(next, { cash: 37, bank_balance: 0, loan_balance: 250_000, main_story: "prodigal_return", finance_day: Math.floor(next.elapsed_minutes / 1440) + 1, daily_minimum_payment: 750, daily_payment_made: 0, missed_payment_days: 0, writer_fans: 0, writer_day: Math.floor(next.elapsed_minutes / 1440) + 1, writer_writes: 0, owns_restaurant: 0, prison_until: 0, prison_crime: "", territory_location: "", territory_day: 0, territory_payout_day: 0, territory_visits: 0, territory_income: 0, territory_pending: 0, hack_day: 0, hack_uses: 0, street_day: 0, street_scavenges: 0, street_beg_income: 0, game_over: "", energy: 100, health: 100, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", location: "realtor" });
       title = "選擇主線：《浪子回頭》"; message = "你帶著 NT$37 與 NT$250,000 負債，決定承認失敗並重新開始。"; tone = "neutral"; break;
     case "move": {
       if (!VALID_LOCATIONS.has(body.location as LocationId)) return json({ message: "目的地不存在。" }, 400);
@@ -2876,7 +3214,7 @@ async function takeAction(request: Request, env: Env) {
       if (target === "prison") return json({ message: "監獄只接受被捕玩家進入。" }, 403);
       if (!isLocationOpen(target, sharedMinutes)) return json({ message: `${OPENING_HOURS[target]?.label} 營業，現在已關門。` }, 400);
       next.location = body.location as LocationId;
-      const placeName = ({ home: "我的住所", realtor: "安心房仲", bank: "城市銀行", business: "工作地", shopping: "購物街", bookstore: "城市書店", hotel: "不夜旅店", casino: "幸運賭場", school: "未來學院", hospital: "市立醫院", prison: "監獄" } as Record<LocationId, string>)[next.location as LocationId];
+      const placeName = ({ home: "我的住所", realtor: "安心房仲", bank: "城市銀行", business: "工作地", shopping: "購物街", bookstore: "城市書店", hotel: "不夜旅店", casino: "幸運賭場", school: "未來學院", hospital: "市立醫院", underpass: "車站地下道", prison: "監獄" } as Record<LocationId, string>)[next.location as LocationId];
       title = "移動完成"; message = `已抵達${placeName}。`; tone = "neutral";
       pendingTerritoryVisit = { location: target, cycleDay: Math.floor(sharedMinutes / 1440) + 1, worldMinute: sharedMinutes };
       break;
@@ -2996,6 +3334,7 @@ async function takeAction(request: Request, env: Env) {
       if (next.illness) return json({ message: `目前罹患${next.illness}，請先前往醫院治療。` }, 400);
       if (next.job_category === "unfixed") return json({ message: `目前是${next.current_job === "流浪者" ? "流浪者" : "待業者"}，請先選擇一條產業路線。` }, 400);
       if (next.job_category === "literary") return json({ message: "文學作家請使用每日寫作，不使用一般工作班次。" }, 400);
+      if (next.job_category === "street") return json({ message: "街頭生存沒有固定薪資，請前往車站地下道拾荒、乞討或使用互助功能。" }, 400);
       const hours = Number(body.hours);
       const workSpecial = careerWorkSpecialFor(next.current_job, hours);
       const restaurantOwner = next.job_category === "hospitality" && next.current_job === "餐廳老闆" && Boolean(next.owns_restaurant);
@@ -3118,8 +3457,9 @@ async function takeAction(request: Request, env: Env) {
         env.DB.prepare(`SELECT 1 AS active FROM (
           SELECT id FROM player_transfer_requests WHERE status='processing' AND (sender_id=? OR recipient_id=?)
           UNION ALL SELECT id FROM player_medical_requests WHERE status='processing' AND (patient_id=? OR provider_id=?)
-          UNION ALL SELECT id FROM player_loan_requests WHERE status='processing' AND (borrower_id=? OR provider_id=?)) LIMIT 1`)
-          .bind(user.userId, user.userId, user.userId, user.userId, user.userId, user.userId).first<{ active: number }>(),
+          UNION ALL SELECT id FROM player_loan_requests WHERE status='processing' AND (borrower_id=? OR provider_id=?)
+          UNION ALL SELECT id FROM street_beg_requests WHERE status='processing' AND (requester_id=? OR recipient_id=?)) LIMIT 1`)
+          .bind(user.userId, user.userId, user.userId, user.userId, user.userId, user.userId, user.userId, user.userId).first<{ active: number }>(),
       ]);
       if (activeBlackjack || activePoker || activeBingo || activeTournament || activeRequest) {
         await restoreResetClaim();
@@ -3131,6 +3471,11 @@ async function takeAction(request: Request, env: Env) {
         env.DB.prepare(`DELETE FROM player_transfer_requests WHERE (sender_id=? OR recipient_id=?) AND ${resetGate}`).bind(user.userId, user.userId, user.userId, expectedLifeVersion, actionToken),
         env.DB.prepare(`DELETE FROM player_medical_requests WHERE (patient_id=? OR provider_id=?) AND ${resetGate}`).bind(user.userId, user.userId, user.userId, expectedLifeVersion, actionToken),
         env.DB.prepare(`DELETE FROM player_loan_requests WHERE (borrower_id=? OR provider_id=?) AND ${resetGate}`).bind(user.userId, user.userId, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`DELETE FROM street_beg_requests WHERE (requester_id=? OR recipient_id=?) AND ${resetGate}`).bind(user.userId, user.userId, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`DELETE FROM player_inventory WHERE user_id=? AND life_version=? AND ${resetGate}`).bind(user.userId, previousLifeVersion, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`DELETE FROM street_aid_donations WHERE donor_id=? AND ${resetGate}`).bind(user.userId, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`DELETE FROM street_aid_boxes WHERE owner_id=? AND owner_life_version=? AND ${resetGate}`).bind(user.userId, previousLifeVersion, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`DELETE FROM city_coop_contributions WHERE user_id=? AND life_version=? AND EXISTS (SELECT 1 FROM city_coop_projects p WHERE p.cycle_day=city_coop_contributions.cycle_day AND p.status='open') AND ${resetGate}`).bind(user.userId, previousLifeVersion, user.userId, expectedLifeVersion, actionToken),
         env.DB.prepare(`UPDATE player_loan_contracts SET outstanding_balance=0, status='reset', closed_at=?, revision=revision+1, mutation_token=?
           WHERE borrower_id=? AND borrower_life_version=? AND status='active' AND ${resetGate}`).bind(resetNow, actionToken, user.userId, previousLifeVersion, user.userId, expectedLifeVersion, actionToken),
         env.DB.prepare(`UPDATE player_loan_contracts SET provider_id='bank', provider_name='城市銀行', provider_job='', provider_life_version=0,
@@ -3147,10 +3492,10 @@ async function takeAction(request: Request, env: Env) {
         env.DB.prepare(`DELETE FROM casino_tournament_entries WHERE user_id=? AND life_version=? AND ${resetGate}`).bind(user.userId, previousLifeVersion, user.userId, expectedLifeVersion, actionToken),
         env.DB.prepare(`UPDATE casino_bingo_state SET host_user_id=COALESCE((SELECT user_id FROM casino_bingo_entries WHERE round_no=casino_bingo_state.round_no ORDER BY rowid LIMIT 1), ''), updated_at=? WHERE id='bingo-01' AND status='lobby' AND ${resetGate}`).bind(resetNow, user.userId, expectedLifeVersion, actionToken),
         env.DB.prepare(`UPDATE casino_tournament_state SET host_user_id=COALESCE((SELECT user_id FROM casino_tournament_entries WHERE tournament_no=casino_tournament_state.round_no ORDER BY rowid LIMIT 1), ''), updated_at=? WHERE id='tournament-01' AND status='lobby' AND ${resetGate}`).bind(resetNow, user.userId, expectedLifeVersion, actionToken),
-        env.DB.prepare(`UPDATE player_progress SET talent_exp=0, talents='[]', story_chapter=0, last_event_day=0, pending_event='', updated_at=? WHERE user_id=? AND ${resetGate}`).bind(resetNow, user.userId, user.userId, expectedLifeVersion, actionToken),
+        env.DB.prepare(`UPDATE player_progress SET talent_exp=0, talents='[]', story_chapter=0, story_seen_chapter=0, last_event_day=0, pending_event='', updated_at=? WHERE user_id=? AND ${resetGate}`).bind(resetNow, user.userId, user.userId, expectedLifeVersion, actionToken),
       ];
-      Object.assign(next, { cash: next.main_story === "prodigal_return" ? 37 : 10000, bank_balance: 0, loan_balance: next.main_story === "prodigal_return" ? 250_000 : 0, finance_day: 1, daily_minimum_payment: next.main_story === "prodigal_return" ? 750 : 0, daily_payment_made: 0, missed_payment_days: 0, writer_fans: 0, writer_day: 1, writer_writes: 0, owns_restaurant: 0, prison_until: 0, prison_crime: "", territory_location: "", territory_day: 0, territory_payout_day: 0, territory_visits: 0, territory_income: 0, territory_pending: 0, hack_day: 0, hack_uses: 0, game_over: "", reset_game_over: "", elapsed_remainder_ms: 0, energy: 100, health: 100, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", elapsed_minutes: 0, location: "realtor" });
-      progress = { ...progress, talent_exp: 0, talents: "[]", story_chapter: 0, last_event_day: 0, pending_event: "" }; talents = new Set();
+      Object.assign(next, { cash: next.main_story === "prodigal_return" ? 37 : 10000, bank_balance: 0, loan_balance: next.main_story === "prodigal_return" ? 250_000 : 0, finance_day: 1, daily_minimum_payment: next.main_story === "prodigal_return" ? 750 : 0, daily_payment_made: 0, missed_payment_days: 0, writer_fans: 0, writer_day: 1, writer_writes: 0, owns_restaurant: 0, prison_until: 0, prison_crime: "", territory_location: "", territory_day: 0, territory_payout_day: 0, territory_visits: 0, territory_income: 0, territory_pending: 0, hack_day: 0, hack_uses: 0, street_day: 0, street_scavenges: 0, street_beg_income: 0, game_over: "", reset_game_over: "", elapsed_remainder_ms: 0, energy: 100, health: 100, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", elapsed_minutes: 0, location: "realtor" });
+      progress = { ...progress, talent_exp: 0, talents: "[]", story_chapter: 0, story_seen_chapter: 0, last_event_day: 0, pending_event: "" }; talents = new Set();
       title = "重新開始人生"; message = "新的人生已開始，所有進度回到起點。"; tone = "neutral"; break;
     }
     default: return json({ message: "未知的行動。" }, 400);
@@ -3217,7 +3562,7 @@ async function takeAction(request: Request, env: Env) {
     territory_visits=CASE WHEN ?=1 THEN territory_visits ELSE ? END,
     territory_income=CASE WHEN ?=1 THEN territory_income ELSE ? END,
     territory_pending=CASE WHEN ?=1 THEN territory_pending ELSE ? END,
-    hack_day=?, hack_uses=?, game_over=?, main_story=?, energy=?, health=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, charisma_exp=?, current_job=?, job_category=?, job_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, action_available_at=?, action_label=?, elapsed_minutes=?, elapsed_remainder_ms=?, location=?, updated_at=?, last_seen_at=?, reset_game_over=?, mutation_token=?
+    hack_day=?, hack_uses=?, street_day=?, street_scavenges=?, street_beg_income=?, game_over=?, main_story=?, energy=?, health=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, charisma_exp=?, current_job=?, job_category=?, job_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, action_available_at=?, action_label=?, elapsed_minutes=?, elapsed_remainder_ms=?, location=?, updated_at=?, last_seen_at=?, reset_game_over=?, mutation_token=?
     WHERE user_id=? AND life_version=? AND updated_at=? AND reset_game_over=?
       AND (?=0 OR EXISTS (SELECT 1 FROM player_loan_contracts WHERE id=? AND status='active' AND outstanding_balance=? AND revision=?))
       AND (?=0 OR EXISTS (SELECT 1 FROM players target WHERE target.user_id=? AND target.life_version=? AND target.mutation_token=?))
@@ -3225,7 +3570,7 @@ async function takeAction(request: Request, env: Env) {
     .bind(next.cash, next.bank_balance, next.loan_balance, next.finance_day, next.daily_minimum_payment, next.daily_payment_made, next.missed_payment_days, next.writer_fans, next.writer_day, next.writer_writes, next.owns_restaurant, next.prison_until, next.prison_crime,
       preserveTerritoryState, next.territory_location, preserveTerritoryState, next.territory_day, preserveTerritoryState, next.territory_payout_day,
       preserveTerritoryState, next.territory_visits, preserveTerritoryState, next.territory_income, preserveTerritoryState, next.territory_pending,
-      next.hack_day, next.hack_uses, next.game_over, next.main_story, next.energy, next.health, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.charisma_exp, next.current_job, next.job_category, next.job_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.action_available_at, next.action_label, next.elapsed_minutes, next.elapsed_remainder_ms, next.location, now, now, next.reset_game_over, actionToken,
+      next.hack_day, next.hack_uses, next.street_day, next.street_scavenges, next.street_beg_income, next.game_over, next.main_story, next.energy, next.health, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.charisma_exp, next.current_job, next.job_category, next.job_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.action_available_at, next.action_label, next.elapsed_minutes, next.elapsed_remainder_ms, next.location, now, now, next.reset_game_over, actionToken,
       user.userId, expectedLifeVersion, expectedRevision, expectedResetMarker,
       pendingLoanContractUpdate ? 1 : 0, pendingLoanContractUpdate?.id ?? "", pendingLoanContractUpdate?.previousBalance ?? 0, pendingLoanContractUpdate?.previousRevision ?? 0,
       pendingHack ? 1 : 0, pendingHack?.targetId ?? "", pendingHack?.targetLifeVersion ?? 0, actionToken);
@@ -3296,22 +3641,27 @@ async function takeAction(request: Request, env: Env) {
   const personalDay = Math.floor(saved!.elapsed_minutes / 1440) + 1;
   if (eligibleEvent && !progress.pending_event && progress.last_event_day < personalDay) {
     const chance = talents.has("connections") ? .28 : .20;
-    const event = Math.random() < chance ? CITY_EVENTS[Math.floor(Math.random() * CITY_EVENTS.length)] : null;
+    const eventPool = CITY_EVENTS.filter((item) => !("categories" in item) || !item.categories?.length || item.categories.includes(saved!.job_category as never));
+    const event = Math.random() < chance ? eventPool[Math.floor(Math.random() * eventPool.length)] : null;
     await env.DB.prepare("UPDATE player_progress SET last_event_day=?, pending_event=?, updated_at=? WHERE user_id=?")
       .bind(personalDay, event?.id ?? "", Date.now(), user.userId).run();
     progress = { ...progress, last_event_day: personalDay, pending_event: event?.id ?? "" };
   }
   if (eligibleEvent) message += await maybeFindMysteryClue(env.DB, user.userId, saved!.location);
   const world = await multiplayer(env.DB);
-  const [loanContract, loanRequests, bookStoreState] = await Promise.all([
+  const [loanContract, loanRequests, begRequests, street, aidBoxes, coop, bookStoreState] = await Promise.all([
     activeLoanContract(env.DB, user.userId),
     pendingLoanRequests(env.DB, user.userId),
+    pendingBegRequests(env.DB, user.userId),
+    streetState(env.DB, saved!),
+    aidBoxState(env.DB, user.userId),
+    coopState(env.DB, saved!),
     saved!.location === "bookstore" ? bookStore(env.DB, user.userId) : Promise.resolve({ books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK }),
   ]);
   const casinoSnapshot = body.action === "move" && saved!.location === "casino"
     ? await Promise.all([casinoState(env.DB, user.userId), pokerState(env.DB, user.userId), bingoState(env.DB, user.userId), tournamentState(env.DB, user.userId)])
     : null;
-  return json({ player: serializePlayer(saved!, progress, loanContract), message, scratch, loanRequests, bookStore: bookStoreState, cityMemory: await cityMemory(env.DB), ...world,
+  return json({ player: serializePlayer(saved!, progress, loanContract), message, scratch, loanRequests, begRequests, street, aidBoxes, coop, bookStore: bookStoreState, cityMemory: await cityMemory(env.DB), ...world,
     ...(casinoSnapshot ? { casino: casinoSnapshot[0], poker: casinoSnapshot[1], bingo: casinoSnapshot[2], tournament: casinoSnapshot[3] } : {}) });
 }
 

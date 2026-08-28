@@ -9,6 +9,14 @@ export const STORY_CHAPTERS = [
   { chapter: 6, remainingRatio: 0, title: "回家的路", story: "最後一筆債務歸零。你沒有贏回從前，而是重新成為能決定明天的人。", reward: 75 },
 ] as const;
 
+export const PRODIGAL_SUCCESS_STORY = [
+  "銀行頁面上的數字終於歸零。你盯著畫面很久，沒有歡呼，也沒有立刻告訴任何人。",
+  "這一路沒有奇蹟。是每一次準時還款、每一次拒絕翻本，以及每一個願意重新開始的早晨，把你帶回這裡。",
+  "你撥通母親的電話。這次，你沒有等她先開口。",
+  "債務已經清償，失去的信任仍需要時間，但你終於不再用明天逃避今天。",
+  "《浪子回頭》主線完成。這段人生不會結束，你可以繼續工作、生活，也可以重新開始另一段人生。",
+] as const;
+
 export function storyChapterForDebt(balance: number) {
   if (balance <= 0) return 6;
   const ratio = balance / PRODIGAL_STARTING_DEBT;
@@ -56,6 +64,38 @@ export const CITY_EVENTS = [
   { id: "night_class", title: "臨時公開課", text: "學院臨時開放一堂城市生活講座。", choices: [
     { id: "attend", label: "支付 NT$300 上課", result: "這堂課讓你對生活多了一些理解。", cash: -300, intelligence: 3, talentExp: 5 },
     { id: "skip", label: "略過課程", result: "你把時間留給原本的安排。" },
+  ] },
+  { id: "office_audit", categories: ["office"], title: "臨時稽核", text: "主管請你協助整理一批混亂的行政資料。", choices: [
+    { id: "organize", label: "留下整理", result: "你把資料整理完成，也讓主管看見你的可靠。", cash: 450, energy: -8, talentExp: 6 },
+    { id: "handoff", label: "交接處理", result: "你清楚交接工作，保留了今天的體力。", talentExp: 2 },
+  ] },
+  { id: "medical_emergency", categories: ["medical"], title: "街頭緊急救護", text: "附近有人突然不適，現場需要具備照護經驗的人。", choices: [
+    { id: "help", label: "協助救護", result: "你穩定了患者狀況，醫院致贈一筆協助津貼。", cash: 500, energy: -10, talentExp: 8 },
+    { id: "call", label: "呼叫專業支援", result: "你迅速通報，讓救護人員及時抵達。", talentExp: 4 },
+  ] },
+  { id: "finance_panic", categories: ["finance"], title: "市場恐慌", text: "客戶因市場波動打來，希望你立刻給出建議。", choices: [
+    { id: "explain", label: "耐心說明", result: "你避免客戶做出衝動決定，獲得專業獎金。", cash: 600, energy: -8, talentExp: 7 },
+    { id: "decline", label: "不做倉促判斷", result: "你拒絕在資訊不足時給出建議。", talentExp: 4 },
+  ] },
+  { id: "literary_reading", categories: ["literary"], title: "巷口讀書會", text: "一間小店邀請你分享自己的作品。", choices: [
+    { id: "read", label: "公開朗讀", result: "你的文字被更多人聽見，也收到一筆車馬費。", cash: 350, energy: -6, talentExp: 8 },
+    { id: "listen", label: "先聽別人的故事", result: "你記下了許多新的創作靈感。", creativity: 4, talentExp: 5 },
+  ] },
+  { id: "food_festival", categories: ["hospitality"], title: "城市美食節", text: "活動臨時缺少餐飲人手，主辦方邀請你支援。", choices: [
+    { id: "cook", label: "支援出餐", result: "你撐過出餐高峰，獲得活動津貼。", cash: 550, energy: -10, talentExp: 7 },
+    { id: "advise", label: "協助調整流程", result: "你的建議讓現場效率提高。", social: 3, talentExp: 5 },
+  ] },
+  { id: "police_patrol", categories: ["crime"], title: "警方臨檢", text: "街口突然出現警方臨檢，你必須立刻決定。", choices: [
+    { id: "leave", label: "放棄行動離開", result: "你避開風險，但錯失了原本的收入。", cash: -150, talentExp: 3 },
+    { id: "blend", label: "混入人群", result: "你保持冷靜，成功避開注意。", energy: -8, talentExp: 6 },
+  ] },
+  { id: "urgent_commission", categories: ["freelance"], title: "緊急委託", text: "客戶希望你今天完成一份臨時專案。", choices: [
+    { id: "rush", label: "接下趕件", result: "你準時交件並取得額外報酬。", cash: 500, energy: -12, talentExp: 7 },
+    { id: "negotiate", label: "重新協商期限", result: "你守住工作品質，也讓合作可以繼續。", social: 3, talentExp: 5 },
+  ] },
+  { id: "cold_night", categories: ["street"], title: "地下道的冷夜", text: "夜裡氣溫驟降，附近有人需要一點協助。", choices: [
+    { id: "share", label: "分享物資", result: "你分出手上的物資，街頭夥伴記住了這份情。", cash: -80, talentExp: 10 },
+    { id: "shelter", label: "尋找避風處", result: "你帶大家找到較安全的地方過夜。", energy: -6, health: 3, talentExp: 7 },
   ] },
 ] as const;
 

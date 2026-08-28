@@ -5,8 +5,9 @@ export const JOB_CATEGORIES = [
   { id: "literary", label: "文學作家", jobs: ["寫作助理", "無名作家", "簽約作家", "暢銷作家"] },
   { id: "hospitality", label: "餐飲服務", jobs: ["廚房助理", "廚師", "主廚", "餐廳老闆"] },
   { id: "crime", label: "犯罪路線", jobs: ["詐騙犯", "駭客", "走私者", "大橋頭營運長"] },
-  { id: "freelance", label: "自由工作", jobs: ["攝影師", "翻譯", "接案設計師", "顧問", "家教", "街頭藝人"] },
-  { id: "unfixed", label: "無固定職業", jobs: ["待業者", "流浪者"] },
+  { id: "freelance", label: "自由工作", jobs: ["接案助理", "自由工作者", "資深接案者", "自由工作顧問"] },
+  { id: "street", label: "街頭生存", jobs: ["街友", "丐幫成員", "丐幫長老", "丐幫幫主"] },
+  { id: "unfixed", label: "無固定職業", jobs: ["待業者"] },
 ] as const;
 
 export const CAREER_THRESHOLDS = [0, 100, 250, 500, 900, 1400, 2000, 2700] as const;
@@ -39,6 +40,7 @@ const CAREER_ABILITY_PROFILE: Record<string, readonly [AbilityKey, AbilityKey]> 
   hospitality: ["social", "charisma"],
   crime: ["intelligence", "social"],
   freelance: ["creativity", "social"],
+  street: ["social", "physical"],
 };
 
 const PRIMARY_REQUIREMENTS = [10, 40, 80, 140, 220, 320, 440, 580] as const;
@@ -66,6 +68,29 @@ export const CAREER_WORK_SPECIALS = {
   "駭客": { name: "系統入侵", hours: 6, minutes: 3 },
   "走私者": { name: "地下運貨", hours: 8, minutes: 4 },
   "大橋頭營運長": { name: "地盤巡查", hours: 8, minutes: 4 },
+  "接案助理": { name: "小型委託", hours: 4, minutes: 2 },
+  "自由工作者": { name: "趕件專案", hours: 6, minutes: 3 },
+  "資深接案者": { name: "專業專案", hours: 8, minutes: 4 },
+  "自由工作顧問": { name: "品牌合作", hours: 8, minutes: 4 },
+} as const;
+
+export const STREET_SCAVENGE_LIMITS = [4, 5, 6, 8] as const;
+export const STREET_BEG_DAILY_CAPS = [500, 800, 1_200, 1_800] as const;
+export const STREET_BEG_DONATIONS = [
+  [20, 50],
+  [20, 50, 100],
+  [50, 100, 200],
+  [100, 200, 500],
+] as const;
+export const STREET_BEG_REQUEST_TIMEOUT_MS = 30_000;
+export const STREET_BEG_PAIR_COOLDOWN_MS = 10 * 60 * 1_000;
+export const STREET_SCAVENGE_WAIT_SECONDS = 30;
+export const STREET_INVENTORY = {
+  can: { name: "空罐", icon: "罐", sellPrice: 10 },
+  food: { name: "街頭食物", icon: "食", hunger: 15 },
+  scratch: { name: "免費彩券", icon: "彩" },
+  secondhand: { name: "二手物品", icon: "舊", sellPrice: 150 },
+  rare: { name: "稀有收藏品", icon: "藏", sellPrice: 750 },
 } as const;
 
 export const HOSPITALITY_SPECIAL_HUNGER = {
@@ -188,6 +213,27 @@ export function writerBookPriceFor(job: string) {
   return WRITER_BOOK_PRICES[job as keyof typeof WRITER_BOOK_PRICES] ?? null;
 }
 
+export function streetRankIndex(job: string) {
+  const category = categoryInfo("street");
+  return Math.max(0, category?.jobs.findIndex((item) => item === job) ?? 0);
+}
+
+export function streetScavengeLimitFor(job: string) {
+  return STREET_SCAVENGE_LIMITS[streetRankIndex(job)] ?? STREET_SCAVENGE_LIMITS[0];
+}
+
+export function streetBegDailyCapFor(job: string) {
+  return STREET_BEG_DAILY_CAPS[streetRankIndex(job)] ?? STREET_BEG_DAILY_CAPS[0];
+}
+
+export function streetBegDonationsFor(job: string) {
+  return STREET_BEG_DONATIONS[streetRankIndex(job)] ?? STREET_BEG_DONATIONS[0];
+}
+
+export function streetCanSellPriceFor(job: string) {
+  return streetRankIndex(job) >= 2 ? 15 : STREET_INVENTORY.can.sellPrice;
+}
+
 export function careerWorkSpecialFor(job: string, hours?: number) {
   const special = CAREER_WORK_SPECIALS[job as keyof typeof CAREER_WORK_SPECIALS];
   return special && (hours === undefined || special.hours === hours) ? special : null;
@@ -246,6 +292,7 @@ export function careerRequirements(categoryId: string, index: number): Partial<A
     ];
     return requirements[index] ?? requirements.at(-1)!;
   }
+  if (categoryId === "street") return {};
   const tier = normalizedCareerTier(categoryId, index);
   return {
     [profile[0]]: PRIMARY_REQUIREMENTS[tier] ?? PRIMARY_REQUIREMENTS.at(-1),
@@ -261,12 +308,12 @@ function normalizedCareerTier(categoryId: string, index: number) {
 
 export function careerThresholdForCategory(categoryId: string, index: number) {
   if (categoryId === "literary") return WRITER_FAN_THRESHOLDS[index] ?? WRITER_FAN_THRESHOLDS.at(-1)!;
-  if (categoryId === "medical" || categoryId === "finance" || categoryId === "hospitality" || categoryId === "crime") return [0, 100, 250, 500][index] ?? 500;
+  if (categoryId === "medical" || categoryId === "finance" || categoryId === "hospitality" || categoryId === "crime" || categoryId === "freelance" || categoryId === "street") return [0, 100, 250, 500][index] ?? 500;
   return CAREER_THRESHOLDS[normalizedCareerTier(categoryId, index)] ?? CAREER_THRESHOLDS.at(-1)!;
 }
 
 export function careerPayForCategory(categoryId: string, index: number) {
-  if (categoryId === "literary") return 0;
+  if (categoryId === "literary" || categoryId === "street") return 0;
   return CAREER_PAY[normalizedCareerTier(categoryId, index)] ?? CAREER_PAY.at(-1)!;
 }
 
@@ -276,7 +323,7 @@ export function meetsCareerRequirements(abilities: Abilities, requirements: Part
 
 export function careerForCategory(categoryId: string, exp: number, fallback = "待業者", abilities?: Abilities) {
   const category = categoryInfo(categoryId);
-  if (!category || category.id === "unfixed") return { title: fallback === "流浪者" ? "流浪者" : "待業者", hourlyPay: 0, threshold: 0, index: 0 };
+  if (!category || category.id === "unfixed") return { title: "待業者", hourlyPay: 0, threshold: 0, index: 0 };
   const existingIndex = category.jobs.findIndex((job) => job === fallback);
   let index = Math.max(0, existingIndex);
   for (let cursor = index + 1; cursor < category.jobs.length; cursor += 1) {

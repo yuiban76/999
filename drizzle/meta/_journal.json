@@ -183,6 +183,13 @@
       "when": 1787753648569,
       "tag": "0025_vengeful_azazel",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1787925963137,
+      "tag": "0026_slimy_black_tom",
+      "breakpoints": true
     }
   ]
 }

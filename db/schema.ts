@@ -45,6 +45,9 @@ export const players = sqliteTable("players", {
   territoryPending: integer("territory_pending").notNull().default(0),
   hackDay: integer("hack_day").notNull().default(0),
   hackUses: integer("hack_uses").notNull().default(0),
+  streetDay: integer("street_day").notNull().default(0),
+  streetScavenges: integer("street_scavenges").notNull().default(0),
+  streetBegIncome: integer("street_beg_income").notNull().default(0),
   gameOver: text("game_over").notNull().default(""),
   mainStory: text("main_story").notNull().default("legacy"),
   energy: integer("energy").notNull().default(100),
@@ -158,10 +161,48 @@ export const playerProgress = sqliteTable("player_progress", {
   talentExp: integer("talent_exp").notNull().default(0),
   talents: text("talents").notNull().default("[]"),
   storyChapter: integer("story_chapter").notNull().default(0),
+  storySeenChapter: integer("story_seen_chapter").notNull().default(0),
   lastEventDay: integer("last_event_day").notNull().default(0),
   pendingEvent: text("pending_event").notNull().default(""),
   updatedAt: integer("updated_at").notNull(),
 });
+
+export const playerInventory = sqliteTable("player_inventory", {
+  userId: text("user_id").notNull(),
+  itemKey: text("item_key").notNull(),
+  quantity: integer("quantity").notNull().default(0),
+  lifeVersion: integer("life_version").notNull().default(0),
+  updatedAt: integer("updated_at").notNull(),
+}, (table) => [primaryKey({ columns: [table.userId, table.itemKey] }), index("idx_inventory_user_life").on(table.userId, table.lifeVersion)]);
+
+export const streetBegRequests = sqliteTable("street_beg_requests", {
+  id: text("id").primaryKey(), requesterId: text("requester_id").notNull(), requesterName: text("requester_name").notNull(),
+  recipientId: text("recipient_id").notNull(), requesterJob: text("requester_job").notNull(), requesterLifeVersion: integer("requester_life_version").notNull().default(0),
+  recipientLifeVersion: integer("recipient_life_version").notNull().default(0), status: text("status").notNull().default("pending"),
+  outcome: text("outcome").notNull().default(""), amount: integer("amount").notNull().default(0), resolutionToken: text("resolution_token").notNull().default(""),
+  createdAt: integer("created_at").notNull(), expiresAt: integer("expires_at").notNull(), resolvedAt: integer("resolved_at"),
+}, (table) => [index("idx_beg_recipient_status").on(table.recipientId, table.status, table.expiresAt), index("idx_beg_pair_created").on(table.requesterId, table.recipientId, table.createdAt)]);
+
+export const streetAidBoxes = sqliteTable("street_aid_boxes", {
+  ownerId: text("owner_id").notNull(), cycleDay: integer("cycle_day").notNull(), ownerName: text("owner_name").notNull(),
+  ownerLifeVersion: integer("owner_life_version").notNull().default(0), totalReceived: integer("total_received").notNull().default(0),
+  status: text("status").notNull().default("active"), updatedAt: integer("updated_at").notNull(),
+}, (table) => [primaryKey({ columns: [table.ownerId, table.cycleDay] }), index("idx_aid_boxes_day_status").on(table.cycleDay, table.status)]);
+
+export const streetAidDonations = sqliteTable("street_aid_donations", {
+  ownerId: text("owner_id").notNull(), cycleDay: integer("cycle_day").notNull(), donorId: text("donor_id").notNull(),
+  amount: integer("amount").notNull(), actionToken: text("action_token").notNull().default(""), donatedAt: integer("donated_at").notNull(),
+}, (table) => [primaryKey({ columns: [table.ownerId, table.cycleDay, table.donorId] }), index("idx_aid_donations_donor_day").on(table.donorId, table.cycleDay)]);
+
+export const cityCoopProjects = sqliteTable("city_coop_projects", {
+  cycleDay: integer("cycle_day").primaryKey(), status: text("status").notNull().default("open"), completedAt: integer("completed_at"),
+  completionToken: text("completion_token").notNull().default(""), updatedAt: integer("updated_at").notNull(),
+});
+
+export const cityCoopContributions = sqliteTable("city_coop_contributions", {
+  cycleDay: integer("cycle_day").notNull(), role: text("role").notNull(), userId: text("user_id").notNull(), playerName: text("player_name").notNull(),
+  jobCategory: text("job_category").notNull(), lifeVersion: integer("life_version").notNull().default(0), contributedAt: integer("contributed_at").notNull(),
+}, (table) => [primaryKey({ columns: [table.cycleDay, table.role] }), uniqueIndex("idx_coop_user_day").on(table.cycleDay, table.userId)]);
 
 export const cityMemoryContributions = sqliteTable("city_memory_contributions", {
   userId: text("user_id").notNull(),
