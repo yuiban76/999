@@ -1106,12 +1106,12 @@ async function contractState(db: D1Database, player: PlayerRow) {
     .bind(player.user_id, player.user_id).all<LifeContractRow>();
   const contracts = [] as Array<Record<string, unknown>>;
   for (const row of rows.results) {
-    if (row.status === "active" && day > row.expires_day) {
+    if ((row.status === "active" || row.status === "pending") && day > row.expires_day) {
       const token = crypto.randomUUID();
-      const expired = await db.prepare(`UPDATE life_contracts SET status='expired', resolution_token=?, updated_at=? WHERE id=? AND status='active' AND expires_day<? RETURNING *`)
+      const expired = await db.prepare(`UPDATE life_contracts SET status='expired', resolution_token=?, updated_at=? WHERE id=? AND status IN ('pending','active') AND expires_day<? RETURNING *`)
         .bind(token, Date.now(), row.id, day).first<LifeContractRow>();
       if (expired) await db.batch([
-        db.prepare("UPDATE players SET cash=cash+? WHERE user_id=? AND life_version=?").bind(expired.creator_deposit, expired.creator_id, expired.creator_life_version),
+        db.prepare("UPDATE players SET cash=cash+? WHERE user_id=? AND life_version=?").bind(expired.creator_deposit + expired.stake, expired.creator_id, expired.creator_life_version),
         db.prepare("UPDATE players SET cash=cash+? WHERE user_id=? AND life_version=?").bind(expired.partner_deposit, expired.partner_id, expired.partner_life_version),
       ]);
       continue;
@@ -2572,6 +2572,7 @@ async function takeAction(request: Request, env: Env) {
       const commission = CITY_COMMISSIONS.find((item) => item.id === body.commissionId);
       if (!commission || commission.category !== current.job_category) return json({ message: "目前職業沒有這項城市委託。" }, 400);
       if (current.location !== commission.location) return json({ message: "請先前往委託指定地點。" }, 400);
+      if (!isLocationOpen(commission.location, worldMinutes())) return json({ message: "委託地點目前已關門，請在營業時間再來。" }, 409);
       if (current.illness) return json({ message: "生病時不能接城市委託，請先治療。" }, 409);
       const day = cityCycleDay();
       const existing = await env.DB.prepare("SELECT 1 AS used FROM city_commission_claims WHERE user_id=? AND cycle_day=? AND commission_id=? AND life_version=?")
@@ -2625,7 +2626,9 @@ async function takeAction(request: Request, env: Env) {
     case "contract_accept": {
       if (!body.contractId || current.cash < 200) return json({ message: "接受契約需要 NT$200 保證金。" }, 409);
       const contract = await env.DB.prepare("SELECT * FROM life_contracts WHERE id=? AND partner_id=? AND partner_life_version=? AND status='pending'").bind(body.contractId, user.userId, current.life_version).first<LifeContractRow>();
-      if (!contract) return json({ message: "這份人生契約已失效。" }, 409);
+      const creatorActive = contract ? await env.DB.prepare("SELECT 1 AS active FROM players WHERE user_id=? AND life_version=? AND game_over='' AND reset_game_over='' AND main_story<>'unselected'")
+        .bind(contract.creator_id, contract.creator_life_version).first<{ active: number }>() : null;
+      if (!contract || !creatorActive) return json({ message: "這份人生契約已失效。" }, 409);
       const now = Math.max(Date.now(), current.updated_at + 1); const token = crypto.randomUUID();
       const results = await env.DB.batch([
         env.DB.prepare("UPDATE players SET cash=cash-?, updated_at=?, mutation_token=? WHERE user_id=? AND life_version=? AND updated_at=? AND cash>=? RETURNING user_id").bind(contract.stake, now, token, user.userId, current.life_version, current.updated_at, contract.stake),
@@ -2645,7 +2648,8 @@ async function takeAction(request: Request, env: Env) {
     }
     case "contract_deposit": {
       if (!body.contractId) return json({ message: "找不到人生契約。" }, 400);
-      const row = await env.DB.prepare("SELECT * FROM life_contracts WHERE id=? AND status='active' AND (creator_id=? OR partner_id=?)").bind(body.contractId, user.userId, user.userId).first<LifeContractRow>();
+      const row = await env.DB.prepare(`SELECT * FROM life_contracts WHERE id=? AND status='active' AND
+        ((creator_id=? AND creator_life_version=?) OR (partner_id=? AND partner_life_version=?))`).bind(body.contractId, user.userId, current.life_version, user.userId, current.life_version).first<LifeContractRow>();
       if (!row || cityCycleDay() > row.expires_day) return json({ message: "這份人生契約已到期。" }, 409);
       const mineCreator = row.creator_id === user.userId; const mineDeposit = mineCreator ? row.creator_deposit : row.partner_deposit;
       const amount = Math.min(Math.max(100, Math.floor(body.amount ?? 100)), row.target_per_player - mineDeposit);
@@ -3653,8 +3657,9 @@ async function takeAction(request: Request, env: Env) {
           SELECT id FROM player_transfer_requests WHERE status='processing' AND (sender_id=? OR recipient_id=?)
           UNION ALL SELECT id FROM player_medical_requests WHERE status='processing' AND (patient_id=? OR provider_id=?)
           UNION ALL SELECT id FROM player_loan_requests WHERE status='processing' AND (borrower_id=? OR provider_id=?)
-          UNION ALL SELECT id FROM street_beg_requests WHERE status='processing' AND (requester_id=? OR recipient_id=?)) LIMIT 1`)
-          .bind(user.userId, user.userId, user.userId, user.userId, user.userId, user.userId, user.userId, user.userId).first<{ active: number }>(),
+          UNION ALL SELECT id FROM street_beg_requests WHERE status='processing' AND (requester_id=? OR recipient_id=?)
+          UNION ALL SELECT id FROM life_contracts WHERE status IN ('pending','active') AND (creator_id=? OR partner_id=?)) LIMIT 1`)
+          .bind(user.userId, user.userId, user.userId, user.userId, user.userId, user.userId, user.userId, user.userId, user.userId, user.userId).first<{ active: number }>(),
       ]);
       if (activeBlackjack || activePoker || activeBingo || activeTournament || activeRequest) {
         await restoreResetClaim();
