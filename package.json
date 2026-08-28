@@ -10,6 +10,7 @@
     "build": "vite build && node scripts/stage-sites-build.mjs",
     "preview": "vite preview",
     "test": "npm run build && node --test tests/github-pages-build.test.mjs",
+    "test:multiplayer": "node tests/multiplayer-api-smoke.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },
