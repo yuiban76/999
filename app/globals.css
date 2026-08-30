@@ -553,6 +553,234 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
 }
 
+/* Information triage — reveal secondary systems only when requested. */
+.location-header::after,
+.stage-number,
+.map-index,
+.action-intro > span {
+  display: none;
+}
+
+.location-strip button:not(.closed) em {
+  display: none;
+}
+
+.action-intro {
+  margin-bottom: 18px;
+}
+
+.action-intro h3 {
+  margin-bottom: 6px;
+}
+
+.action-card {
+  min-height: 152px;
+}
+
+.life-details {
+  overflow: hidden;
+  margin-top: 14px;
+  border: 1px solid var(--city-line);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, .7);
+}
+
+.life-details summary {
+  position: relative;
+  display: grid;
+  min-height: 58px;
+  padding: 12px 44px 12px 14px;
+  align-content: center;
+  list-style: none;
+  cursor: pointer;
+}
+
+.life-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.life-details summary::after {
+  content: "+";
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  translate: 0 -50%;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--city-blue-soft);
+  color: var(--city-blue-deep);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.life-details[open] summary::after {
+  content: "−";
+}
+
+.life-details summary span {
+  color: var(--city-ink);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.life-details summary small {
+  margin-top: 2px;
+  color: var(--city-muted);
+  font-size: 11px;
+}
+
+.life-details-content {
+  display: grid;
+  gap: 12px;
+  padding: 0 12px 12px;
+  border-top: 1px solid var(--city-line);
+}
+
+.life-details-content > *:first-child {
+  margin-top: 12px;
+}
+
+.life-details-content .housing-card,
+.life-details-content .restaurant-card,
+.life-details-content .writer-summary,
+.life-details-content .talent-summary,
+.life-details-content .skills-block {
+  margin-bottom: 0;
+}
+
+.story-title {
+  margin-bottom: 12px;
+}
+
+.story-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 5px;
+  border: 1px solid var(--city-line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .64);
+}
+
+.story-tabs button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--city-muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.story-tabs button:hover:not(.active) {
+  background: rgba(8, 126, 164, .08);
+  color: var(--city-blue-deep);
+}
+
+.story-tabs button.active {
+  background: var(--city-ink);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(16, 33, 46, .14);
+}
+
+.story-tab-panel {
+  display: grid;
+  gap: 12px;
+  animation: story-panel-in .18s ease both;
+}
+
+.story-tab-panel > *,
+.story-tab-panel .coop-card,
+.story-tab-panel .innovation-card,
+.story-tab-panel .city-memory-card,
+.story-tab-panel .next-goal {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.story-tab-panel .feed-heading {
+  margin-top: 6px;
+}
+
+.story-tab-panel .online-list li > div {
+  min-width: 0;
+}
+
+@keyframes story-panel-in {
+  from { opacity: 0; translate: 0 5px; }
+  to { opacity: 1; translate: 0; }
+}
+
+@media (min-width: 1181px) {
+  .game-grid {
+    grid-template-columns: 274px minmax(560px, 1fr) 340px;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1180px) {
+  .story-panel {
+    display: block;
+  }
+}
+
+@media (max-width: 760px) {
+  .life-details summary {
+    min-height: 62px;
+  }
+
+  .story-tabs {
+    position: sticky;
+    z-index: 10;
+    top: 66px;
+    background: rgba(233, 240, 243, .94);
+    backdrop-filter: blur(12px);
+  }
+
+  .location-strip button {
+    min-height: 58px;
+  }
+
+  .location-strip button:not(.closed) {
+    grid-template-rows: auto auto;
+  }
+
+  .action-card {
+    min-height: 0;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .life-details,
+  .story-tabs {
+    background: rgba(27, 41, 50, .86);
+  }
+
+  .story-tabs button.active {
+    background: var(--city-blue);
+    color: #07141b;
+  }
+
+  .life-details summary span {
+    color: var(--city-ink);
+  }
+
+  @media (max-width: 760px) {
+    .story-tabs {
+      background: rgba(17, 29, 36, .94);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .story-tab-panel {
+    animation: none;
+  }
+}
+
 /* Apple-inspired interface refresh. Gameplay layout and behavior stay unchanged. */
 :root {
   --ink: #1d1d1f;

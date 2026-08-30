@@ -419,7 +419,7 @@ test("story, talents, city memory, events, and hidden mystery are wired", async 
   assert.match(worker, /Math\.random\(\) >= \.08/);
   assert.doesNotMatch(page, /共同謎團進度|謎團任務/);
   assert.match(page, /天賦樹/);
-  assert.match(page, /CITY MEMORY/);
+  assert.match(page, /城市記憶/);
   assert.match(migration, /CREATE TABLE `player_progress`/);
   assert.match(migration, /CREATE TABLE `city_memory_contributions`/);
   assert.match(migration, /CREATE TABLE `mystery_clues`/);
@@ -547,4 +547,21 @@ test("city pulse UI keeps the mobile game areas accessible", async () => {
   assert.match(css, /\.game-grid\.view-life \.character-panel/);
   assert.match(css, /\.game-grid\.view-social \.story-panel/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+});
+
+test("dense game information is grouped behind clear disclosures and tabs", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const css = await readFile(new URL("app/globals.css", root), "utf8");
+
+  assert.match(page, /<details className="life-details">/);
+  assert.match(page, /更多人生資料/);
+  assert.match(page, /useState<"players" \| "tasks" \| "records">\("players"\)/);
+  assert.match(page, /role="tablist" aria-label="多人世界內容"/);
+  assert.match(page, />玩家<\/button>/);
+  assert.match(page, />任務<\/button>/);
+  assert.match(page, />紀錄<\/button>/);
+  assert.doesNotMatch(page, /<div className="stage-number">/);
+  assert.doesNotMatch(page, /CITY · LOBBY 01/);
+  assert.match(css, /Information triage/);
+  assert.match(css, /\.location-strip button:not\(\.closed\) em/);
 });
