@@ -1431,3 +1431,1127 @@ input:focus-visible { outline: 3px solid rgba(0, 113, 227, .38); outline-offset:
   .career-preview-balance span { color: #e2b36c; }
   .career-preview-balance p { color: #d7bf95; }
 }
+
+/* --------------------------------------------------------------------------
+   CITY PULSE UI — 城市捷運導覽 × 人生控制台
+   This final layer intentionally owns the visual system while preserving all
+   game rules and component behavior above.
+   -------------------------------------------------------------------------- */
+
+:root {
+  --city-ink: #10212e;
+  --city-ink-soft: #1d3443;
+  --city-fog: #eef3f6;
+  --city-surface: #ffffff;
+  --city-surface-soft: #f7f9fa;
+  --city-line: #cdd9df;
+  --city-blue: #087ea4;
+  --city-blue-deep: #075b75;
+  --city-blue-soft: #dff2f8;
+  --city-amber: #f4a340;
+  --city-amber-soft: #fff0d4;
+  --city-jade: #258a67;
+  --city-jade-soft: #e1f3eb;
+  --city-coral: #c84e4e;
+  --city-coral-soft: #fae7e5;
+  --city-muted: #516773;
+  --city-shadow: 0 18px 50px rgba(16, 33, 46, .1);
+  --city-shadow-small: 0 8px 24px rgba(16, 33, 46, .08);
+  --font-ui: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+  --font-data: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+  background: var(--city-fog);
+}
+
+body {
+  min-width: 320px;
+  color: var(--city-ink);
+  background-color: var(--city-fog);
+  background-image:
+    linear-gradient(rgba(8, 126, 164, .035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(8, 126, 164, .035) 1px, transparent 1px);
+  background-size: 32px 32px;
+  font-family: var(--font-ui);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 3px solid rgba(8, 126, 164, .35);
+  outline-offset: 3px;
+}
+
+.skip-link {
+  position: fixed;
+  z-index: 5000;
+  top: 10px;
+  left: 10px;
+  translate: 0 -150%;
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: var(--city-ink);
+  color: #fff;
+  font-weight: 800;
+  text-decoration: none;
+  transition: translate .18s ease;
+}
+
+.skip-link:focus {
+  translate: 0;
+}
+
+.game-shell {
+  width: min(1720px, calc(100% - 28px));
+  max-width: none;
+  margin: 14px auto 30px;
+  overflow: clip;
+  border: 1px solid rgba(16, 33, 46, .12);
+  border-radius: 28px;
+  background: var(--city-surface);
+  box-shadow: var(--city-shadow);
+}
+
+.topbar {
+  min-height: 76px;
+  padding: 12px 22px;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, .12);
+  background: var(--city-ink);
+  color: #fff;
+}
+
+.brand-mark {
+  background: var(--city-blue);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18);
+}
+
+.brand strong,
+.world-time strong,
+.account-area strong {
+  color: #fff;
+}
+
+.brand span,
+.world-time span,
+.account-area span {
+  color: #b8c8d1;
+}
+
+.world-time {
+  border-color: rgba(255, 255, 255, .14);
+  background: rgba(255, 255, 255, .07);
+}
+
+.world-time strong {
+  font-family: var(--font-data);
+  font-size: clamp(19px, 1.7vw, 27px);
+  letter-spacing: -.04em;
+}
+
+.account-area button,
+.account-area .account-button {
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, .18);
+  background: #fff;
+  color: var(--city-ink);
+  font-weight: 800;
+}
+
+.marquee {
+  min-height: 41px;
+  border: 0;
+  border-bottom: 1px solid var(--city-line);
+  background: #f7fafb;
+}
+
+.marquee span {
+  border-radius: 6px;
+  background: var(--city-blue);
+  color: #fff;
+  letter-spacing: .12em;
+}
+
+.marquee p {
+  color: var(--city-ink-soft);
+  font-weight: 650;
+}
+
+.game-grid {
+  align-items: start;
+  background: var(--city-fog);
+}
+
+.panel {
+  min-width: 0;
+}
+
+.character-panel {
+  border-color: var(--city-line);
+  background: var(--city-surface-soft);
+}
+
+.story-panel {
+  border-color: var(--city-line);
+  background: #e9f0f3;
+}
+
+.world-panel {
+  background: var(--city-surface);
+}
+
+.avatar {
+  border-color: #fff;
+  background: linear-gradient(145deg, var(--city-blue), var(--city-blue-deep));
+  color: #fff;
+  box-shadow: 0 0 0 4px var(--city-blue-soft), var(--city-shadow-small);
+}
+
+.avatar:hover {
+  translate: 0 -1px;
+}
+
+.job-tag {
+  border: 1px solid var(--city-line);
+  background: #fff;
+  color: var(--city-ink-soft);
+}
+
+.stat-row strong,
+.cash-card strong,
+.cash-breakdown b,
+.online-finance,
+.bank-panel strong {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-track {
+  overflow: hidden;
+  background: #dbe4e8;
+}
+
+.stat-track i {
+  background: var(--city-blue);
+}
+
+.stat-row:nth-of-type(2) .stat-track i { background: var(--city-amber); }
+.stat-row:nth-of-type(3) .stat-track i { background: var(--city-jade); }
+
+.cash-card {
+  border: 1px solid #b8d9e5;
+  background: var(--city-blue-soft);
+  color: var(--city-blue-deep);
+  box-shadow: none;
+}
+
+.cash-card strong,
+.cash-breakdown b {
+  color: var(--city-ink);
+}
+
+.cash-breakdown {
+  border-color: #bddbe4;
+}
+
+.housing-card {
+  border: 1px solid #b8dfcf;
+  background: var(--city-jade-soft);
+}
+
+.housing-card.homeless,
+.debt-deadline,
+.illness-alert {
+  border: 1px solid #edc6c1;
+  background: var(--city-coral-soft);
+  color: #782e2e;
+}
+
+.career-card,
+.innovation-card,
+.coop-card,
+.next-goal,
+.city-memory-card {
+  border: 1px solid var(--city-line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .78);
+  box-shadow: none;
+}
+
+.ability-row b {
+  color: var(--city-blue-deep);
+}
+
+.location-header {
+  position: relative;
+  overflow: hidden;
+  min-height: 184px;
+  padding: clamp(24px, 4vw, 52px);
+  border: 0;
+  background: var(--city-ink);
+  color: #fff;
+}
+
+.location-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: .32;
+  background-image:
+    linear-gradient(115deg, transparent 0 55%, rgba(8, 126, 164, .35) 55% 57%, transparent 57%),
+    radial-gradient(circle at 82% 25%, var(--city-amber) 0 5px, transparent 6px),
+    radial-gradient(circle at 72% 67%, var(--city-blue) 0 6px, transparent 7px);
+  pointer-events: none;
+}
+
+.location-header::after {
+  content: "YOU ARE HERE";
+  position: absolute;
+  right: clamp(22px, 4vw, 50px);
+  bottom: 20px;
+  border-radius: 999px;
+  padding: 7px 12px;
+  background: var(--city-amber);
+  color: var(--city-ink);
+  font-family: var(--font-data);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .12em;
+}
+
+.location-header > * {
+  position: relative;
+  z-index: 1;
+}
+
+.location-kicker,
+.panel-kicker,
+.section-heading small {
+  color: var(--city-blue);
+  font-family: var(--font-data);
+  font-weight: 800;
+  letter-spacing: .13em;
+}
+
+.location-header .location-kicker {
+  color: #7bd5ef;
+}
+
+.location-header h1 {
+  max-width: 720px;
+  color: #fff;
+  font-size: clamp(31px, 4vw, 58px);
+  letter-spacing: -.045em;
+  line-height: 1.03;
+}
+
+.location-header p {
+  max-width: 680px;
+  color: #c4d3db;
+  font-size: clamp(14px, 1.3vw, 17px);
+  line-height: 1.65;
+}
+
+.location-strip {
+  position: relative;
+  gap: 12px;
+  padding: 22px 20px 17px;
+  border-bottom: 1px solid var(--city-line);
+  background: #f7fafb;
+}
+
+.location-strip::before {
+  content: "";
+  position: absolute;
+  top: 41px;
+  right: 24px;
+  left: 24px;
+  height: 4px;
+  border-radius: 99px;
+  background: var(--city-blue);
+  opacity: .22;
+}
+
+.location-strip button {
+  position: relative;
+  z-index: 1;
+  min-width: 82px;
+  min-height: 74px;
+  border: 1px solid var(--city-line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .92);
+  color: var(--city-ink-soft);
+  box-shadow: 0 2px 0 rgba(16, 33, 46, .04);
+  transition: translate .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+
+.location-strip button:hover:not(:disabled) {
+  translate: 0 -3px;
+  border-color: #80bdd1;
+  background: #fff;
+  box-shadow: var(--city-shadow-small);
+}
+
+.location-strip button.active {
+  border-color: var(--city-blue);
+  background: var(--city-blue);
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(8, 126, 164, .22);
+}
+
+.location-strip button.closed:not(.active) {
+  border-style: dashed;
+  background: #edf1f3;
+  color: #7a8b94;
+}
+
+.location-strip button img {
+  border-radius: 8px;
+}
+
+.action-stage {
+  scroll-margin-top: 20px;
+  padding: clamp(20px, 3vw, 34px);
+  background: var(--city-surface);
+}
+
+.action-stage > header {
+  margin-bottom: 18px;
+}
+
+.action-stage > header h2,
+.section-heading span {
+  color: var(--city-ink);
+  letter-spacing: -.025em;
+}
+
+.action-grid {
+  gap: 14px;
+}
+
+.action-card,
+.bank-panel,
+.online-list,
+.feed-list,
+.street-aid-card {
+  border: 1px solid var(--city-line);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 1px 0 rgba(16, 33, 46, .03);
+}
+
+.action-card {
+  min-height: 176px;
+  transition: translate .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+
+.action-card:hover {
+  translate: 0 -2px;
+  border-color: #aac6d1;
+  box-shadow: var(--city-shadow-small);
+}
+
+.action-card.featured {
+  border-color: #82bed1;
+  background: linear-gradient(145deg, #fff 0 62%, var(--city-blue-soft) 100%);
+}
+
+.action-card > span:first-child {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--city-blue-soft);
+  color: var(--city-blue-deep);
+  font-weight: 900;
+}
+
+.action-card button,
+.bank-panel button,
+.casino-games button,
+.innovation-card button,
+.coop-card button,
+.street-aid-card button {
+  min-height: 42px;
+  border-radius: 11px;
+  font-weight: 800;
+}
+
+.action-card button:not(:disabled),
+.bank-panel button:not(:disabled),
+.innovation-card button:not(:disabled),
+.coop-card button:not(:disabled) {
+  border-color: var(--city-blue);
+  background: var(--city-blue);
+  color: #fff;
+}
+
+.action-card button:hover:not(:disabled),
+.bank-panel button:hover:not(:disabled),
+.innovation-card button:hover:not(:disabled),
+.coop-card button:hover:not(:disabled) {
+  background: var(--city-blue-deep);
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+.world-footer {
+  border-color: var(--city-line);
+  background: #f7fafb;
+}
+
+.world-footer button {
+  min-height: 40px;
+  border-radius: 10px;
+}
+
+.section-heading {
+  border-color: var(--city-line);
+}
+
+.online-summary {
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .7);
+}
+
+.online-summary i {
+  background: var(--city-jade);
+  box-shadow: 0 0 0 4px rgba(37, 138, 103, .12);
+}
+
+.online-list,
+.feed-list {
+  overflow: hidden;
+}
+
+.online-list li,
+.feed-list li {
+  min-height: 64px;
+  border-color: var(--city-line);
+}
+
+.online-list li:hover {
+  background: #f4f8fa;
+}
+
+.mini-avatar {
+  min-width: 44px;
+  min-height: 44px;
+  border-color: #a9ceda;
+  background: var(--city-blue-soft);
+  color: var(--city-blue-deep);
+}
+
+.player-transfer-actions button {
+  min-height: 34px;
+  border-radius: 9px;
+}
+
+.next-goal {
+  background: var(--city-amber-soft);
+  border-color: #efd19c;
+}
+
+.next-goal > div {
+  background: rgba(16, 33, 46, .12);
+}
+
+.next-goal > div i {
+  background: var(--city-amber);
+}
+
+.city-memory-card {
+  background: var(--city-ink-soft);
+  color: #fff;
+}
+
+.city-memory-card p,
+.city-memory-card small {
+  color: #cad6dc;
+}
+
+.auth-overlay,
+.story-select-overlay,
+.avatar-lightbox {
+  padding: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom));
+  background: rgba(8, 20, 28, .72);
+  backdrop-filter: blur(10px);
+}
+
+.auth-card,
+.job-board,
+.transfer-card,
+.talent-board,
+.story-select-card,
+.city-event-card,
+.avatar-lightbox > section {
+  border: 1px solid rgba(255, 255, 255, .6);
+  border-radius: 22px;
+  background: #fff;
+  color: var(--city-ink);
+  box-shadow: 0 30px 80px rgba(8, 20, 28, .28);
+}
+
+.auth-close {
+  display: grid;
+  min-width: 44px;
+  min-height: 44px;
+  place-items: center;
+  border: 1px solid var(--city-line);
+  border-radius: 50%;
+  background: #f1f5f7;
+  color: var(--city-ink);
+}
+
+.auth-card input,
+.transfer-card input,
+.transfer-card select,
+.job-board input,
+.job-board select {
+  min-height: 46px;
+  border: 1px solid var(--city-line);
+  border-radius: 11px;
+  background: #fff;
+  color: var(--city-ink);
+}
+
+.mobile-dock {
+  display: none;
+}
+
+@media (min-width: 1181px) {
+  .game-grid {
+    display: grid;
+    grid-template-columns: 290px minmax(560px, 1fr) 360px;
+  }
+
+  .character-panel,
+  .world-panel,
+  .story-panel {
+    grid-row: 1;
+    min-height: calc(100vh - 146px);
+  }
+
+  .character-panel {
+    grid-column: 1;
+  }
+
+  .world-panel {
+    grid-column: 2;
+  }
+
+  .story-panel {
+    display: block;
+    grid-column: 3;
+    border-top: 0;
+    border-left: 1px solid var(--city-line);
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1180px) {
+  .game-shell {
+    width: min(100% - 20px, 1100px);
+    border-radius: 22px;
+  }
+
+  .game-grid {
+    grid-template-columns: 270px minmax(0, 1fr);
+  }
+
+  .story-panel {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    border-top: 1px solid var(--city-line);
+    border-left: 0;
+  }
+
+  .story-panel > .section-heading,
+  .story-panel > .online-summary,
+  .story-panel > .online-list,
+  .story-panel > .feed-heading,
+  .story-panel > .feed-list {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  html {
+    scroll-padding-bottom: 90px;
+  }
+
+  body {
+    padding: 0;
+    background: var(--city-surface);
+  }
+
+  .game-shell {
+    width: 100%;
+    margin: 0;
+    padding-bottom: calc(78px + env(safe-area-inset-bottom));
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .topbar {
+    position: sticky;
+    z-index: 60;
+    top: 0;
+    min-height: 66px;
+    padding: 9px 14px;
+    gap: 8px;
+  }
+
+  .brand-mark {
+    width: 38px;
+    height: 38px;
+  }
+
+  .brand strong {
+    font-size: 15px;
+  }
+
+  .brand span {
+    display: none;
+  }
+
+  .world-time {
+    margin-left: auto;
+    padding: 6px 9px;
+    text-align: right;
+  }
+
+  .world-time strong {
+    font-size: 16px;
+  }
+
+  .world-time span {
+    font-size: 9px;
+  }
+
+  .account-area {
+    min-width: 42px;
+  }
+
+  .account-area > div {
+    display: none;
+  }
+
+  .account-area button,
+  .account-area .account-button {
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
+    padding: 0;
+    overflow: hidden;
+    color: transparent;
+  }
+
+  .account-area button::before,
+  .account-area .account-button::before {
+    content: "人";
+    color: var(--city-ink);
+    font-weight: 900;
+  }
+
+  .marquee {
+    min-height: 38px;
+    padding-inline: 12px;
+  }
+
+  .marquee p {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .game-grid {
+    display: block;
+  }
+
+  .game-grid .character-panel,
+  .game-grid .world-panel,
+  .game-grid .story-panel {
+    display: none;
+  }
+
+  .game-grid.view-city .world-panel {
+    display: flex;
+  }
+
+  .game-grid.view-life .character-panel,
+  .game-grid.view-social .story-panel {
+    display: block;
+  }
+
+  .character-panel,
+  .story-panel {
+    min-height: calc(100dvh - 182px);
+    padding: 18px 16px 28px;
+    border: 0;
+  }
+
+  .world-panel {
+    min-height: calc(100dvh - 182px);
+  }
+
+  .location-header {
+    min-height: 154px;
+    padding: 24px 18px 28px;
+  }
+
+  .location-header h1 {
+    max-width: calc(100% - 20px);
+    font-size: 36px;
+  }
+
+  .location-header p {
+    padding-right: 30px;
+    font-size: 14px;
+  }
+
+  .location-header::after {
+    right: 14px;
+    bottom: 12px;
+    font-size: 8px;
+  }
+
+  .location-strip {
+    gap: 9px;
+    padding: 15px 14px;
+    scroll-padding-inline: 14px;
+    scroll-snap-type: x proximity;
+  }
+
+  .location-strip::before {
+    top: 34px;
+    right: 18px;
+    left: 18px;
+  }
+
+  .location-strip button {
+    min-width: 76px;
+    min-height: 67px;
+    scroll-snap-align: start;
+  }
+
+  .action-stage {
+    padding: 20px 14px 30px;
+  }
+
+  .action-stage > header h2 {
+    font-size: 23px;
+  }
+
+  .action-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .action-card {
+    min-height: 0;
+    padding: 16px;
+  }
+
+  .action-card button,
+  .bank-panel button,
+  .casino-games button,
+  .innovation-card button,
+  .coop-card button,
+  .street-aid-card button,
+  .player-transfer-actions button {
+    min-height: 44px;
+  }
+
+  .world-footer {
+    padding: 14px;
+  }
+
+  .world-footer span {
+    max-width: 65%;
+  }
+
+  .mobile-dock {
+    position: fixed;
+    z-index: 120;
+    right: 10px;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    left: 10px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    min-height: 68px;
+    padding: 7px;
+    border: 1px solid rgba(255, 255, 255, .18);
+    border-radius: 22px;
+    background: rgba(16, 33, 46, .94);
+    box-shadow: 0 14px 40px rgba(8, 20, 28, .32);
+    backdrop-filter: blur(16px);
+  }
+
+  .mobile-dock button {
+    position: relative;
+    display: grid;
+    grid-template-rows: 24px auto;
+    min-width: 0;
+    min-height: 54px;
+    place-items: center;
+    border: 0;
+    border-radius: 15px;
+    background: transparent;
+    color: #aebec6;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .mobile-dock button.active {
+    background: var(--city-blue);
+    color: #fff;
+  }
+
+  .mobile-dock svg {
+    width: 23px;
+    height: 23px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+  }
+
+  .mobile-dock b {
+    position: absolute;
+    top: 3px;
+    left: calc(50% + 10px);
+    display: grid;
+    min-width: 18px;
+    height: 18px;
+    place-items: center;
+    border: 2px solid var(--city-ink);
+    border-radius: 999px;
+    background: var(--city-amber);
+    color: var(--city-ink);
+    font-family: var(--font-data);
+    font-size: 9px;
+  }
+
+  .story-select-card,
+  .job-board,
+  .talent-board,
+  .transfer-card,
+  .auth-card {
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+@media (max-width: 420px) {
+  .topbar {
+    padding-inline: 10px;
+  }
+
+  .brand-mark {
+    display: none;
+  }
+
+  .location-header h1 {
+    font-size: 32px;
+  }
+
+  .world-time {
+    padding-inline: 7px;
+  }
+}
+
+@media (max-width: 900px) and (max-height: 500px) and (orientation: landscape) {
+  .game-shell {
+    padding-bottom: 66px;
+  }
+
+  .topbar {
+    position: static;
+    min-height: 54px;
+  }
+
+  .mobile-dock {
+    min-height: 58px;
+  }
+
+  .mobile-dock button {
+    grid-template-columns: 22px auto;
+    grid-template-rows: 1fr;
+    min-height: 44px;
+    gap: 6px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --city-ink: #eaf1f4;
+    --city-ink-soft: #cbd9df;
+    --city-fog: #0e171d;
+    --city-surface: #131f27;
+    --city-surface-soft: #18252e;
+    --city-line: #31434e;
+    --city-blue: #36a8cc;
+    --city-blue-deep: #8cd9ee;
+    --city-blue-soft: #143846;
+    --city-amber-soft: #3b2b16;
+    --city-jade-soft: #17382e;
+    --city-coral-soft: #432322;
+    --city-muted: #9fb0b9;
+    --city-shadow: 0 18px 50px rgba(0, 0, 0, .28);
+    --city-shadow-small: 0 8px 24px rgba(0, 0, 0, .22);
+  }
+
+  html,
+  body,
+  .game-grid,
+  .world-panel,
+  .action-stage {
+    background-color: var(--city-fog);
+    color: var(--city-ink);
+  }
+
+  .game-shell,
+  .world-panel,
+  .action-stage {
+    background: var(--city-surface);
+  }
+
+  .topbar,
+  .location-header {
+    background: #09151c;
+  }
+
+  .marquee,
+  .location-strip,
+  .world-footer {
+    background: #17252e;
+  }
+
+  .marquee p,
+  .action-stage > header h2,
+  .section-heading span,
+  .cash-card strong,
+  .cash-breakdown b {
+    color: var(--city-ink);
+  }
+
+  .character-panel {
+    background: var(--city-surface-soft);
+  }
+
+  .story-panel {
+    background: #111d24;
+  }
+
+  .job-tag,
+  .location-strip button,
+  .action-card,
+  .bank-panel,
+  .online-list,
+  .feed-list,
+  .street-aid-card,
+  .career-card,
+  .innovation-card,
+  .coop-card,
+  .auth-card,
+  .job-board,
+  .transfer-card,
+  .talent-board,
+  .story-select-card,
+  .city-event-card,
+  .avatar-lightbox > section {
+    background: #1b2932;
+    color: var(--city-ink);
+  }
+
+  .action-card.featured {
+    background: linear-gradient(145deg, #1b2932 0 62%, #143846 100%);
+  }
+
+  .location-strip button.active {
+    background: #178ab0;
+    color: #fff;
+  }
+
+  .location-strip button.closed:not(.active) {
+    background: #202d35;
+    color: #8699a3;
+  }
+
+  .cash-card {
+    border-color: #255768;
+    background: #143846;
+    color: #a9e1f2;
+  }
+
+  .housing-card {
+    background: var(--city-jade-soft);
+  }
+
+  .online-summary,
+  .online-list li:hover,
+  .reputation-row small {
+    background: #202f38;
+  }
+
+  .auth-card input,
+  .transfer-card input,
+  .transfer-card select,
+  .job-board input,
+  .job-board select,
+  .auth-close {
+    border-color: var(--city-line);
+    background: #22323c;
+    color: var(--city-ink);
+  }
+
+  .next-goal {
+    background: var(--city-amber-soft);
+    border-color: #735b35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

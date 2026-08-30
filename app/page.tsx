@@ -367,6 +367,12 @@ const statMeta: Array<{ key: StatKey; icon: string; label: string }> = [
   { key: "hunger", icon: "△", label: "飽足" },
 ];
 
+function MobileNavIcon({ name }: { name: "city" | "life" | "social" }) {
+  if (name === "city") return <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 19V8l8-4 8 4v11M8 19v-6h8v6M3 19h18" /></svg>;
+  if (name === "life") return <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3" /><path d="M5.5 20c.7-4 3-6 6.5-6s5.8 2 6.5 6M4 4h4M16 4h4" /></svg>;
+  return <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="8" cy="9" r="3" /><circle cx="17" cy="8" r="2.5" /><path d="M2.5 20c.6-4 2.5-6 5.5-6s5 2 5.5 6M14 14c3.7 0 5.9 1.8 6.5 5" /></svg>;
+}
+
 const locationName = (id: LocationId) => locations.find((item) => item.id === id)?.name ?? id;
 const formatMoney = (value: number) => new Intl.NumberFormat("zh-TW").format(value);
 const currentWallClockMs = () => new Date().getTime();
@@ -678,6 +684,7 @@ function GameHome() {
   const [mystery, setMystery] = useState<MysteryState>({ found: 0, total: 7, whispers: [] });
   const [contracts, setContracts] = useState<LifeContractState>({ contracts: [] });
   const [lifeLedger, setLifeLedger] = useState<LifeLedgerState>({ entries: [] });
+  const [mobileView, setMobileView] = useState<"city" | "life" | "social">("city");
   const [transferTarget, setTransferTarget] = useState<{ player: OnlinePlayer; kind: "gift" | "scam" } | null>(null);
   const [transferAmount, setTransferAmount] = useState("");
   const [loanTarget, setLoanTarget] = useState<OnlinePlayer | null>(null);
@@ -1037,6 +1044,7 @@ function GameHome() {
 
   return (
     <main className="game-shell">
+      <a className="skip-link" href="#city-actions">跳到城市行動</a>
       <header className="topbar">
         <a className="brand" href="#main-game" aria-label="人生 Online 首頁">
           <span className="brand-mark">人</span>
@@ -1057,7 +1065,7 @@ function GameHome() {
         <span className="marquee-label">世界快訊</span><p>{notice}</p>
       </section>
 
-      <div className="game-grid" id="main-game" aria-busy={loading || busy}>
+      <div className={`game-grid view-${mobileView}`} id="main-game" aria-busy={loading || busy}>
         <aside className="character-panel panel">
           <div className="panel-kicker">MY LIFE / {profile ? "ONLINE" : "GUEST"}</div>
           <div className="identity">
@@ -1090,7 +1098,7 @@ function GameHome() {
           <nav className="location-strip" aria-label="城市地點">
             {locations.map((item) => <button className={`${item.id === player.location ? "active" : ""} ${!isLocationOpen(item.id, sharedMinutes) ? "closed" : ""}`} key={item.id} onClick={() => void act("move", { location: item.id })} disabled={busy || (item.id === "prison" && player.location !== "prison")}>{item.image ? <img className="location-photo" src={item.image} alt="" /> : <span>{item.emoji}</span>}<small>{item.name}</small><em>{item.id === "prison" && player.location !== "prison" ? "僅限服刑" : isLocationOpen(item.id, sharedMinutes) ? item.hours : "已關門"}</em></button>)}
           </nav>
-          <div className="action-stage">
+          <div className="action-stage" id="city-actions">
             <div className="stage-number">{String(locations.findIndex((item) => item.id === player.location) + 1).padStart(2, "0")}</div>
             <div className="action-intro"><span>今天，想把時間花在哪裡？</span><h3>{actionTitle(player.location)}</h3><p>{actionLocked ? `${player.actionLabel || "目前的行動"}進行中，${actionSecondsLeft} 秒後可再次行動；期間可移動、換職、使用銀行、處理贈送／詐騙／治療／貸款邀請，或前往賭場遊玩。` : actionDescription(player.location, dailyRent)}</p></div>
             <div className="action-cards">
@@ -1150,6 +1158,11 @@ function GameHome() {
           <div className="next-goal"><span>當前《浪子回頭》任務進度</span><strong>{player.mainStory !== "prodigal_return" ? "尚未開始《浪子回頭》" : nextStoryChapter ? `第 ${nextStoryChapter.chapter} 章 · ${nextStoryChapter.title}` : "第 6 章完成 · 回家的路"}</strong><div><i style={{ width: `${player.mainStory === "prodigal_return" ? storyProgress : 0}%` }} /></div><small>{player.mainStory !== "prodigal_return" ? "選擇人生主線後開始記錄" : nextStoryChapter ? `目前貸款 NT$${formatMoney(player.loanBalance)} · 目標降至 NT$${formatMoney(nextStoryDebt)}（初始負債 ${Math.round(nextStoryChapter.remainingRatio * 100)}%）` : "貸款已全部清償 · 《浪子回頭》全章完成"}</small></div>
         </aside>
       </div>
+      <nav className="mobile-dock" aria-label="主要遊戲區域">
+        <button type="button" className={mobileView === "city" ? "active" : ""} aria-pressed={mobileView === "city"} onClick={() => setMobileView("city")}><MobileNavIcon name="city" /><span>城市</span></button>
+        <button type="button" className={mobileView === "life" ? "active" : ""} aria-pressed={mobileView === "life"} onClick={() => setMobileView("life")}><MobileNavIcon name="life" /><span>我的人生</span></button>
+        <button type="button" className={mobileView === "social" ? "active" : ""} aria-pressed={mobileView === "social"} onClick={() => setMobileView("social")}><MobileNavIcon name="social" /><span>多人世界</span>{online.length > 0 && <b aria-label={`${online.length} 位玩家在線`}>{online.length}</b>}</button>
+      </nav>
       {profile && player.mainStory === "unselected" && <div className="story-select-overlay" role="dialog" aria-modal="true" aria-labelledby="story-select-title">
         <section className="story-select-card"><header><span>CHOOSE YOUR LIFE STORY</span><h2 id="story-select-title">選擇人生主線</h2><p>主線選定後不能更換，並會決定你的初始條件。</p></header><article><div className="story-choice-title"><span>MAIN STORY 01</span><h3>《浪子回頭》</h3></div><div className="story-prologue">{PRODIGAL_RETURN_STORY.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div><div className="story-starting-stats"><div><span>初始金錢</span><strong>NT$37</strong></div><div className="debt"><span>初始負債</span><strong>NT$250,000</strong></div></div><button type="button" onClick={() => void act("choose_story", { story: "prodigal_return" })} disabled={busy}>{busy ? "正在開始人生……" : "選擇《浪子回頭》並開始"}<span>→</span></button></article></section>
       </div>}

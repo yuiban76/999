@@ -531,3 +531,20 @@ test("innovative city systems keep their multiplayer rules and personal records"
   assert.match(page, /城市傳聞/);
   assert.match(page, /人生紀錄/);
 });
+
+test("city pulse UI keeps the mobile game areas accessible", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const css = await readFile(new URL("app/globals.css", root), "utf8");
+
+  assert.match(page, /className={`game-grid view-\${mobileView}`}/);
+  assert.match(page, /className="mobile-dock" aria-label="主要遊戲區域"/);
+  assert.match(page, /<MobileNavIcon name="city"/);
+  assert.match(page, /<MobileNavIcon name="life"/);
+  assert.match(page, /<MobileNavIcon name="social"/);
+  assert.match(page, /className="skip-link" href="#city-actions"/);
+  assert.match(css, /CITY PULSE UI/);
+  assert.match(css, /\.game-grid\.view-city \.world-panel/);
+  assert.match(css, /\.game-grid\.view-life \.character-panel/);
+  assert.match(css, /\.game-grid\.view-social \.story-panel/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+});
