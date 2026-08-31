@@ -181,7 +181,31 @@ type PokerState = {
   hand: null | { cards: string[]; bet: number; streetBet?: number; seatNo: number | null; status: string; result: string; isTurn?: boolean };
 };
 
-type BingoState = { hostUserId?: string; entryFee?: number; capacity?: number; status: string; roundNo?: number; drawn: number[]; nextDrawAt?: number; players: Array<{ id: string; displayName: string; card: number[]; isMine: boolean }> };
+type BingoState = {
+  hostUserId?: string;
+  entryFee?: number;
+  capacity?: number;
+  status: string;
+  roundNo?: number;
+  drawn: number[];
+  preview: number[];
+  nextDrawAt?: number;
+  strategyUntil?: number;
+  claimUntil?: number;
+  winnerIds: string[];
+  serverNow?: number;
+  players: Array<{ id: string; displayName: string; card: number[]; isMine: boolean; swapped: boolean; claimed: boolean }>;
+};
+type DicePokerState = {
+  hostUserId?: string;
+  entryFee?: number;
+  capacity?: number;
+  status: string;
+  roundNo?: number;
+  deadlineAt?: number;
+  serverNow?: number;
+  players: Array<{ id: string; displayName: string; dice: number[]; held: number[]; rerollsLeft: number; status: string; result: string; isMine: boolean }>;
+};
 type TournamentState = {
   hostUserId?: string;
   entryFee?: number;
@@ -214,6 +238,7 @@ type Bootstrap = {
   casino: CasinoState;
   poker: PokerState;
   bingo?: BingoState;
+  dicePoker?: DicePokerState;
   tournament?: TournamentState;
   cityMemory?: CityMemory;
   transferRequests?: TransferRequest[];
@@ -659,9 +684,10 @@ function GameHome() {
   const [casino, setCasino] = useState<CasinoState>({ capacity: 5, activeCount: 0, seats: [], hand: null });
   const [poker, setPoker] = useState<PokerState>({ capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 });
   const [bookStore, setBookStore] = useState<BookStoreState>({ books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK });
-  const [bingo, setBingo] = useState<BingoState>({ status: "lobby", drawn: [], players: [] });
+  const [bingo, setBingo] = useState<BingoState>({ status: "lobby", drawn: [], preview: [], winnerIds: [], players: [] });
+  const [dicePoker, setDicePoker] = useState<DicePokerState>({ status: "lobby", players: [] });
   const [tournament, setTournament] = useState<TournamentState>({ status: "lobby", players: [] });
-  const [casinoGame, setCasinoGame] = useState<"blackjack" | "poker" | "bingo" | "tournament">("blackjack");
+  const [casinoGame, setCasinoGame] = useState<"blackjack" | "poker" | "bingo" | "dice" | "tournament">("blackjack");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
@@ -787,6 +813,7 @@ function GameHome() {
       setCasino(data.casino);
       if (data.poker) setPoker(data.poker);
       if (data.bingo) setBingo(data.bingo);
+      if (data.dicePoker) setDicePoker(data.dicePoker);
       if (data.tournament) setTournament(data.tournament);
       if (data.bookStore) setBookStore(data.bookStore);
       if (data.cityMemory) setCityMemory(data.cityMemory);
@@ -859,7 +886,7 @@ function GameHome() {
   async function act(action: string, payload: Record<string, unknown> = {}) {
     if (busy) return;
     const canActDuringWait = ["move", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy", "beg_response", "inventory_use", "street_share_food", "aid_box_donate", "coop_contribute", "story_ack", "contract_create", "contract_accept", "contract_decline", "contract_deposit"].includes(action)
-      || action.startsWith("casino_") || action.startsWith("poker_") || action.startsWith("bingo_") || action.startsWith("tournament_");
+      || action.startsWith("casino_") || action.startsWith("poker_") || action.startsWith("bingo_") || action.startsWith("dice_") || action.startsWith("tournament_");
     if (actionLocked && !canActDuringWait) {
       setNotice(`${player.actionLabel || "目前的行動"}尚未完成，請等待 ${actionSecondsLeft} 秒；期間可移動、換職、使用銀行、處理贈送／詐騙／治療／貸款請求，或前往賭場遊玩。`);
       return;
@@ -878,12 +905,12 @@ function GameHome() {
       return;
     }
     try {
-      const response = await fetch(`${API_ORIGIN}${action.startsWith("casino_") ? "/api/casino/action" : action.startsWith("poker_") ? "/api/poker/action" : action.startsWith("bingo_") ? "/api/bingo/action" : action.startsWith("tournament_") ? "/api/tournament/action" : "/api/game/action"}`, {
+      const response = await fetch(`${API_ORIGIN}${action.startsWith("casino_") ? "/api/casino/action" : action.startsWith("poker_") ? "/api/poker/action" : action.startsWith("bingo_") ? "/api/bingo/action" : action.startsWith("dice_") ? "/api/dice-poker/action" : action.startsWith("tournament_") ? "/api/tournament/action" : "/api/game/action"}`, {
         method: "POST",
         headers: apiHeaders(true),
-        body: JSON.stringify({ action: action.startsWith("casino_") ? action.slice(7) : action.startsWith("poker_") ? action.slice(6) : action.startsWith("bingo_") ? action.slice(6) : action.startsWith("tournament_") ? action.slice(11) : action, ...payload }),
+        body: JSON.stringify({ action: action.startsWith("casino_") ? action.slice(7) : action.startsWith("poker_") ? action.slice(6) : action.startsWith("bingo_") ? action.slice(6) : action.startsWith("dice_") ? action.slice(5) : action.startsWith("tournament_") ? action.slice(11) : action, ...payload }),
       });
-      const data = await response.json() as { serverNow?: number; player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; bingo?: BingoState; tournament?: TournamentState; bookStore?: BookStoreState; cityMemory?: CityMemory; transferRequests?: TransferRequest[]; medicalRequests?: MedicalRequest[]; loanRequests?: LoanRequest[]; begRequests?: BegRequest[]; street?: StreetState; aidBoxes?: AidBoxState; coop?: CoopState; reputation?: ReputationState; commissions?: CommissionState; mystery?: MysteryState; contracts?: LifeContractState; lifeLedger?: LifeLedgerState; scratch?: { price: number; prize: number } | null; message?: string };
+      const data = await response.json() as { serverNow?: number; player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; bingo?: BingoState; dicePoker?: DicePokerState; tournament?: TournamentState; bookStore?: BookStoreState; cityMemory?: CityMemory; transferRequests?: TransferRequest[]; medicalRequests?: MedicalRequest[]; loanRequests?: LoanRequest[]; begRequests?: BegRequest[]; street?: StreetState; aidBoxes?: AidBoxState; coop?: CoopState; reputation?: ReputationState; commissions?: CommissionState; mystery?: MysteryState; contracts?: LifeContractState; lifeLedger?: LifeLedgerState; scratch?: { price: number; prize: number } | null; message?: string };
       if (typeof data.serverNow === "number") setServerTimeOffsetMs(data.serverNow - currentWallClockMs());
       if (!response.ok || !data.player) throw new Error(data.message || "行動失敗");
       syncPlayer(data.player, action === "reset");
@@ -892,6 +919,7 @@ function GameHome() {
       if (data.casino) setCasino(data.casino);
       if (data.poker) setPoker(data.poker);
       if (data.bingo) setBingo(data.bingo);
+      if (data.dicePoker) setDicePoker(data.dicePoker);
       if (data.tournament) setTournament(data.tournament);
       if (data.bookStore) setBookStore(data.bookStore);
       if (data.cityMemory) setCityMemory(data.cityMemory);
@@ -1137,7 +1165,16 @@ function GameHome() {
               </>}
               {player.location === "bookstore" && <BookStorePanel state={bookStore} currentJob={player.currentJob} signedIn={Boolean(profile)} busy={busy || !bookstoreOpen} closed={!bookstoreOpen} title={bookTitle} setTitle={setBookTitle} onAction={(action, payload) => void act(action, payload)} />}
               {player.location === "hotel" && <><ActionCard icon="工" title="旅店臨時工 · 30 秒" meta="現實等待 30 秒 · 收入 NT$100 · 不扣體力、飽足、健康 · 無職業經驗" button="開始打工" onClick={() => void act("hotel", { kind: "work" })} featured disabled={actionBusy} /><ActionCard icon="宿" title="旅店住宿一晚" meta="NT$1,200 · 現實等待 2 分鐘 · 體力全滿" button="辦理入住" onClick={() => void act("hotel", { kind: "stay" })} disabled={actionBusy || player.ownsHome || rentalDaysLeft > 0} disabledLabel={player.ownsHome || rentalDaysLeft > 0 ? "已有住所" : undefined} /><ActionCard icon="餐" title="24 小時旅店餐" meta={`NT$${formatMoney(mealPrice(250))} · 飽足 +45 · 立即完成${mealDiscountLabel}`} button="購買旅店餐" onClick={() => void act("hotel", { kind: "meal" })} disabled={actionBusy} /><ActionCard icon="豪" title="24 小時豪華餐" meta={`NT$${formatMoney(mealPrice(500))} · 飽足 +80 · 立即完成${mealDiscountLabel}`} button="購買豪華餐" onClick={() => void act("hotel", { kind: "luxury" })} disabled={actionBusy} /></>}
-                {player.location === "casino" && <div className="casino-games"><div className="casino-game-tabs"><button className={casinoGame === "blackjack" ? "active" : ""} onClick={() => setCasinoGame("blackjack")}>二十一點 · 真實牌靴</button><button className={casinoGame === "poker" ? "active" : ""} onClick={() => setCasinoGame("poker")}>德州撲克 · 完整下注</button><button className={casinoGame === "bingo" ? "active" : ""} onClick={() => setCasinoGame("bingo")}>賓果 · 公開開獎</button><button className={casinoGame === "tournament" ? "active" : ""} onClick={() => setCasinoGame("tournament")}>錦標賽 · 積分賽</button></div>{casinoGame === "blackjack" ? <CasinoTable state={casino} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`casino_${action}`, payload)} /> : casinoGame === "poker" ? <PokerTable state={poker} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`poker_${action}`, payload)} /> : casinoGame === "bingo" ? <BingoTable state={bingo} signedIn={Boolean(profile)} busy={busy} onAction={(action, entryFee) => void act(`bingo_${action}`, { entryFee })} /> : <TournamentTable state={tournament} signedIn={Boolean(profile)} busy={busy} onAction={(action, payload) => void act(`tournament_${action}`, payload)} />}</div>}
+                {player.location === "casino" && <div className="casino-games">
+                  <div className="casino-category-tabs" role="tablist" aria-label="賭場玩法分類">
+                    <button className={casinoGame === "blackjack" || casinoGame === "poker" ? "active" : ""} onClick={() => setCasinoGame("blackjack")}>牌桌</button>
+                    <button className={casinoGame === "bingo" ? "active" : ""} onClick={() => setCasinoGame("bingo")}>多人開獎</button>
+                    <button className={casinoGame === "dice" ? "active" : ""} onClick={() => setCasinoGame("dice")}>技巧遊戲</button>
+                    <button className={casinoGame === "tournament" ? "active" : ""} onClick={() => setCasinoGame("tournament")}>錦標賽</button>
+                  </div>
+                  {(casinoGame === "blackjack" || casinoGame === "poker") && <div className="casino-game-tabs"><button className={casinoGame === "blackjack" ? "active" : ""} onClick={() => setCasinoGame("blackjack")}>二十一點</button><button className={casinoGame === "poker" ? "active" : ""} onClick={() => setCasinoGame("poker")}>德州撲克</button></div>}
+                  {casinoGame === "blackjack" ? <CasinoTable state={casino} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`casino_${action}`, payload)} /> : casinoGame === "poker" ? <PokerTable state={poker} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`poker_${action}`, payload)} /> : casinoGame === "bingo" ? <BingoTable state={bingo} signedIn={Boolean(profile)} busy={busy} onAction={(action, payload) => void act(`bingo_${action}`, payload)} /> : casinoGame === "dice" ? <DicePokerTable state={dicePoker} signedIn={Boolean(profile)} busy={busy} onAction={(action, payload) => void act(`dice_${action}`, payload)} /> : <TournamentTable state={tournament} signedIn={Boolean(profile)} busy={busy} onAction={(action, payload) => void act(`tournament_${action}`, payload)} />}
+                </div>}
               {player.location === "school" && ACADEMIES.map((academy, index) => <ActionCard key={academy.id} icon={academy.icon} title={academy.name} meta={`NT$500 · 現實等待 1 分鐘 · ${formatRequirements(academy.gains)}`} button="報名上課" onClick={() => void act("study", { academy: academy.id })} featured={index === 0} disabled={actionBusy || !schoolOpen} disabledLabel={!schoolOpen ? "已關門" : undefined} />)}
               {player.location === "hospital" && <><ActionCard icon="急" title="24 小時急診" meta={`NT$${formatMoney(Math.floor(2500 * (1 - effectiveHospitalDiscount)))} · 等待 20 秒 · 健康至少恢復至 70`} button="前往急診" onClick={() => void act("hospital", { kind: "emergency" })} featured disabled={actionBusy} /><ActionCard icon="診" title="一般門診" meta={`07:00～23:00 · NT$${formatMoney(Math.floor(600 * (1 - effectiveHospitalDiscount)))} · 等待 15 秒 · 健康 +25`} button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /><ActionCard icon="療" title="完整治療" meta={`07:00～23:00 · NT$${formatMoney(Math.floor(1500 * (1 - effectiveHospitalDiscount)))} · 等待 30 秒 · 健康至少恢復至 80`} button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} />{effectiveHospitalDiscount > 0 && <p className="hospital-discount-note">目前醫療費用折抵 {Math.round(effectiveHospitalDiscount * 100)}%（職業與城市效果取較高者）</p>}</>}
             </div>
@@ -1313,9 +1350,24 @@ function LeaveConfirmDialog({ open, title, detail, onCancel, onConfirm }: { open
   </div>;
 }
 
-function BingoTable({ state, signedIn, busy, onAction }: { state: BingoState; signedIn: boolean; busy: boolean; onAction: (action: "join" | "leave", entryFee?: number) => void }) {
+const BINGO_CARD_LINES = [
+  [0, 1, 2, 3, 4], [5, 6, 7, 8, 9], [10, 11, 12, 13, 14], [15, 16, 17, 18, 19], [20, 21, 22, 23, 24],
+  [0, 5, 10, 15, 20], [1, 6, 11, 16, 21], [2, 7, 12, 17, 22], [3, 8, 13, 18, 23], [4, 9, 14, 19, 24],
+  [0, 6, 12, 18, 24], [4, 8, 12, 16, 20],
+];
+
+function bingoProgress(card: number[], drawn: number[]) {
+  const marked = (index: number) => card[index] === 0 || drawn.includes(card[index]);
+  return Math.max(0, ...BINGO_CARD_LINES.map((line) => line.filter(marked).length));
+}
+
+function BingoTable({ state, signedIn, busy, onAction }: { state: BingoState; signedIn: boolean; busy: boolean; onAction: (action: string, payload?: Record<string, unknown>) => void }) {
   const [entryFee, setEntryFee] = useState("100");
   const [leaveConfirm, setLeaveConfirm] = useState(false);
+  const [swapIndex, setSwapIndex] = useState<number | null>(null);
+  const [previewNumber, setPreviewNumber] = useState<number | null>(null);
+  const [now, setNow] = useState(currentWallClockMs());
+  useEffect(() => { const timer = window.setInterval(() => setNow(currentWallClockMs()), 500); return () => window.clearInterval(timer); }, []);
   const requestLeave = () => setLeaveConfirm(true);
   const confirmLeave = () => { setLeaveConfirm(false); onAction("leave"); };
   const mine = state.players.find((player) => player.isMine);
@@ -1324,21 +1376,56 @@ function BingoTable({ state, signedIn, busy, onAction }: { state: BingoState; si
   const requestedFee = Number(entryFee);
   const validFee = Number.isInteger(requestedFee) && requestedFee >= 100 && requestedFee <= 10_000;
   const displayedFee = (hosting || state.status === "completed") && validFee ? requestedFee : fee;
-  const statusLabel = state.status === "drawing" ? "開獎中" : state.status === "completed" ? "本輪結束" : "等待玩家";
+  const countdownTarget = state.status === "strategy" ? state.strategyUntil : state.status === "claiming" ? state.claimUntil : state.nextDrawAt;
+  const secondsLeft = countdownTarget ? Math.max(0, Math.ceil((countdownTarget - now) / 1000)) : 0;
+  const statusLabel = state.status === "drawing" ? "開獎中" : state.status === "strategy" ? "策略換格" : state.status === "claiming" ? "賓果判定" : state.status === "completed" ? "本輪結束" : "等待玩家";
+  const canSwap = Boolean(mine && state.status === "strategy" && !mine.swapped && swapIndex !== null && previewNumber !== null);
+  const eligibleWinner = Boolean(mine && state.winnerIds.includes(mine.id));
   return <section className="casino-table social-casino-table bingo-table">
-    <header><div><span>COMMUNITY BINGO</span><h3>多人共同開獎</h3><p>最先完成橫、直或斜線的玩家獲勝</p></div><strong className={`room-status ${state.status}`}>{statusLabel}</strong></header>
+    <header><div><span>策略賓果</span><h3>5×5 多人共同開獎</h3><p>十球後可換一格；最先完成橫、直或斜線的玩家獲勝</p></div><strong className={`room-status ${state.status}`}>{statusLabel}</strong></header>
     <div className="casino-room-meta"><div><small>報名費</small><strong>NT${formatMoney(displayedFee)}</strong></div><div><small>房間人數</small><strong>{state.players.length} / {state.capacity ?? 5}</strong></div><div><small>獎池</small><strong>NT${formatMoney(fee * state.players.length)}</strong></div></div>
-    {state.status === "drawing" && <div className="bingo-draws"><span>已開出 {state.drawn.length} / 25 個號碼</span><div>{state.drawn.map((number) => <b key={number}>{number}</b>)}</div></div>}
-    {state.status === "completed" ? <div className="room-entry-panel"><label className="room-fee-field"><span>建立下一輪並設定報名費</span><div><b>NT$</b><input aria-label="下一輪賓果報名費" type="number" min="100" max="10000" step="100" inputMode="numeric" value={entryFee} onChange={(event) => setEntryFee(event.target.value)} /></div><small>上一輪已結束，由下一位開房者設定新費用。</small></label><button className="casino-primary" disabled={busy || !signedIn || !validFee} onClick={() => onAction("join", requestedFee)}>建立下一輪賓果</button></div> : mine ? <div className="joined-room-panel">
-      <div className="joined-room-copy"><span>{state.hostUserId === mine.id ? "你是房主" : "你已加入"}</span><strong>{state.status === "lobby" ? "等待另一位玩家加入" : "你的賓果卡"}</strong><small>{state.status === "lobby" ? "第二位玩家加入後立即開始公開開獎。" : "亮起的數字代表已經開出。"}</small></div>
-      <div className="bingo-card">{mine.card.map((number) => <span className={state.drawn.includes(number) ? "marked" : ""} key={number}>{number}</span>)}</div>
+    {state.drawn.length > 0 && <div className="bingo-draws"><span>已開出 {state.drawn.length} 顆{state.status === "drawing" ? ` · 下一顆 ${secondsLeft} 秒` : ""}</span><strong className="latest-bingo-ball">{state.drawn.at(-1)}</strong><details><summary>查看全部開獎號碼</summary><div>{state.drawn.map((number) => <b key={number}>{number}</b>)}</div></details></div>}
+    {state.status === "completed" ? <div className="room-entry-panel"><label className="room-fee-field"><span>建立下一輪並設定報名費</span><div><b>NT$</b><input aria-label="下一輪賓果報名費" type="number" min="100" max="10000" step="100" inputMode="numeric" value={entryFee} onChange={(event) => setEntryFee(event.target.value)} /></div><small>上一輪已結束，由下一位開房者設定新費用。</small></label><button className="casino-primary" disabled={busy || !signedIn || !validFee} onClick={() => onAction("join", { entryFee: requestedFee })}>建立下一輪賓果</button></div> : mine ? <div className="joined-room-panel">
+      <div className="joined-room-copy"><span>{state.hostUserId === mine.id ? "你是房主" : "你已加入"}</span><strong>{state.status === "lobby" ? "由房主決定開始時間" : state.status === "strategy" ? `策略時間剩餘 ${secondsLeft} 秒` : state.status === "claiming" ? "正在確認本顆球的得主" : "你的賓果卡"}</strong><small>{state.status === "lobby" ? "至少兩人後，房主可以立即開始。" : state.status === "strategy" ? "選一個未標記格，再選同欄位的預告球。" : "亮起的數字代表已經開出；中央為免費格。"}</small></div>
+      <div className="bingo-column-labels" aria-hidden="true"><b>B</b><b>I</b><b>N</b><b>G</b><b>O</b></div>
+      <div className={`bingo-card ${state.status === "strategy" ? "strategy" : ""}`}>{mine.card.map((number, index) => { const marked = number === 0 || state.drawn.includes(number); return <button type="button" className={`${marked ? "marked" : ""} ${swapIndex === index ? "selected" : ""}`} key={`${index}-${number}`} disabled={state.status !== "strategy" || mine.swapped || marked} onClick={() => setSwapIndex(index)}>{number === 0 ? "FREE" : number}</button>; })}</div>
+      {state.status === "strategy" && <div className="bingo-strategy"><span>預告球</span><div>{state.preview.map((number) => <button type="button" className={previewNumber === number ? "selected" : ""} key={number} disabled={mine.swapped} onClick={() => setPreviewNumber(number)}>{number}</button>)}</div><button className="casino-primary" disabled={busy || !canSwap} onClick={() => onAction("swap", { cardIndex: swapIndex, previewNumber })}>{mine.swapped ? "本局已完成換格" : "確認策略換格"}</button></div>}
+      {state.status === "claiming" && eligibleWinner && <button className="casino-primary bingo-claim" disabled={busy || mine.claimed} onClick={() => onAction("claim")}>{mine.claimed ? "已喊賓果，等待結算" : "喊賓果！"}</button>}
+      {state.status === "lobby" && state.hostUserId === mine.id && <button className="casino-primary" disabled={busy || state.players.length < 2} onClick={() => onAction("start")}>{state.players.length < 2 ? "至少需要兩位玩家" : "開始策略賓果"}</button>}
       {state.status === "lobby" && <button className="room-leave-button" disabled={busy} onClick={requestLeave}>離開房間並退還 NT${formatMoney(fee)}</button>}
     </div> : state.status === "lobby" && <div className="room-entry-panel">
       {hosting ? <label className="room-fee-field"><span>設定每人報名費</span><div><b>NT$</b><input aria-label="賓果報名費" type="number" min="100" max="10000" step="100" inputMode="numeric" value={entryFee} onChange={(event) => setEntryFee(event.target.value)} /></div><small>可設定 NT$100～10,000，開房後即鎖定。</small></label> : <div className="room-ready-copy"><span>房間已建立</span><strong>加入費用 NT${formatMoney(fee)}</strong><small>加入後立即開始公開開獎。</small></div>}
-      <button className="casino-primary" disabled={busy || !signedIn || state.players.length >= 5 || (hosting && !validFee)} onClick={() => onAction("join", hosting ? requestedFee : undefined)}>{signedIn ? hosting ? "建立賓果房間" : "加入這個房間" : "登入後加入"}</button>
+      <button className="casino-primary" disabled={busy || !signedIn || state.players.length >= 5 || (hosting && !validFee)} onClick={() => onAction("join", hosting ? { entryFee: requestedFee } : undefined)}>{signedIn ? hosting ? "建立賓果房間" : "加入這個房間" : "登入後加入"}</button>
     </div>}
-    <div className="casino-player-list"><header><strong>房間玩家</strong><span>{state.players.length ? `${state.players.length} 人已就緒` : "尚未有人加入"}</span></header>{state.players.length ? state.players.map((player, index) => <div key={player.id}><b>{index + 1}</b><span><strong>{player.displayName}{player.isMine ? "（你）" : ""}</strong><small>{player.id === state.hostUserId ? "房主" : state.status === "drawing" ? `${player.card.filter((number) => state.drawn.includes(number)).length}/9 已標記` : "已就緒"}</small></span><em>{player.card.filter((number) => state.drawn.includes(number)).length}/9</em></div>) : <p>設定報名費，成為第一位開房玩家。</p>}</div>
+    <div className="casino-player-list"><header><strong>房間玩家</strong><span>{state.players.length ? `${state.players.length} 人已就緒` : "尚未有人加入"}</span></header>{state.players.length ? state.players.map((player, index) => <div key={player.id}><b>{index + 1}</b><span><strong>{player.displayName}{player.isMine ? "（你）" : ""}</strong><small>{state.winnerIds.includes(player.id) ? "本顆球完成連線" : player.id === state.hostUserId ? "房主" : player.swapped ? "已完成策略換格" : "參賽中"}</small></span><em>最佳 {bingoProgress(player.card, state.drawn)}/5</em></div>) : <p>設定報名費，成為第一位開房玩家。</p>}</div>
     <LeaveConfirmDialog open={leaveConfirm} title="確定要離開賓果房間嗎？" detail="離開後會退出目前房間；若仍在報名階段，報名費會依房間規則退還。" onCancel={() => setLeaveConfirm(false)} onConfirm={confirmLeave} />
+  </section>;
+}
+
+function DicePokerTable({ state, signedIn, busy, onAction }: { state: DicePokerState; signedIn: boolean; busy: boolean; onAction: (action: string, payload?: Record<string, unknown>) => void }) {
+  const [entryFee, setEntryFee] = useState("100");
+  const [held, setHeld] = useState<number[]>([]);
+  const [leaveConfirm, setLeaveConfirm] = useState(false);
+  const mine = state.players.find((player) => player.isMine);
+  const hosting = state.status === "lobby" && !state.hostUserId;
+  const fee = state.entryFee ?? 100;
+  const requestedFee = Number(entryFee);
+  const validFee = Number.isInteger(requestedFee) && requestedFee >= 100 && requestedFee <= 10_000;
+  const toggleHeld = (index: number) => setHeld((current) => current.includes(index) ? current.filter((item) => item !== index) : [...current, index]);
+  const reroll = () => { onAction("reroll", { held }); setHeld([]); };
+  const statusLabel = state.status === "playing" ? "擲骰中" : state.status === "completed" ? "本輪結束" : "等待玩家";
+  return <section className="casino-table social-casino-table dice-poker-table">
+    <header><div><span>技巧遊戲</span><h3>五骰撲克</h3><p>保留想要的骰子，最多重擲兩次；牌型最高者獲得獎池</p></div><strong className={`room-status ${state.status}`}>{statusLabel}</strong></header>
+    <div className="casino-room-meta"><div><small>報名費</small><strong>NT${formatMoney(fee)}</strong></div><div><small>房間人數</small><strong>{state.players.length} / {state.capacity ?? 5}</strong></div><div><small>獎池</small><strong>NT${formatMoney(fee * state.players.length)}</strong></div></div>
+    {state.status === "completed" && !mine ? <div className="room-entry-panel"><label className="room-fee-field"><span>建立下一輪並設定報名費</span><div><b>NT$</b><input aria-label="下一輪骰子撲克報名費" type="number" min="100" max="10000" step="100" inputMode="numeric" value={entryFee} onChange={(event) => setEntryFee(event.target.value)} /></div></label><button className="casino-primary" disabled={busy || !signedIn || !validFee} onClick={() => onAction("join", { entryFee: requestedFee })}>建立下一輪骰子撲克</button></div> : mine ? <div className="joined-room-panel">
+      <div className="joined-room-copy"><span>{state.hostUserId === mine.id ? "你是房主" : "你已加入"}</span><strong>{state.status === "lobby" ? "等待房主開始" : state.status === "playing" ? `剩餘 ${mine.rerollsLeft} 次重擲` : mine.result || "本輪已結束"}</strong><small>{state.status === "playing" && mine.status === "playing" ? "點擊骰子決定保留，再進行重擲或直接停手。" : "所有玩家完成後會自動比較牌型。"}</small></div>
+      {mine.dice.length > 0 && <div className="dice-hand">{mine.dice.map((value, index) => <button type="button" key={index} className={held.includes(index) ? "held" : ""} disabled={state.status !== "playing" || mine.status !== "playing"} onClick={() => toggleHeld(index)}><b>{value}</b><small>{held.includes(index) ? "保留" : "點選保留"}</small></button>)}</div>}
+      {state.status === "playing" && mine.status === "playing" && <div className="dice-actions"><button type="button" className="room-leave-button" disabled={busy} onClick={() => onAction("stand")}>停手比牌</button><button type="button" className="casino-primary" disabled={busy || mine.rerollsLeft <= 0} onClick={reroll}>重擲未保留骰子</button></div>}
+      {state.status === "lobby" && state.hostUserId === mine.id && <button className="casino-primary" disabled={busy || state.players.length < 2} onClick={() => onAction("start")}>{state.players.length < 2 ? "至少需要兩位玩家" : "開始骰子撲克"}</button>}
+      {state.status === "lobby" && <button className="room-leave-button" disabled={busy} onClick={() => setLeaveConfirm(true)}>離開房間並退還 NT${formatMoney(fee)}</button>}
+    </div> : state.status === "lobby" && <div className="room-entry-panel">{hosting ? <label className="room-fee-field"><span>設定每人報名費</span><div><b>NT$</b><input aria-label="骰子撲克報名費" type="number" min="100" max="10000" step="100" inputMode="numeric" value={entryFee} onChange={(event) => setEntryFee(event.target.value)} /></div><small>可設定 NT$100～10,000，開房後即鎖定。</small></label> : <div className="room-ready-copy"><span>房間已建立</span><strong>加入費用 NT${formatMoney(fee)}</strong><small>房主會在 2～5 人時手動開始。</small></div>}<button className="casino-primary" disabled={busy || !signedIn || state.players.length >= 5 || (hosting && !validFee)} onClick={() => onAction("join", hosting ? { entryFee: requestedFee } : undefined)}>{signedIn ? hosting ? "建立骰子撲克房間" : "加入這個房間" : "登入後加入"}</button></div>}
+    <div className="casino-player-list"><header><strong>房間玩家</strong><span>{state.players.length ? `${state.players.length} 人` : "尚未有人加入"}</span></header>{state.players.length ? state.players.map((player, index) => <div key={player.id}><b>{index + 1}</b><span><strong>{player.displayName}{player.isMine ? "（你）" : ""}</strong><small>{player.id === state.hostUserId ? "房主" : player.status === "done" ? "已停手" : state.status === "playing" ? `剩餘 ${player.rerollsLeft} 次` : "已就緒"}</small></span><em>{state.status === "completed" ? player.result : player.status === "done" ? "等待比牌" : "進行中"}</em></div>) : <p>設定報名費，成為第一位開房玩家。</p>}</div>
+    <LeaveConfirmDialog open={leaveConfirm} title="確定要離開骰子撲克房間嗎？" detail="報名階段離開會退還報名費；遊戲開始後不能退出本輪。" onCancel={() => setLeaveConfirm(false)} onConfirm={() => { setLeaveConfirm(false); onAction("leave"); }} />
   </section>;
 }
 

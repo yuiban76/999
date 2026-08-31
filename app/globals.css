@@ -1233,7 +1233,11 @@ body {
 .story-select-card > article { background: #fff; }
 .story-starting-stats > div { border-color: #dedee3; border-radius: 13px; background: #f5f5f7; }
 
-.casino-game-tabs { padding: 4px; border-radius: 12px; background: #e8e8ed; }
+.casino-category-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; padding: 7px; border-radius: 16px; background: #101828; }
+.casino-category-tabs button { min-height: 42px; padding: 8px 10px; border: 1px solid transparent; border-radius: 11px; background: transparent; color: rgba(255,255,255,.7); font-size: 12px; font-weight: 800; }
+.casino-category-tabs button:hover { background: rgba(255,255,255,.08); color: #fff; }
+.casino-category-tabs button.active { border-color: rgba(118,190,255,.4); background: linear-gradient(135deg, #0878d7, #005bb5); color: #fff; box-shadow: 0 7px 18px rgba(0,91,181,.3); }
+.casino-game-tabs { margin-top: 8px; padding: 4px; border-radius: 12px; background: #e8e8ed; }
 .casino-game-tabs button { border: 0; border-radius: 9px; background: transparent; }
 .casino-game-tabs button.active { background: #fff; color: #1d1d1f; box-shadow: 0 2px 8px rgba(0, 0, 0, .1); }
 .casino-table { border: 0; border-radius: 18px; box-shadow: 0 10px 28px rgba(0, 0, 0, .16); }
@@ -1277,11 +1281,29 @@ body {
 .room-leave-button { min-height: 40px; padding: 0 15px; border: 1px solid #d2d2d7; border-radius: 999px; background: #fff; color: #515154; font-weight: 750; }
 .room-leave-button:hover:not(:disabled) { border-color: #ffb1ac; background: #fff4f3; color: #c9342c; }
 .bingo-draws { display: grid; gap: 10px; margin: 18px; padding: 14px 16px; border-radius: 14px; background: #f5f9ff; color: #6e6e73; font-size: 11px; }
-.bingo-draws > div { display: flex; flex-wrap: wrap; gap: 7px; }
+.bingo-draws > div, .bingo-draws details > div { display: flex; flex-wrap: wrap; gap: 7px; }
 .bingo-draws b { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 50%; background: #fff; color: #0071e3; box-shadow: 0 2px 8px rgba(0,113,227,.12); }
-.bingo-card { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 100%; max-width: 230px; margin: 0 auto; }
-.bingo-card span { display: grid; aspect-ratio: 1; place-items: center; border: 1px solid #d2d2d7; border-radius: 13px; background: #fff; font-size: 15px; font-weight: 800; box-shadow: 0 2px 8px rgba(0,0,0,.04); }
-.bingo-card span.marked { border-color: #0071e3; background: linear-gradient(145deg, #1688f8, #0066cc); color: #fff; box-shadow: 0 5px 14px rgba(0,113,227,.25); }
+.bingo-draws > .latest-bingo-ball { width: 52px; height: 52px; font-size: 21px; }
+.bingo-draws details summary { cursor: pointer; color: #005bb5; font-weight: 800; }
+.bingo-draws details > div { margin-top: 10px; }
+.bingo-column-labels { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; width: 100%; max-width: 330px; margin: 0 auto 7px; color: #005bb5; text-align: center; }
+.bingo-card { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; width: 100%; max-width: 330px; margin: 0 auto; }
+.bingo-card button { display: grid; aspect-ratio: 1; place-items: center; padding: 0; border: 1px solid #d2d2d7; border-radius: 12px; background: #fff; color: #1d1d1f; font-size: 14px; font-weight: 850; box-shadow: 0 2px 8px rgba(0,0,0,.04); }
+.bingo-card button.marked { border-color: #0071e3; background: linear-gradient(145deg, #1688f8, #0066cc); color: #fff; box-shadow: 0 5px 14px rgba(0,113,227,.25); }
+.bingo-card.strategy button:not(:disabled):hover, .bingo-card button.selected { border-color: #ff9f0a; box-shadow: 0 0 0 3px rgba(255,159,10,.18); }
+.bingo-card button:disabled { opacity: 1; }
+.bingo-strategy { display: grid; gap: 10px; padding: 14px; border: 1px solid #f3d39b; border-radius: 14px; background: #fff9eb; }
+.bingo-strategy > span { color: #8a5700; font-size: 11px; font-weight: 850; }
+.bingo-strategy > div { display: flex; gap: 8px; }
+.bingo-strategy > div button { width: 44px; height: 44px; border: 1px solid #f0c16d; border-radius: 50%; background: #fff; color: #8a5700; font-weight: 850; }
+.bingo-strategy > div button.selected { background: #ff9f0a; color: #fff; }
+.bingo-claim { min-height: 50px; background: #17a65b; font-size: 16px; }
+.dice-hand { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 9px; }
+.dice-hand button { display: grid; gap: 2px; min-height: 82px; place-content: center; border: 1px solid #d2d2d7; border-radius: 15px; background: #fff; color: #1d1d1f; }
+.dice-hand button b { font-size: 30px; line-height: 1; }
+.dice-hand button small { color: #6e6e73; font-size: 9px; }
+.dice-hand button.held { border-color: #0071e3; background: #eaf4ff; color: #005bb5; box-shadow: 0 0 0 3px rgba(0,113,227,.12); }
+.dice-actions { display: flex; justify-content: flex-end; gap: 9px; }
 .casino-player-list { margin: 0 18px 18px; overflow: hidden; border: 1px solid #e1e1e5; border-radius: 15px; }
 .casino-player-list > header { display: flex; justify-content: space-between; padding: 11px 13px; background: #f5f5f7; color: #3d3d42; font-size: 12px; }
 .casino-player-list > header span { color: #86868b; }
@@ -1305,6 +1327,22 @@ body {
 .tournament-game-options .join-existing-room { grid-column: 1 / -1; border-color: #8fc4f7; }
 .tournament-result { margin: 16px 18px; padding: 13px 14px; border-radius: 12px; background: #edf6ff; color: #005aa8; font-size: 13px; line-height: 1.55; }
 .tournament-rankings { display: block; }
+
+@media (max-width: 700px) {
+  .casino-category-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .room-entry-panel, .room-entry-panel.tournament-entry-panel, .joined-room-panel, .joined-room-panel.compact { grid-template-columns: 1fr; }
+  .casino-room-meta > div { padding: 13px 10px; }
+  .casino-room-meta strong { font-size: 14px; }
+  .bingo-card { max-width: 290px; gap: 4px; }
+  .bingo-card button { border-radius: 9px; font-size: 12px; }
+  .bingo-column-labels { max-width: 290px; }
+  .dice-hand { gap: 5px; }
+  .dice-hand button { min-height: 64px; border-radius: 11px; }
+  .dice-hand button b { font-size: 23px; }
+  .dice-hand button small { display: none; }
+  .dice-actions, .tournament-lobby-actions { justify-content: stretch; }
+  .dice-actions button, .tournament-lobby-actions button { flex: 1; }
+}
 
 button:focus-visible,
 a:focus-visible,
