@@ -226,6 +226,22 @@ type CommissionState = { cycleDay: number; commissions: Array<{ id: string; titl
 type MysteryState = { found: number; total: number; whispers: string[] };
 type LifeContractState = { contracts: Array<{ id: string; status: string; partnerName: string; isCreator: boolean; targetPerPlayer: number; stake: number; mineDeposit: number; partnerDeposit: number; expiresDay: number }> };
 type LifeLedgerState = { entries: Array<{ title: string; detail: string; tone: "good" | "neutral" | "warn"; gameTime: string }> };
+type NpcResident = {
+  id: string;
+  name: string;
+  role: string;
+  portrait: string;
+  accent: "amber" | "teal" | "blue" | "violet";
+  available: boolean;
+  schedule: string;
+  absentText: string;
+  status: string;
+  relationLabel: string;
+  interactedToday: boolean;
+  lastOutcome: string;
+  event: null | { id: string; title: string; prompt: string; choices: Array<{ id: string; label: string; detail: string }> };
+};
+type NpcState = { residents: NpcResident[]; dailyLimit: number; note: string };
 
 type Bootstrap = {
   serverNow?: number;
@@ -254,6 +270,7 @@ type Bootstrap = {
   contracts?: LifeContractState;
   lifeLedger?: LifeLedgerState;
   bookStore?: BookStoreState;
+  npcs?: NpcState;
 };
 
 type CityMemory = {
@@ -371,20 +388,38 @@ function apiHeaders(jsonBody = false) {
   };
 }
 
-const locations: Array<{ id: LocationId; emoji: string; image?: string; name: string; caption: string; hours: string }> = [
-  { id: "home", emoji: "⌂", name: "我的住所", caption: "有有效租約或自有住宅後，才能在這裡休息", hours: "24 小時" },
-  { id: "realtor", emoji: "鑰", name: "安心房仲", caption: "城市小宅 NT$50,000，也可按天租屋", hours: "07:00～23:00" },
-  { id: "bank", emoji: "銀", name: "城市銀行", caption: "存款收益依金融職位｜一般貸款 0.5%｜《浪子回頭》債務 0.2%", hours: "07:00～23:00" },
-  { id: "business", emoji: "▦", name: "工作地", caption: "用時間換取收入，累積職涯經驗", hours: "06:00～24:00" },
-  { id: "shopping", emoji: "◇", name: "購物街", caption: "補充飽足，偶爾也犒賞一下自己", hours: "06:00～24:00" },
-  { id: "bookstore", emoji: "書", name: "城市書店", caption: "閱讀與出版作品的地方", hours: "07:00～23:00" },
-  { id: "hotel", emoji: "旅", name: "不夜旅店", caption: "沒有住所也能住宿，餐點較貴但全天供應", hours: "24 小時" },
-  { id: "casino", emoji: "♠", image: "./casino-icon.png", name: "幸運賭場", caption: "最多五人同桌遊玩二十一點、德州撲克、賓果與錦標賽", hours: "24 小時" },
-  { id: "school", emoji: "▤", name: "未來學院", caption: "投資自己，讓選擇越來越多", hours: "07:00～23:00" },
-  { id: "hospital", emoji: "✚", name: "市立醫院", caption: "一般診療 07:00～23:00，急診全天開放", hours: "急診 24 小時" },
-  { id: "underpass", emoji: "隧", name: "車站地下道", caption: "街頭生存、拾荒、乞討與互助箱", hours: "24 小時" },
-  { id: "prison", emoji: "▥", name: "監獄", caption: "違法行為被捕後服刑的地方", hours: "24 小時" },
+const locations: Array<{ id: LocationId; image?: string; name: string; caption: string; hours: string }> = [
+  { id: "home", name: "我的住所", caption: "有有效租約或自有住宅後，才能在這裡休息", hours: "24 小時" },
+  { id: "realtor", name: "安心房仲", caption: "城市小宅 NT$50,000，也可按天租屋", hours: "07:00～23:00" },
+  { id: "bank", name: "城市銀行", caption: "存款收益依金融職位｜一般貸款 0.5%｜《浪子回頭》債務 0.2%", hours: "07:00～23:00" },
+  { id: "business", name: "工作地", caption: "用時間換取收入，累積職涯經驗", hours: "06:00～24:00" },
+  { id: "shopping", name: "購物街", caption: "補充飽足，偶爾也犒賞一下自己", hours: "06:00～24:00" },
+  { id: "bookstore", name: "城市書店", caption: "閱讀與出版作品的地方", hours: "07:00～23:00" },
+  { id: "hotel", name: "不夜旅店", caption: "沒有住所也能住宿，餐點較貴但全天供應", hours: "24 小時" },
+  { id: "casino", image: "./casino-icon.png", name: "幸運賭場", caption: "最多五人同桌遊玩二十一點、德州撲克、賓果與錦標賽", hours: "24 小時" },
+  { id: "school", name: "未來學院", caption: "投資自己，讓選擇越來越多", hours: "07:00～23:00" },
+  { id: "hospital", name: "市立醫院", caption: "一般診療 07:00～23:00，急診全天開放", hours: "急診 24 小時" },
+  { id: "underpass", name: "車站地下道", caption: "街頭生存、拾荒、乞討與互助箱", hours: "24 小時" },
+  { id: "prison", name: "監獄", caption: "違法行為被捕後服刑的地方", hours: "24 小時" },
 ];
+
+function LocationIcon({ id, prominent = false }: { id: Exclude<LocationId, "casino">; prominent?: boolean }) {
+  const glyph = {
+    home: <><path d="M3.5 10.8 12 4l8.5 6.8" /><path d="M5.7 9.4V20h12.6V9.4" /><path d="M9.6 20v-6.2h4.8V20" /></>,
+    realtor: <><path d="m4 11 8-6.5 8 6.5" /><path d="M6.5 9.6V20h7.1" /><circle cx="16.4" cy="15.2" r="2.3" /><path d="m18 16.9 3 3m-1.3-1.3-1.2 1.2" /></>,
+    bank: <><path d="M3 9h18L12 4 3 9Z" /><path d="M5 11v6m4-6v6m6-6v6m4-6v6" /><path d="M3 20h18M4 17h16" /></>,
+    business: <><rect x="3.5" y="7.5" width="17" height="12" rx="2" /><path d="M9 7.5V5.2h6v2.3M3.5 12h17" /><path d="M10 11.2h4v2.2h-4z" /></>,
+    shopping: <><path d="M5.2 9.2h13.6l-1 10.3H6.2L5.2 9.2Z" /><path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10" /><path d="M4 5h2.5M17.5 5H20" /></>,
+    bookstore: <><path d="M3.5 5.5h5.2A3.3 3.3 0 0 1 12 8.8V20a3.3 3.3 0 0 0-3.3-3.3H3.5V5.5Z" /><path d="M20.5 5.5h-5.2A3.3 3.3 0 0 0 12 8.8V20a3.3 3.3 0 0 1 3.3-3.3h5.2V5.5Z" /></>,
+    hotel: <><path d="M3.5 19V8.5M20.5 19v-7.2H8.2" /><path d="M3.5 15.5h17M7.8 11.8V9.5H4.2" /><path d="M17 4.2a3.2 3.2 0 1 0 2.8 4.8A3.8 3.8 0 0 1 17 4.2Z" /></>,
+    school: <><path d="m3 9 9-4.5L21 9l-9 4.5L3 9Z" /><path d="M6.5 11v5.2c2.8 2.2 8.2 2.2 11 0V11M21 9v6" /></>,
+    hospital: <><rect x="4" y="3.5" width="16" height="17" rx="3" /><path d="M9.5 8.2h5v3.1h3.1v5h-3.1v3.1h-5v-3.1H6.4v-5h3.1V8.2Z" /></>,
+    underpass: <><path d="M3.5 20v-6.2a8.5 8.5 0 0 1 17 0V20" /><path d="M7 20v-6.1a5 5 0 0 1 10 0V20M2.5 20h19" /><path d="M9.2 17h5.6" /></>,
+    prison: <><rect x="4" y="3.5" width="16" height="17" rx="2" /><path d="M8 3.5v17m4-17v17m4-17v17M4 9h16M4 15h16" /></>,
+  }[id];
+
+  return <span className={`location-glyph ${prominent ? "prominent" : ""}`} aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{glyph}</svg></span>;
+}
 
 const statMeta: Array<{ key: StatKey; icon: string; label: string }> = [
   { key: "health", icon: "+", label: "健康" },
@@ -710,6 +745,9 @@ function GameHome() {
   const [mystery, setMystery] = useState<MysteryState>({ found: 0, total: 7, whispers: [] });
   const [contracts, setContracts] = useState<LifeContractState>({ contracts: [] });
   const [lifeLedger, setLifeLedger] = useState<LifeLedgerState>({ entries: [] });
+  const [npcs, setNpcs] = useState<NpcState>({ residents: [], dailyLimit: 1, note: "登入後即可認識城市居民。" });
+  const [npcDialogId, setNpcDialogId] = useState<string | null>(null);
+  const closeNpcDialog = useCallback(() => setNpcDialogId(null), []);
   const [mobileView, setMobileView] = useState<"city" | "life" | "social">("city");
   const [socialView, setSocialView] = useState<"players" | "tasks" | "records">("players");
   const [transferTarget, setTransferTarget] = useState<{ player: OnlinePlayer; kind: "gift" | "scam" } | null>(null);
@@ -795,6 +833,7 @@ function GameHome() {
   const pendingLoan = loanRequests[0] ?? null;
   const pendingBeg = begRequests[0] ?? null;
   const pendingContract = contracts.contracts.find((contract) => contract.status === "pending" && !contract.isCreator) ?? null;
+  const selectedNpc = npcs.residents.find((resident) => resident.id === npcDialogId) ?? null;
   const unlockedStoryChapter = player.mainStory === "prodigal_return" && player.storyChapter > player.storySeenChapter
     ? STORY_CHAPTERS.find((chapter) => chapter.chapter === player.storyChapter) : null;
 
@@ -829,6 +868,7 @@ function GameHome() {
       if (data.mystery) setMystery(data.mystery);
       if (data.contracts) setContracts(data.contracts);
       if (data.lifeLedger) setLifeLedger(data.lifeLedger);
+      if (data.npcs) setNpcs(data.npcs);
       if (!quiet) {
         setNotice(data.authenticated ? `歡迎回來，${data.profile?.displayName}。進度已同步。` : "目前是訪客試玩；登入後即可永久保存並加入多人世界。");
       }
@@ -885,10 +925,10 @@ function GameHome() {
 
   async function act(action: string, payload: Record<string, unknown> = {}) {
     if (busy) return;
-    const canActDuringWait = ["move", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy", "beg_response", "inventory_use", "street_share_food", "aid_box_donate", "coop_contribute", "story_ack", "contract_create", "contract_accept", "contract_decline", "contract_deposit"].includes(action)
+    const canActDuringWait = ["move", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy", "beg_response", "inventory_use", "street_share_food", "aid_box_donate", "coop_contribute", "story_ack", "contract_create", "contract_accept", "contract_decline", "contract_deposit", "npc_interact"].includes(action)
       || action.startsWith("casino_") || action.startsWith("poker_") || action.startsWith("bingo_") || action.startsWith("dice_") || action.startsWith("tournament_");
     if (actionLocked && !canActDuringWait) {
-      setNotice(`${player.actionLabel || "目前的行動"}尚未完成，請等待 ${actionSecondsLeft} 秒；期間可移動、換職、使用銀行、處理贈送／詐騙／治療／貸款請求，或前往賭場遊玩。`);
+      setNotice(`${player.actionLabel || "目前的行動"}尚未完成，請等待 ${actionSecondsLeft} 秒；期間可移動、換職、使用銀行、與 NPC 交談、處理玩家請求，或前往賭場遊玩。`);
       return;
     }
     setBusy(true);
@@ -910,7 +950,7 @@ function GameHome() {
         headers: apiHeaders(true),
         body: JSON.stringify({ action: action.startsWith("casino_") ? action.slice(7) : action.startsWith("poker_") ? action.slice(6) : action.startsWith("bingo_") ? action.slice(6) : action.startsWith("dice_") ? action.slice(5) : action.startsWith("tournament_") ? action.slice(11) : action, ...payload }),
       });
-      const data = await response.json() as { serverNow?: number; player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; bingo?: BingoState; dicePoker?: DicePokerState; tournament?: TournamentState; bookStore?: BookStoreState; cityMemory?: CityMemory; transferRequests?: TransferRequest[]; medicalRequests?: MedicalRequest[]; loanRequests?: LoanRequest[]; begRequests?: BegRequest[]; street?: StreetState; aidBoxes?: AidBoxState; coop?: CoopState; reputation?: ReputationState; commissions?: CommissionState; mystery?: MysteryState; contracts?: LifeContractState; lifeLedger?: LifeLedgerState; scratch?: { price: number; prize: number } | null; message?: string };
+      const data = await response.json() as { serverNow?: number; player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; bingo?: BingoState; dicePoker?: DicePokerState; tournament?: TournamentState; bookStore?: BookStoreState; cityMemory?: CityMemory; transferRequests?: TransferRequest[]; medicalRequests?: MedicalRequest[]; loanRequests?: LoanRequest[]; begRequests?: BegRequest[]; street?: StreetState; aidBoxes?: AidBoxState; coop?: CoopState; reputation?: ReputationState; commissions?: CommissionState; mystery?: MysteryState; contracts?: LifeContractState; lifeLedger?: LifeLedgerState; npcs?: NpcState; scratch?: { price: number; prize: number } | null; message?: string };
       if (typeof data.serverNow === "number") setServerTimeOffsetMs(data.serverNow - currentWallClockMs());
       if (!response.ok || !data.player) throw new Error(data.message || "行動失敗");
       syncPlayer(data.player, action === "reset");
@@ -935,6 +975,7 @@ function GameHome() {
       if (data.mystery) setMystery(data.mystery);
       if (data.contracts) setContracts(data.contracts);
       if (data.lifeLedger) setLifeLedger(data.lifeLedger);
+      if (data.npcs) setNpcs(data.npcs);
       if (data.scratch) setScratchResult(data.scratch);
       setNotice(data.message || "行動完成");
     } catch (error) {
@@ -1042,7 +1083,7 @@ function GameHome() {
   async function logout() {
     try { await fetch(`${API_ORIGIN}/api/auth/logout`, { method: "POST", headers: apiHeaders() }); } catch { /* local logout still works */ }
     window.localStorage.removeItem(TOKEN_KEY);
-    setProfile(null); setNameOpen(false); setOnline([]); setFeed([]); setTransferRequests([]); setMedicalRequests([]); setLoanRequests([]); setTransferTarget(null); setLoanTarget(null); setBookTitle(""); setBookStore({ books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK }); setCasino({ capacity: 5, activeCount: 0, seats: [], hand: null }); syncPlayer(INITIAL_PLAYER, true);
+    setProfile(null); setNameOpen(false); setOnline([]); setFeed([]); setTransferRequests([]); setMedicalRequests([]); setLoanRequests([]); setTransferTarget(null); setLoanTarget(null); setNpcDialogId(null); setNpcs({ residents: [], dailyLimit: 1, note: "登入後即可認識城市居民。" }); setBookTitle(""); setBookStore({ books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK }); setCasino({ capacity: 5, activeCount: 0, seats: [], hand: null }); syncPlayer(INITIAL_PLAYER, true);
     setNotice("已登出；目前為訪客試玩模式。");
   }
 
@@ -1128,12 +1169,13 @@ function GameHome() {
         </aside>
 
         <section className="world-panel panel">
-          <div className="location-header"><div><p>目前位置</p><h2>{currentLocation.image ? <img className="location-photo" src={currentLocation.image} alt="" /> : <span>{currentLocation.emoji}</span>}{currentLocation.name}</h2><small>{currentLocation.caption} · {currentLocation.hours}</small></div>{player.location === "business" ? <div className="location-career-progress"><span>升遷進度</span><strong>{player.jobCategory === "unfixed" ? "尚未選擇產業" : nextCareer ? `下一階：${nextCareerTitle}` : "已達產業最高職位"}</strong><div><i style={{ width: `${player.jobCategory === "unfixed" ? 0 : careerProgress}%` }} /></div><small>{player.jobCategory === "unfixed" ? "請從下方「找工作」選擇產業路線" : isWriter ? `粉絲數：${player.writerFans} / ${nextCareer?.threshold ?? player.writerFans}` : nextCareer ? `職業經驗：${player.jobExp} / ${nextCareer.threshold} EXP` : `目前累積 ${player.jobExp} EXP`}</small><small>{isWriter ? `每日寫作最多 ${WRITER_DAILY_WRITING_LIMIT} 次；升遷只看粉絲數` : nextCareer && player.jobCategory !== "unfixed" ? `能力要求：${formatRequirements(nextCareer.requirements) || "無"}` : player.jobCategory === "unfixed" ? "入行第一階免能力門檻" : "能力與經驗均已達標"}</small></div> : null}</div>
+          <div className="location-header"><div><p>目前位置</p><h2>{currentLocation.image ? <img className="location-photo" src={currentLocation.image} alt="" /> : <LocationIcon id={currentLocation.id as Exclude<LocationId, "casino">} prominent />}{currentLocation.name}</h2><small>{currentLocation.caption} · {currentLocation.hours}</small></div>{player.location === "business" ? <div className="location-career-progress"><span>升遷進度</span><strong>{player.jobCategory === "unfixed" ? "尚未選擇產業" : nextCareer ? `下一階：${nextCareerTitle}` : "已達產業最高職位"}</strong><div><i style={{ width: `${player.jobCategory === "unfixed" ? 0 : careerProgress}%` }} /></div><small>{player.jobCategory === "unfixed" ? "請從下方「找工作」選擇產業路線" : isWriter ? `粉絲數：${player.writerFans} / ${nextCareer?.threshold ?? player.writerFans}` : nextCareer ? `職業經驗：${player.jobExp} / ${nextCareer.threshold} EXP` : `目前累積 ${player.jobExp} EXP`}</small><small>{isWriter ? `每日寫作最多 ${WRITER_DAILY_WRITING_LIMIT} 次；升遷只看粉絲數` : nextCareer && player.jobCategory !== "unfixed" ? `能力要求：${formatRequirements(nextCareer.requirements) || "無"}` : player.jobCategory === "unfixed" ? "入行第一階免能力門檻" : "能力與經驗均已達標"}</small></div> : null}</div>
           <nav className="location-strip" aria-label="城市地點">
-            {locations.map((item) => <button className={`${item.id === player.location ? "active" : ""} ${!isLocationOpen(item.id, sharedMinutes) ? "closed" : ""}`} key={item.id} onClick={() => void act("move", { location: item.id })} disabled={busy || (item.id === "prison" && player.location !== "prison")}>{item.image ? <img className="location-photo" src={item.image} alt="" /> : <span>{item.emoji}</span>}<small>{item.name}</small><em>{item.id === "prison" && player.location !== "prison" ? "僅限服刑" : isLocationOpen(item.id, sharedMinutes) ? item.hours : "已關門"}</em></button>)}
+            {locations.map((item) => <button className={`${item.id === player.location ? "active" : ""} ${!isLocationOpen(item.id, sharedMinutes) ? "closed" : ""}`} key={item.id} onClick={() => void act("move", { location: item.id })} disabled={busy || (item.id === "prison" && player.location !== "prison")}>{item.image ? <img className="location-photo" src={item.image} alt="" /> : <LocationIcon id={item.id as Exclude<LocationId, "casino">} />}<small>{item.name}</small><em>{item.id === "prison" && player.location !== "prison" ? "僅限服刑" : isLocationOpen(item.id, sharedMinutes) ? item.hours : "已關門"}</em></button>)}
           </nav>
           <div className="action-stage" id="city-actions">
-            <div className="action-intro"><h3>{actionTitle(player.location)}</h3><p>{actionLocked ? `${player.actionLabel || "目前的行動"}進行中，剩餘 ${actionSecondsLeft} 秒。等待期間仍可移動、換職、使用銀行或前往賭場。` : actionDescription(player.location, dailyRent)}</p></div>
+            <div className="action-intro"><h3>{actionTitle(player.location)}</h3><p>{actionLocked ? `${player.actionLabel || "目前的行動"}進行中，剩餘 ${actionSecondsLeft} 秒。等待期間仍可移動、換職、使用銀行、與 NPC 交談或前往賭場。` : actionDescription(player.location, dailyRent)}</p></div>
+            {npcs.residents.length > 0 && <NpcResidents state={npcs} signedIn={Boolean(profile)} busy={busy} onTalk={(npcId) => setNpcDialogId(npcId)} />}
             <div className="action-cards">
               {player.location === "home" && <ActionCard icon="☾" title="睡眠 8 小時" meta="現實等待 2 分鐘 · 體力全滿 · 健康 +5" button="好好休息" onClick={() => void act("sleep")} disabled={actionBusy} />}
               {player.location === "prison" && isPrisoner && <ActionCard icon="▥" title="監獄服刑中" meta={`罪名：${player.prisonCrime || "違法行為"} · 剩餘在線遊玩約 ${prisonHoursLeft} 小時 · 其他玩家可查看紀錄`} button="等待服刑結束" onClick={() => undefined} disabled />}
@@ -1225,6 +1267,7 @@ function GameHome() {
       {profile && unlockedStoryChapter && <div className="auth-overlay city-event-overlay" role="dialog" aria-modal="true" aria-labelledby="story-chapter-title"><section className="city-event-card story-chapter-card"><span>PRODIGAL RETURN · CHAPTER {unlockedStoryChapter.chapter}</span><h2 id="story-chapter-title">{unlockedStoryChapter.title}</h2>{unlockedStoryChapter.chapter === 6 ? PRODIGAL_SUCCESS_STORY.map((paragraph, index) => <p key={index}>{paragraph}</p>) : <p>{unlockedStoryChapter.story}</p>}<button disabled={busy} onClick={() => void act("story_ack")}>收進人生紀錄</button></section></div>}
       {talentOpen && <div className="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="talent-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setTalentOpen(false); }}><section className="talent-board"><button className="auth-close" type="button" aria-label="關閉天賦樹" onClick={() => setTalentOpen(false)}>×</button><span className="panel-kicker">LIFE TALENTS</span><h2 id="talent-title">天賦樹</h2><p>等級 {player.talentLevel} · 可用 {player.talentPoints} 點 · 每 100 經驗獲得 1 點。天賦不會改變賭場或刮刮樂機率。</p><div className="talent-branches">{["職涯", "生存", "財務", "機會"].map((branch) => <section key={branch}><h3>{branch}</h3>{TALENTS.filter((talent) => talent.branch === branch).map((talent) => { const owned = player.talents.includes(talent.id); const locked = talent.requires.some((required) => !player.talents.includes(required)); return <button className={owned ? "owned" : ""} key={talent.id} disabled={busy || owned || locked || player.talentPoints < 1} onClick={() => void act("talent", { talent: talent.id })}><strong>{talent.name}</strong><small>{talent.description}</small><em>{owned ? "已解鎖" : locked ? "需要前置天賦" : "使用 1 點"}</em></button>; })}</section>)}</div><button className="talent-reset" disabled={busy || !player.talents.length || player.cash < 2_000} onClick={() => void act("talent", { kind: "reset" })}>支付 NT$2,000 重置天賦</button></section></div>}
       {profile && pendingCityEvent && <div className="auth-overlay city-event-overlay" role="dialog" aria-modal="true" aria-labelledby="city-event-title"><section className="city-event-card"><span>THE CITY FOUND YOU</span><h2 id="city-event-title">{pendingCityEvent.title}</h2><p>{pendingCityEvent.text}</p><div>{pendingCityEvent.choices.map((choice) => { const unavailable = "requires" in choice && choice.requires && !player.talents.includes(choice.requires); return <button key={choice.id} disabled={busy || Boolean(unavailable)} onClick={() => void act("city_event", { choice: choice.id })}>{choice.label}{unavailable ? <small>需要談判能力</small> : null}</button>; })}</div></section></div>}
+      {selectedNpc && <NpcDialogue resident={selectedNpc} busy={busy} onClose={closeNpcDialog} onChoose={(choiceId) => void act("npc_interact", { npcId: selectedNpc.id, eventId: selectedNpc.event?.id, choice: choiceId })} />}
       {transferTarget && <div className="auth-overlay transfer-overlay" role="dialog" aria-modal="true" aria-labelledby="transfer-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setTransferTarget(null); }}><form className="transfer-card" onSubmit={submitTransfer}><button className="auth-close" type="button" aria-label="關閉" onClick={() => setTransferTarget(null)}>×</button><span className="panel-kicker">PLAYER TO PLAYER</span><h2 id="transfer-title">{transferTarget.kind === "gift" ? "贈送現金" : "發送詐騙邀請"}</h2><p>{transferTarget.kind === "gift" ? `向 ${transferTarget.player.displayName} 贈送現金；對方接受後才會完成轉帳。` : `向 ${transferTarget.player.displayName} 發送與贈送相同外觀的現金邀請。對方接受時，有 50% 機率被騙走填寫金額的一半。`}</p><label>金額（最多 NT${formatMoney(player.cash)}）<input inputMode="numeric" type="number" min={transferTarget.kind === "scam" ? 2 : 1} max={player.cash} step="1" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} required /></label><small>{transferTarget.kind === "scam" ? "詐騙金額以你手上的現金為上限；成功時對方失去此金額的一半。" : "送出邀請後，請等待對方接受或拒絕。"}</small><button className="transfer-submit" disabled={busy || player.cash < (transferTarget.kind === "scam" ? 2 : 1)}>{transferTarget.kind === "gift" ? "送出贈送邀請" : "送出現金邀請"}</button></form></div>}
       {loanTarget && <div className="auth-overlay transfer-overlay" role="dialog" aria-modal="true" aria-labelledby="loan-request-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setLoanTarget(null); }}><form className="transfer-card loan-request-card" onSubmit={submitLoanRequest}><button className="auth-close" type="button" aria-label="關閉貸款申請" onClick={() => setLoanTarget(null)}>×</button><span className="panel-kicker">PLAYER LOAN DESK</span><h2 id="loan-request-title">申請玩家貸款</h2><p>向 <strong>{loanTarget.displayName}</strong>（{loanTarget.currentJob}）申請由銀行撥款的優惠貸款。</p>{(() => { const terms = financeLoanTermsFor(loanTarget.currentJob); return terms ? <small>每日利率 {(terms.rateBp / 100).toFixed(2)}% · 金融玩家每日獲得 {(terms.spreadBp / 100).toFixed(2)}% 利差 · 最高 NT$50,000</small> : null; })()}<label>申請金額<input inputMode="numeric" type="number" min="1" max="50000" step="1" value={loanAmount} onChange={(event) => setLoanAmount(event.target.value)} required /></label><small>本金由銀行撥入你的現金，不會扣除對方現金；接受後會建立一筆一般貸款。</small><button className="transfer-submit finance-submit" disabled={busy || player.loanBalance > 0}>送出貸款申請</button></form></div>}
       {profile && pendingTransfer && <div className="auth-overlay transfer-overlay" role="dialog" aria-modal="true" aria-labelledby="incoming-transfer-title"><section className="transfer-card incoming-transfer"><span className="panel-kicker">CASH INVITATION</span><h2 id="incoming-transfer-title">現金邀請</h2><p><strong>{pendingTransfer.senderName}</strong> 想送給你 NT${formatMoney(pendingTransfer.amount)}，要接受這筆現金嗎？</p><small>接受後將立即處理；你也可以直接拒絕。</small><div className="transfer-response"><button type="button" className="decline" disabled={busy} onClick={() => void act("transfer_response", { requestId: pendingTransfer.id, kind: "decline" })}>拒絕</button><button type="button" disabled={busy} onClick={() => void act("transfer_response", { requestId: pendingTransfer.id, kind: "accept" })}>接受</button></div></section></div>}
@@ -1574,6 +1617,56 @@ function CardRow({ cards }: { cards: string[] }) {
 
 function BetForm({ bet, setBet, maxBet, busy, submitBet, onLeave }: { bet: string; setBet: (value: string) => void; maxBet: number; busy: boolean; submitBet: (event: React.FormEvent) => void; onLeave: () => void }) {
   return <form className="custom-bet" onSubmit={submitBet}><label>輸入下注金額 <small>目前現金 NT${formatMoney(maxBet)}</small></label><div><span>NT$</span><input type="number" inputMode="numeric" min="1" max={Math.min(maxBet, 1_000_000)} step="1" value={bet} onChange={(event) => setBet(event.target.value)} required /><button disabled={busy || maxBet < 1}>確定下注</button></div><button className="leave-seat" type="button" onClick={onLeave} disabled={busy}>不下注，離開座位</button></form>;
+}
+
+function NpcResidents({ state, signedIn, busy, onTalk }: { state: NpcState; signedIn: boolean; busy: boolean; onTalk: (npcId: string) => void }) {
+  return <section className="npc-residents" aria-labelledby="npc-residents-title">
+    <header><div><span>這裡的人</span><h4 id="npc-residents-title">城市居民</h4></div><small>{state.note}</small></header>
+    <div className="npc-resident-list">
+      {state.residents.map((resident) => {
+        const disabled = busy || !signedIn || !resident.available;
+        const buttonLabel = !signedIn ? "登入後交談" : !resident.available ? "目前不在" : resident.interactedToday ? "查看今日對話" : "交談";
+        return <article className={`npc-resident-card ${resident.accent} ${resident.available ? "available" : "absent"}`} key={resident.id}>
+          <div className="npc-portrait" aria-hidden="true">{resident.portrait}</div>
+          <div className="npc-resident-copy"><div><strong>{resident.name}</strong><span>{resident.relationLabel}</span></div><small>{resident.role} · {resident.schedule}</small><p>{resident.available ? resident.status : resident.absentText}</p></div>
+          <button type="button" disabled={disabled} onClick={() => onTalk(resident.id)}>{buttonLabel}</button>
+        </article>;
+      })}
+    </div>
+  </section>;
+}
+
+function NpcDialogue({ resident, busy, onClose, onChoose }: { resident: NpcResident; busy: boolean; onClose: () => void; onChoose: (choiceId: string) => void }) {
+  const cardRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const card = cardRef.current;
+    const focusable = () => card ? Array.from(card.querySelectorAll<HTMLElement>("button:not([disabled])")) : [];
+    window.setTimeout(() => focusable()[0]?.focus(), 0);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); onClose(); return; }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      if (!items.length) return;
+      const first = items[0]; const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => { window.removeEventListener("keydown", handleKeyDown); previous?.focus(); };
+  }, [onClose]);
+  const titleId = `npc-dialog-${resident.id}`;
+  const descriptionId = `npc-dialog-description-${resident.id}`;
+  return <div className="auth-overlay npc-dialog-overlay" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId} onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
+    <section ref={cardRef} className={`npc-dialog-card ${resident.accent}`}>
+      <button type="button" className="npc-dialog-close" aria-label={`關閉與${resident.name}的對話`} onClick={onClose}>×</button>
+      <header><div className="npc-dialog-portrait" aria-hidden="true">{resident.portrait}</div><div><span>{resident.role}</span><h2 id={titleId}>{resident.name}</h2><small>關係：{resident.relationLabel}</small></div></header>
+      {resident.interactedToday ? <div className="npc-dialog-result"><span>今日的對話</span><p id={descriptionId}>{resident.lastOutcome || `${resident.name}今天暫時沒有其他事情。`}</p><button type="button" onClick={onClose}>結束交談</button></div> : resident.event ? <div className="npc-dialog-event">
+        <span>今日事件</span><h3>{resident.event.title}</h3><p id={descriptionId}>{resident.event.prompt}</p>
+        <div className="npc-dialog-choices">{resident.event.choices.map((choice) => <button type="button" key={choice.id} disabled={busy} onClick={() => onChoose(choice.id)}><strong>{choice.label}</strong><small>{choice.detail}</small></button>)}</div>
+      </div> : <div className="npc-dialog-result"><span>目前狀態</span><p id={descriptionId}>{resident.absentText}</p><button type="button" onClick={onClose}>知道了</button></div>}
+    </section>
+  </div>;
 }
 
 function actionTitle(location: LocationId) {

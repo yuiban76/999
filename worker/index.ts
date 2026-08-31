@@ -1,6 +1,7 @@
 import { ABILITY_LABELS, ABILITY_MAX, ACADEMIES, BANK_LOAN_RATE_BP, careerForCategory, careerRequirements, careerWorkSpecialFor, careerWorkWaitSeconds, categoryInfo, crimeArrestChanceFor, crimeSentenceMinutesFor, financeDepositRateFor, financeLoanTermsFor, HACK_DAILY_LIMIT, HACK_MAX_STEAL, HACK_STEAL_RATE, HACK_SUCCESS_CHANCE, hospitalitySpecialHungerFor, jobInfo, medicalHospitalDiscountFor, medicalTreatmentFor, medicalWorkHealthBonusFor, meetsCareerRequirements, RESTAURANT_DAILY_NET, RESTAURANT_PURCHASE_PRICE, STREET_BEG_PAIR_COOLDOWN_MS, STREET_BEG_REQUEST_TIMEOUT_MS, STREET_INVENTORY, STREET_SCAVENGE_WAIT_SECONDS, streetBegDailyCapFor, streetBegDonationsFor, streetCanSellPriceFor, streetRankIndex, streetScavengeLimitFor, TERRITORY_DAILY_CAP, TERRITORY_VISIT_COOLDOWN_MINUTES, TERRITORY_VISIT_REWARD, WRITER_DAILY_FAN_RATE, WRITER_DAILY_WRITING_LIMIT, WRITER_MAX_ACTIVE_BOOKS, WRITER_MAX_PURCHASES_PER_BOOK, writerBookPriceFor, writerFanRangeFor, type Abilities } from "../shared/jobs";
 import { CITY_EVENTS, STORY_CHAPTERS, storyChapterForDebt, talentInfo } from "../shared/progression";
 import { isHospitalRegularOpen, isLocationOpen, minuteOfDay, OPENING_HOURS, worldMinutes } from "../shared/world";
+import { eventMatchesMemories, NPC_EVENTS, NPCS, npcAvailableAt, relationshipLabel, type NpcChoice, type NpcDefinition, type NpcEvent, type NpcId } from "../shared/npcs";
 
 type LocationId = "home" | "realtor" | "bank" | "business" | "shopping" | "bookstore" | "hotel" | "casino" | "school" | "hospital" | "underpass" | "prison";
 
@@ -81,6 +82,7 @@ type LoanContractRow = { id: string; borrower_id: string; borrower_name: string;
 type WriterBookRow = { id: string; author_id: string; author_name: string; author_life_version: number; title: string; price: number; status: "active" | "hidden"; created_at: number; updated_at: number; sales_count?: number; owned_count?: number };
 type BegRequestRow = { id: string; requester_id: string; requester_name: string; recipient_id: string; requester_job: string; requester_life_version: number; recipient_life_version: number; status: string; outcome: string; amount: number; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
 type LifeContractRow = { id: string; creator_id: string; creator_name: string; creator_life_version: number; partner_id: string; partner_name: string; partner_life_version: number; target_per_player: number; stake: number; creator_deposit: number; partner_deposit: number; status: string; expires_day: number; resolution_token: string; created_at: number; updated_at: number };
+type NpcRelationshipRow = { user_id: string; npc_id: NpcId; life_version: number; relation_points: number; last_interaction_day: number; updated_at: number };
 
 const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "bank", "business", "shopping", "bookstore", "hotel", "casino", "school", "hospital", "underpass", "prison"]);
 const TERRITORY_LOCATIONS = new Set<LocationId>(["realtor", "bank", "business", "shopping", "bookstore", "hotel", "casino", "school", "hospital", "underpass"]);
@@ -341,6 +343,23 @@ async function ensureSchema(db: D1Database) {
       last_event_day INTEGER NOT NULL DEFAULT 0, pending_event TEXT NOT NULL DEFAULT '',
       updated_at INTEGER NOT NULL
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS player_npc_relationships (
+      user_id TEXT NOT NULL, npc_id TEXT NOT NULL, life_version INTEGER NOT NULL DEFAULT 0,
+      relation_points INTEGER NOT NULL DEFAULT 0,
+      last_interaction_day INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, npc_id, life_version)
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS player_npc_story (
+      user_id TEXT NOT NULL, life_version INTEGER NOT NULL DEFAULT 0,
+      memories TEXT NOT NULL DEFAULT '[]', updated_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, life_version)
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS player_npc_interactions (
+      user_id TEXT NOT NULL, npc_id TEXT NOT NULL, life_version INTEGER NOT NULL DEFAULT 0,
+      play_day INTEGER NOT NULL, event_id TEXT NOT NULL, choice_id TEXT NOT NULL,
+      outcome TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, npc_id, life_version, play_day)
+    )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS city_memory_contributions (
       user_id TEXT NOT NULL, cycle_day INTEGER NOT NULL,
       work_count INTEGER NOT NULL DEFAULT 0, hospital_count INTEGER NOT NULL DEFAULT 0,
@@ -518,6 +537,8 @@ async function ensureSchema(db: D1Database) {
     db.prepare("CREATE INDEX IF NOT EXISTS idx_contract_member_status ON life_contracts(creator_id, status)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_contract_partner_status ON life_contracts(partner_id, status)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_inventory_user_life ON player_inventory(user_id, life_version)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_npc_relationship_user_life ON player_npc_relationships(user_id, life_version)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_npc_interaction_user_created ON player_npc_interactions(user_id, created_at DESC)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_beg_recipient_status ON street_beg_requests(recipient_id, status, expires_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_beg_pair_created ON street_beg_requests(requester_id, recipient_id, created_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_aid_boxes_day_status ON street_aid_boxes(cycle_day, status)"),
@@ -628,6 +649,7 @@ async function ensureSchema(db: D1Database) {
       WHEN current_job IN ('顧問','家教') THEN '資深接案者'
       WHEN current_job='街頭藝人' THEN '自由工作顧問' END,
     job_category='freelance' WHERE current_job IN ('攝影師','翻譯','接案設計師','顧問','家教','街頭藝人')`).run();
+  await db.prepare("PRAGMA optimize").run();
 }
 
 let schemaReady: Promise<void> | null = null;
@@ -1113,6 +1135,81 @@ async function commissionState(db: D1Database, player: PlayerRow) {
     id: commission.id, title: commission.title, detail: commission.detail, location: commission.location, reward: commission.reward,
     faction: commission.faction, completed: completed.has(commission.id),
   })) };
+}
+
+function npcEventFor(npc: NpcDefinition, player: PlayerRow, memories: Set<string>, playDay: number) {
+  const matching = NPC_EVENTS.filter((event) => event.npcId === npc.id && eventMatchesMemories(event, memories));
+  const priority = matching.find((event) => event.priority);
+  if (priority) return priority;
+  const general = matching.filter((event) => !event.priority);
+  if (!general.length) return null;
+  const npcOffset = NPCS.findIndex((candidate) => candidate.id === npc.id);
+  return general[(playDay + Math.max(0, npcOffset)) % general.length];
+}
+
+function npcChoiceAvailable(choice: NpcChoice, player: PlayerRow) {
+  return !choice.requiredCategory || choice.requiredCategory === player.job_category;
+}
+
+async function npcStoryMemories(db: D1Database, player: PlayerRow) {
+  const row = await db.prepare("SELECT memories FROM player_npc_story WHERE user_id=? AND life_version=?")
+    .bind(player.user_id, player.life_version).first<{ memories: string }>();
+  return new Set(parseList(row?.memories ?? "[]"));
+}
+
+async function npcState(db: D1Database, player: PlayerRow) {
+  const residents = NPCS.filter((npc) => npc.location === player.location);
+  if (!residents.length) return { residents: [], dailyLimit: 1, note: "每位 NPC 每個遊玩日提供一次重要互動。" };
+  const playDay = Math.floor(player.elapsed_minutes / 1440) + 1;
+  const memories = await npcStoryMemories(db, player);
+  const rows = await db.prepare("SELECT * FROM player_npc_relationships WHERE user_id=? AND life_version=?")
+    .bind(player.user_id, player.life_version).all<NpcRelationshipRow>();
+  const relations = new Map(rows.results.map((row) => [row.npc_id, row]));
+  const output = [] as Array<Record<string, unknown>>;
+  for (const npc of residents) {
+    const relation = relations.get(npc.id);
+    const interactedToday = relation?.last_interaction_day === playDay;
+    const available = npcAvailableAt(npc, worldMinutes());
+    const event = available ? npcEventFor(npc, player, memories, playDay) : null;
+    const lastInteraction = interactedToday
+      ? await db.prepare(`SELECT outcome FROM player_npc_interactions
+          WHERE user_id=? AND npc_id=? AND life_version=? AND play_day=?`)
+        .bind(player.user_id, npc.id, player.life_version, playDay).first<{ outcome: string }>()
+      : null;
+    output.push({
+      id: npc.id,
+      name: npc.name,
+      role: npc.role,
+      portrait: npc.portrait,
+      accent: npc.accent,
+      available,
+      schedule: npc.schedule.label,
+      absentText: npc.absentText,
+      status: available ? event?.status ?? "正在處理自己的事情" : "目前不在這裡",
+      relationPoints: relation?.relation_points ?? 0,
+      relationLabel: relationshipLabel(relation?.relation_points ?? 0),
+      interactedToday,
+      lastOutcome: lastInteraction?.outcome ?? "",
+      event: event ? {
+        id: event.id,
+        title: event.title,
+        prompt: event.prompt,
+        choices: event.choices.filter((choice) => npcChoiceAvailable(choice, player)).map((choice) => ({
+          id: choice.id,
+          label: choice.label,
+          detail: choice.detail,
+        })),
+      } : null,
+    });
+  }
+  return { residents: output, dailyLimit: 1, note: "每位 NPC 每個遊玩日提供一次重要互動；一般地點功能不受 NPC 作息影響。" };
+}
+
+function updatedNpcMemories(memories: Set<string>, choice: NpcChoice) {
+  const next = new Set(memories);
+  for (const memory of choice.memoryRemove ?? []) next.delete(memory);
+  for (const memory of choice.memoryAdd ?? []) next.add(memory);
+  return JSON.stringify([...next]);
 }
 
 async function mysteryState(db: D1Database, userId: string) {
@@ -2784,7 +2881,7 @@ async function getAvatar(userId: string, env: Env) {
 
 async function bootstrap(request: Request, env: Env) {
   const user = await identity(request, env.DB);
-  if (!user || !env.DB) return json({ serverNow: Date.now(), authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [], casino: { capacity: 5, activeCount: 0, seats: [], hand: null }, poker: { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 }, bingo: { status: "lobby", players: [], drawn: [], preview: [], winnerIds: [] }, dicePoker: { status: "lobby", players: [] }, tournament: { status: "lobby", players: [] }, medicalRequests: [], loanRequests: [], begRequests: [], street: { items: [], scavengesUsed: 0, scavengesMax: 4, begIncome: 0, begCap: 500 }, aidBoxes: { cycleDay: 1, dailyCap: 2000, boxes: [] }, coop: { cycleDay: 1, status: "open", reward: 600, talentExp: 8, eligibleRole: "", contributed: false, roles: [] }, reputation: { factions: [] }, commissions: { cycleDay: 1, commissions: [] }, mystery: { found: 0, total: 7, whispers: [] }, contracts: { contracts: [] }, lifeLedger: { entries: [] }, bookStore: { books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK } });
+  if (!user || !env.DB) return json({ serverNow: Date.now(), authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [], casino: { capacity: 5, activeCount: 0, seats: [], hand: null }, poker: { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 }, bingo: { status: "lobby", players: [], drawn: [], preview: [], winnerIds: [] }, dicePoker: { status: "lobby", players: [] }, tournament: { status: "lobby", players: [] }, medicalRequests: [], loanRequests: [], begRequests: [], street: { items: [], scavengesUsed: 0, scavengesMax: 4, begIncome: 0, begCap: 500 }, aidBoxes: { cycleDay: 1, dailyCap: 2000, boxes: [] }, coop: { cycleDay: 1, status: "open", reward: 600, talentExp: 8, eligibleRole: "", contributed: false, roles: [] }, reputation: { factions: [] }, commissions: { cycleDay: 1, commissions: [] }, mystery: { found: 0, total: 7, whispers: [] }, contracts: { contracts: [] }, lifeLedger: { entries: [] }, npcs: { residents: [], dailyLimit: 1, note: "登入後即可認識城市居民。" }, bookStore: { books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK } });
   await ensureSchemaOnce(env.DB);
   const row = await upsertPlayer(env.DB, user);
   if (!row) return json({ message: "無法載入玩家資料" }, 500);
@@ -2792,7 +2889,7 @@ async function bootstrap(request: Request, env: Env) {
   const world = await multiplayer(env.DB);
   const emptyCasino = { capacity: 5, activeCount: 0, seats: [], hand: null };
   const emptyPoker = { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 };
-  const [casino, poker, memory, transferRequests, medicalRequests, loanRequests, begRequests, street, aidBoxes, coop, bingo, dicePoker, tournament, loanContract, bookStoreState, reputation, commissions, mystery, contracts, ledger] = await Promise.all([
+  const [casino, poker, memory, transferRequests, medicalRequests, loanRequests, begRequests, street, aidBoxes, coop, bingo, dicePoker, tournament, loanContract, bookStoreState, reputation, commissions, mystery, contracts, ledger, npcs] = await Promise.all([
     row.location === "casino" ? casinoState(env.DB, user.userId) : Promise.resolve(emptyCasino),
     row.location === "casino" ? pokerState(env.DB, user.userId) : Promise.resolve(emptyPoker),
     cityMemory(env.DB),
@@ -2808,9 +2905,9 @@ async function bootstrap(request: Request, env: Env) {
     row.location === "casino" ? tournamentState(env.DB, user.userId) : Promise.resolve({ status: "lobby", players: [] }),
     activeLoanContract(env.DB, user.userId),
     row.location === "bookstore" ? bookStore(env.DB, user.userId) : Promise.resolve({ books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK }),
-    reputationState(env.DB, row), commissionState(env.DB, row), mysteryState(env.DB, user.userId), contractState(env.DB, row), lifeLedgerState(env.DB, user.userId),
+    reputationState(env.DB, row), commissionState(env.DB, row), mysteryState(env.DB, user.userId), contractState(env.DB, row), lifeLedgerState(env.DB, user.userId), npcState(env.DB, row),
   ]);
-  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress, loanContract), room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, bingo, dicePoker, tournament, cityMemory: memory, transferRequests, medicalRequests, loanRequests, begRequests, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, bookStore: bookStoreState });
+  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress, loanContract), room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, bingo, dicePoker, tournament, cityMemory: memory, transferRequests, medicalRequests, loanRequests, begRequests, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, npcs, bookStore: bookStoreState });
 }
 
 async function takeAction(request: Request, env: Env) {
@@ -2824,12 +2921,12 @@ async function takeAction(request: Request, env: Env) {
   let talents = new Set(parseList(progress.talents));
   const clampEnergy = (value: number) => Math.max(0, Math.min(talents.has("strong_body") ? 120 : 100, value));
 
-  let body: { action?: string; location?: string; territoryLocation?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; quantity?: number; itemKey?: string; academy?: string; story?: string; talent?: string; choice?: string; targetId?: string; ownerId?: string; requestId?: string; medicalRequestId?: string; loanRequestId?: string; bookId?: string; commissionId?: string; contractId?: string; title?: string; status?: string };
+  let body: { action?: string; location?: string; territoryLocation?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; quantity?: number; itemKey?: string; academy?: string; story?: string; talent?: string; choice?: string; targetId?: string; ownerId?: string; requestId?: string; medicalRequestId?: string; loanRequestId?: string; bookId?: string; commissionId?: string; contractId?: string; npcId?: string; eventId?: string; title?: string; status?: string };
   try { body = await request.json(); } catch { return json({ message: "行動資料格式錯誤。" }, 400); }
   if ((current.game_over || current.reset_game_over) && body.action !== "reset") return json({ message: current.reset_game_over ? "人生資料正在重置，請稍候再試。" : "這段人生已經結束，請重新開始。" }, 409);
   if (current.main_story === "unselected" && body.action !== "choose_story") return json({ message: "請先選擇人生主線。" }, 409);
   if (current.prison_until > current.elapsed_minutes && body.action !== "reset") return json({ message: `你目前因「${current.prison_crime || "違法行為"}」在監獄服刑，還需在線遊玩 ${Math.ceil((current.prison_until - current.elapsed_minutes) / 60)} 小時。` }, 409);
-  if (!["move", "choose_story", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy", "beg_response", "inventory_use", "street_share_food", "aid_box_donate", "coop_contribute", "story_ack", "contract_create", "contract_accept", "contract_decline", "contract_deposit"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
+  if (!["move", "choose_story", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy", "beg_response", "inventory_use", "street_share_food", "aid_box_donate", "coop_contribute", "story_ack", "contract_create", "contract_accept", "contract_decline", "contract_deposit", "npc_interact"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
   const next = { ...current };
   const sharedMinutes = worldMinutes();
   const memoryBefore = await cityMemory(env.DB);
@@ -2848,6 +2945,7 @@ async function takeAction(request: Request, env: Env) {
   let pendingTerritoryVisit: { location: LocationId; cycleDay: number; worldMinute: number } | null = null;
   let pendingTalentSet: string | null = null;
   let pendingCityEvent: { eventId: string; talentExp: number } | null = null;
+  let pendingNpc: { npc: NpcDefinition; event: NpcEvent; choice: NpcChoice; playDay: number; relationPoints: number; memories: string } | null = null;
   let pendingProviderJobCancellation = false;
   let resetStatements: D1PreparedStatement[] = [];
   let pendingLoanContractUpdate: { id: string; previousBalance: number; previousRevision: number; balance: number; closedAt: number | null } | null = null;
@@ -2857,6 +2955,36 @@ async function takeAction(request: Request, env: Env) {
   let expectedResetMarker = current.reset_game_over || "";
 
   switch (body.action) {
+    case "npc_interact": {
+      const npc = NPCS.find((item) => item.id === body.npcId);
+      if (!npc || npc.location !== current.location) return json({ message: "這名 NPC 目前不在你所在的地點。" }, 400);
+      if (!npcAvailableAt(npc, sharedMinutes)) return json({ message: `${npc.name}目前不在場，出現時間為 ${npc.schedule.label}。` }, 409);
+      const playDay = Math.floor(current.elapsed_minutes / 1440) + 1;
+      const relationship = await env.DB.prepare("SELECT * FROM player_npc_relationships WHERE user_id=? AND npc_id=? AND life_version=?")
+        .bind(user.userId, npc.id, current.life_version).first<NpcRelationshipRow>();
+      if (relationship?.last_interaction_day === playDay) return json({ message: `${npc.name}今天已經與你談過重要的事情，明天再來看看。` }, 409);
+      const memories = await npcStoryMemories(env.DB, current);
+      const event = npcEventFor(npc, current, memories, playDay);
+      if (!event || event.id !== body.eventId) return json({ message: "NPC 的狀況已經改變，請重新開啟對話。" }, 409);
+      const choice = event.choices.find((item) => item.id === body.choice && npcChoiceAvailable(item, current));
+      if (!choice) return json({ message: "這個回應目前無法使用。" }, 400);
+      if ((choice.cashDelta ?? 0) < 0 && next.cash < Math.abs(choice.cashDelta ?? 0)) return json({ message: "手上現金不足，無法選擇這個回應。" }, 409);
+      next.cash += choice.cashDelta ?? 0;
+      next.health = Math.max(0, Math.min(100, next.health + (choice.healthDelta ?? 0)));
+      next.hunger = Math.max(0, Math.min(100, next.hunger + (choice.hungerDelta ?? 0)));
+      next.writer_fans += choice.writerFans ?? 0;
+      if ((choice.jobExp ?? 0) > 0 && next.job_category !== "literary" && next.job_category !== "unfixed") {
+        next.job_exp += choice.jobExp ?? 0;
+        next.current_job = careerForCategory(next.job_category, next.job_exp, next.current_job).title;
+      }
+      talentExpGain += choice.talentExp ?? 0;
+      const relationPoints = Math.max(0, Math.min(100, (relationship?.relation_points ?? 0) + choice.relation));
+      title = `${npc.name} · ${event.title}`;
+      message = choice.outcome;
+      tone = choice.relation < 0 ? "warn" : choice.relation > 0 ? "good" : "neutral";
+      pendingNpc = { npc, event, choice, playDay, relationPoints, memories: updatedNpcMemories(memories, choice) };
+      break;
+    }
     case "city_commission": {
       const commission = CITY_COMMISSIONS.find((item) => item.id === body.commissionId);
       if (!commission || commission.category !== current.job_category) return json({ message: "目前職業沒有這項城市委託。" }, 400);
@@ -4011,7 +4139,7 @@ async function takeAction(request: Request, env: Env) {
     tone = "warn";
   }
 
-  const bypassVitalityEffects = body.action === "move" || body.action === "restaurant" || (body.action === "hotel" && body.kind === "work") || ["book_publish", "book_toggle", "book_buy"].includes(body.action || "");
+  const bypassVitalityEffects = body.action === "move" || body.action === "restaurant" || body.action === "npc_interact" || (body.action === "hotel" && body.kind === "work") || ["book_publish", "book_toggle", "book_buy"].includes(body.action || "");
   if (body.action !== "hospital" && body.action !== "reset" && !bypassVitalityEffects) {
     // Rest is the recovery action: low hunger/energy penalties must not erase
     // the promised health recovery in the same action.
@@ -4104,6 +4232,45 @@ async function takeAction(request: Request, env: Env) {
   if (talentExpGain > 0) statements.push(env.DB.prepare(`UPDATE player_progress SET talent_exp=MIN(1099,talent_exp+?), updated_at=?
     WHERE user_id=? AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?)`)
     .bind(talentExpGain, now, user.userId, user.userId, expectedLifeVersion, actionToken));
+  if (pendingNpc) {
+    statements.push(env.DB.prepare(`INSERT INTO player_npc_relationships
+      (user_id, npc_id, life_version, relation_points, last_interaction_day, updated_at)
+      SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (
+        SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?
+      ) ON CONFLICT(user_id, npc_id, life_version) DO UPDATE SET
+        relation_points=excluded.relation_points,
+        last_interaction_day=excluded.last_interaction_day,
+        updated_at=excluded.updated_at`)
+      .bind(user.userId, pendingNpc.npc.id, expectedLifeVersion, pendingNpc.relationPoints, pendingNpc.playDay, now,
+        user.userId, expectedLifeVersion, actionToken));
+    statements.push(env.DB.prepare(`INSERT INTO player_npc_story (user_id, life_version, memories, updated_at)
+      SELECT ?, ?, ?, ? WHERE EXISTS (
+        SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?
+      ) ON CONFLICT(user_id, life_version) DO UPDATE SET memories=excluded.memories, updated_at=excluded.updated_at`)
+      .bind(user.userId, expectedLifeVersion, pendingNpc.memories, now, user.userId, expectedLifeVersion, actionToken));
+    statements.push(env.DB.prepare(`INSERT INTO player_npc_interactions
+      (user_id, npc_id, life_version, play_day, event_id, choice_id, outcome, created_at)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (
+        SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?
+      ) ON CONFLICT(user_id, npc_id, life_version, play_day) DO NOTHING`)
+      .bind(user.userId, pendingNpc.npc.id, expectedLifeVersion, pendingNpc.playDay, pendingNpc.event.id,
+        pendingNpc.choice.id, pendingNpc.choice.outcome, now, user.userId, expectedLifeVersion, actionToken));
+    if (pendingNpc.choice.reputationFaction && (pendingNpc.choice.reputationPoints ?? 0) > 0) {
+      statements.push(env.DB.prepare(`INSERT INTO player_reputation (user_id, faction, points, updated_at)
+        SELECT ?, ?, ?, ? WHERE EXISTS (
+          SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?
+        ) ON CONFLICT(user_id, faction) DO UPDATE SET points=player_reputation.points+excluded.points, updated_at=excluded.updated_at`)
+        .bind(user.userId, pendingNpc.choice.reputationFaction, pendingNpc.choice.reputationPoints, now,
+          user.userId, expectedLifeVersion, actionToken));
+    }
+    if (pendingNpc.choice.mysteryClue) {
+      statements.push(env.DB.prepare(`INSERT INTO mystery_clues (user_id, clue_key, found_at)
+        SELECT ?, ?, ? WHERE EXISTS (
+          SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?
+        ) ON CONFLICT(user_id, clue_key) DO NOTHING`)
+        .bind(user.userId, pendingNpc.choice.mysteryClue, now, user.userId, expectedLifeVersion, actionToken));
+    }
+  }
   if (body.action !== "move") statements.push(env.DB.prepare(`INSERT INTO game_events
     (id, user_id, player_name, room_id, title, detail, tone, game_time, created_at)
     SELECT ?, ?, ?, 'lobby-01', ?, ?, ?, ?, ? WHERE EXISTS (
@@ -4122,7 +4289,7 @@ async function takeAction(request: Request, env: Env) {
     const territoryVisit = await recordTerritoryVisit(env.DB, user.userId, saved!.life_version, pendingTerritoryVisit.location, pendingTerritoryVisit.cycleDay, pendingTerritoryVisit.worldMinute);
     if (territoryVisit) message += " 進入紀錄已留下，但你沒有被扣除任何費用。";
   }
-  const metric = ["work", "writer_write"].includes(body.action || "") ? "work" : body.action === "hospital" ? "hospital" : body.action === "housing" ? "housing" : body.action === "study" ? "study" : body.action === "city_event" ? "event" : null;
+  const metric = ["work", "writer_write"].includes(body.action || "") ? "work" : body.action === "hospital" ? "hospital" : body.action === "housing" ? "housing" : body.action === "study" ? "study" : ["city_event", "npc_interact"].includes(body.action || "") ? "event" : null;
   if (metric) await recordCityMemory(env.DB, user.userId, metric);
   const chapterBefore = progress.story_chapter;
   progress = await ensureProgress(env.DB, saved!);
@@ -4130,7 +4297,7 @@ async function takeAction(request: Request, env: Env) {
     const chapter = STORY_CHAPTERS[progress.story_chapter - 1];
     if (chapter) message += ` 主線章節解鎖——${chapter.chapter}. ${chapter.title}：${chapter.story}（天賦經驗 +${chapter.reward}）`;
   }
-  const eligibleEvent = !["move", "choose_story", "reset", "talent", "city_event"].includes(body.action || "");
+  const eligibleEvent = !["move", "choose_story", "reset", "talent", "city_event", "npc_interact"].includes(body.action || "");
   const personalDay = Math.floor(saved!.elapsed_minutes / 1440) + 1;
   if (eligibleEvent && !progress.pending_event && progress.last_event_day < personalDay) {
     const chance = talents.has("connections") ? .28 : .20;
@@ -4142,7 +4309,7 @@ async function takeAction(request: Request, env: Env) {
   }
   if (eligibleEvent) message += await maybeFindMysteryClue(env.DB, user.userId, saved!.location);
   const world = await multiplayer(env.DB);
-  const [loanContract, loanRequests, begRequests, street, aidBoxes, coop, bookStoreState, reputation, commissions, mystery, contracts, ledger] = await Promise.all([
+  const [loanContract, loanRequests, begRequests, street, aidBoxes, coop, bookStoreState, reputation, commissions, mystery, contracts, ledger, npcs] = await Promise.all([
     activeLoanContract(env.DB, user.userId),
     pendingLoanRequests(env.DB, user.userId),
     pendingBegRequests(env.DB, user.userId),
@@ -4150,12 +4317,12 @@ async function takeAction(request: Request, env: Env) {
     aidBoxState(env.DB, user.userId),
     coopState(env.DB, saved!),
     saved!.location === "bookstore" ? bookStore(env.DB, user.userId) : Promise.resolve({ books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK }),
-    reputationState(env.DB, saved!), commissionState(env.DB, saved!), mysteryState(env.DB, user.userId), contractState(env.DB, saved!), lifeLedgerState(env.DB, user.userId),
+    reputationState(env.DB, saved!), commissionState(env.DB, saved!), mysteryState(env.DB, user.userId), contractState(env.DB, saved!), lifeLedgerState(env.DB, user.userId), npcState(env.DB, saved!),
   ]);
   const casinoSnapshot = body.action === "move" && saved!.location === "casino"
     ? await Promise.all([casinoState(env.DB, user.userId), pokerState(env.DB, user.userId), bingoState(env.DB, user.userId), dicePokerState(env.DB, user.userId), tournamentState(env.DB, user.userId)])
     : null;
-  return json({ player: serializePlayer(saved!, progress, loanContract), message, scratch, loanRequests, begRequests, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, bookStore: bookStoreState, cityMemory: await cityMemory(env.DB), ...world,
+  return json({ player: serializePlayer(saved!, progress, loanContract), message, scratch, loanRequests, begRequests, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, bookStore: bookStoreState, npcs, cityMemory: await cityMemory(env.DB), ...world,
     ...(casinoSnapshot ? { casino: casinoSnapshot[0], poker: casinoSnapshot[1], bingo: casinoSnapshot[2], dicePoker: casinoSnapshot[3], tournament: casinoSnapshot[4] } : {}) });
 }
 

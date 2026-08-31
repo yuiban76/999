@@ -176,7 +176,7 @@ test("administrative actions are instant and gameplay waits stay shortened", asy
   assert.match(page, /不扣體力、飽足、健康/);
   assert.match(page, /const canActDuringWait = \[.*"bank".*"beg_response".*"coop_contribute"/);
   assert.match(worker, /\[.*"bank".*"beg_response".*"coop_contribute".*\]\.includes\(body\.action/);
-  assert.match(page, /期間可移動、換職、使用銀行、處理贈送／詐騙／治療／貸款請求，或前往賭場遊玩/);
+  assert.match(page, /期間可移動、換職、使用銀行、與 NPC 交談、處理玩家請求，或前往賭場遊玩/);
   assert.match(page, /BankPanel player=\{player\} busy=\{busy \|\| !bankOpen\}/);
   assert.match(page, /<CasinoTable state=\{casino\} signedIn=\{Boolean\(profile\)\} busy=\{busy\}/);
   assert.match(page, /<PokerTable state=\{poker\} signedIn=\{Boolean\(profile\)\} busy=\{busy\}/);
@@ -513,10 +513,16 @@ test("placeholder weather and age labels are not shown", async () => {
   assert.doesNotMatch(page, /18 \u6b72 \u00b7 \u4eba\u751f\u65b0\u624b/);
 });
 
-test("casino uses the cropped photo icon", async () => {
+test("city locations use a unified SVG icon system while casino keeps its photo", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const styles = await readFile(new URL("app/globals.css", root), "utf8");
   const icon = await readFile(new URL("public/casino-icon.png", root));
 
+  assert.match(page, /function LocationIcon/);
+  assert.match(page, /className={`location-glyph/);
+  assert.match(page, /aria-hidden="true"/);
+  assert.match(styles, /\.location-glyph svg/);
+  assert.match(styles, /\.location-strip button\.active \.location-glyph/);
   assert.match(page, /image: "\.\/casino-icon\.png"/);
   assert.match(page, /className="location-photo"/);
   assert.ok(icon.length > 0);
@@ -574,4 +580,33 @@ test("dense game information is grouped behind clear disclosures and tabs", asyn
   assert.doesNotMatch(page, /CITY · LOBBY 01/);
   assert.match(css, /Information triage/);
   assert.match(css, /\.location-strip button:not\(\.closed\) em/);
+});
+
+test("location NPCs provide durable relationships, daily choices, and career services", async () => {
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const css = await readFile(new URL("app/globals.css", root), "utf8");
+  const schema = await readFile(new URL("db/schema.ts", root), "utf8");
+  const npcs = await readFile(new URL("shared/npcs.ts", root), "utf8");
+
+  assert.match(npcs, /name: "江叔"/);
+  assert.match(npcs, /name: "林護理長"/);
+  assert.match(npcs, /name: "周專員"/);
+  assert.match(npcs, /name: "沈店長"/);
+  assert.match(npcs, /id: "lost_watch"/);
+  assert.match(npcs, /requiredCategory: "hospitality"/);
+  assert.match(npcs, /requiredCategory: "medical"/);
+  assert.match(npcs, /requiredCategory: "finance"/);
+  assert.match(npcs, /requiredCategory: "literary"/);
+  assert.match(schema, /export const playerNpcRelationships/);
+  assert.match(schema, /export const playerNpcStory/);
+  assert.match(schema, /export const playerNpcInteractions/);
+  assert.match(worker, /case "npc_interact"/);
+  assert.match(worker, /last_interaction_day/);
+  assert.match(worker, /npcAvailableAt\(npc, sharedMinutes\)/);
+  assert.match(page, /<NpcResidents/);
+  assert.match(page, /<NpcDialogue/);
+  assert.match(page, /role="dialog" aria-modal="true"/);
+  assert.match(css, /\.npc-resident-card > button \{[^}]*min-height: 44px/s);
+  assert.match(css, /max-height: min\(90dvh, 760px\)/);
 });

@@ -553,6 +553,92 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
 }
 
+/* NPC residents — compact in-place presence with a focused conversation sheet. */
+.npc-residents {
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid rgba(29, 29, 31, .11);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, .72);
+  box-shadow: 0 12px 34px rgba(31, 35, 31, .06);
+}
+.npc-residents > header { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-bottom: 12px; }
+.npc-residents > header div { display: grid; gap: 3px; }
+.npc-residents > header span { color: #0071e3; font-size: 10px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+.npc-residents > header h4 { margin: 0; font: 700 20px/1.2 Georgia, "Noto Serif TC", serif; }
+.npc-residents > header > small { max-width: 330px; color: #6e6e73; font-size: 11px; line-height: 1.55; text-align: right; }
+.npc-resident-list { display: grid; gap: 10px; }
+.npc-resident-card { --npc-accent: #9a6a28; display: grid; grid-template-columns: 50px minmax(0, 1fr) auto; align-items: center; gap: 13px; min-width: 0; padding: 13px; border: 1px solid rgba(29, 29, 31, .1); border-radius: 16px; background: rgba(250, 250, 252, .94); }
+.npc-resident-card.teal, .npc-dialog-card.teal { --npc-accent: #16766f; }
+.npc-resident-card.blue, .npc-dialog-card.blue { --npc-accent: #2166a7; }
+.npc-resident-card.violet, .npc-dialog-card.violet { --npc-accent: #7552a6; }
+.npc-portrait, .npc-dialog-portrait { display: grid; place-items: center; flex: 0 0 auto; border-radius: 15px; background: color-mix(in srgb, var(--npc-accent) 13%, white); color: var(--npc-accent); font: 800 19px/1 Georgia, "Noto Serif TC", serif; }
+.npc-portrait { width: 50px; height: 50px; }
+.npc-resident-copy { min-width: 0; }
+.npc-resident-copy > div { display: flex; align-items: center; gap: 8px; }
+.npc-resident-copy strong { font-size: 15px; }
+.npc-resident-copy > div span { padding: 3px 7px; border-radius: 999px; background: color-mix(in srgb, var(--npc-accent) 10%, white); color: var(--npc-accent); font-size: 10px; font-weight: 800; }
+.npc-resident-copy small { display: block; margin-top: 3px; color: #6e6e73; font-size: 10px; }
+.npc-resident-copy p { overflow: hidden; margin: 5px 0 0; color: #3f3f43; font-size: 12px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.npc-resident-card > button { min-width: 92px; min-height: 44px; padding: 10px 14px; border: 0; border-radius: 12px; background: var(--npc-accent); color: #fff; font-size: 12px; font-weight: 800; cursor: pointer; transition: filter .15s ease, opacity .15s ease; }
+.npc-resident-card > button:hover { filter: brightness(.94); }
+.npc-resident-card > button:disabled { cursor: default; opacity: .42; filter: none; }
+.npc-resident-card.absent { background: rgba(245, 245, 247, .72); }
+.npc-dialog-overlay { z-index: 45; background: rgba(17, 21, 18, .72); }
+.npc-dialog-card { --npc-accent: #9a6a28; position: relative; width: min(620px, 100%); max-height: min(82vh, 760px); overflow: auto; padding: 28px; border: 1px solid rgba(255, 255, 255, .5); border-radius: 26px; background: #fbfbfd; box-shadow: 0 32px 100px rgba(0, 0, 0, .34); }
+.npc-dialog-close { position: absolute; top: 14px; right: 14px; display: grid; width: 44px; height: 44px; place-items: center; border: 0; border-radius: 50%; background: #ececf0; color: #3a3a3c; font-size: 25px; cursor: pointer; }
+.npc-dialog-card > header { display: flex; align-items: center; gap: 15px; padding-right: 48px; }
+.npc-dialog-portrait { width: 62px; height: 62px; border-radius: 19px; font-size: 25px; }
+.npc-dialog-card > header div:last-child { display: grid; gap: 3px; }
+.npc-dialog-card > header span, .npc-dialog-event > span, .npc-dialog-result > span { color: var(--npc-accent); font-size: 10px; font-weight: 850; letter-spacing: .1em; }
+.npc-dialog-card h2 { margin: 0; font: 700 29px/1.15 Georgia, "Noto Serif TC", serif; }
+.npc-dialog-card > header small { color: #6e6e73; font-size: 11px; }
+.npc-dialog-event, .npc-dialog-result { margin-top: 24px; padding-top: 22px; border-top: 1px solid rgba(29, 29, 31, .11); }
+.npc-dialog-event h3 { margin: 7px 0 9px; font-size: 20px; }
+.npc-dialog-event > p, .npc-dialog-result > p { margin: 0; color: #424247; font-size: 15px; line-height: 1.7; }
+.npc-dialog-choices { display: grid; gap: 10px; margin-top: 20px; }
+.npc-dialog-choices button { min-height: 64px; padding: 13px 15px; border: 1px solid rgba(29, 29, 31, .12); border-radius: 15px; background: #fff; color: #1d1d1f; text-align: left; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+.npc-dialog-choices button:hover { border-color: color-mix(in srgb, var(--npc-accent) 55%, white); background: color-mix(in srgb, var(--npc-accent) 5%, white); }
+.npc-dialog-choices button:disabled { cursor: wait; opacity: .55; }
+.npc-dialog-choices strong { display: block; font-size: 14px; }
+.npc-dialog-choices small { display: block; margin-top: 5px; color: #6e6e73; font-size: 11px; line-height: 1.45; }
+.npc-dialog-result > button { width: 100%; min-height: 48px; margin-top: 20px; border: 0; border-radius: 14px; background: var(--npc-accent); color: white; font-weight: 800; cursor: pointer; }
+.npc-resident-card button:focus-visible, .npc-dialog-card button:focus-visible { outline: 3px solid color-mix(in srgb, var(--npc-accent) 55%, white); outline-offset: 2px; }
+
+@media (max-width: 760px) {
+  .npc-residents { margin: 14px 0; padding: 14px; border-radius: 18px; }
+  .npc-residents > header { align-items: start; }
+  .npc-residents > header > small { max-width: 180px; font-size: 10px; }
+  .npc-resident-card { grid-template-columns: 48px minmax(0, 1fr); padding: 12px; }
+  .npc-resident-card > button { grid-column: 1 / -1; width: 100%; min-height: 48px; }
+  .npc-resident-copy p { white-space: normal; }
+  .npc-dialog-overlay { align-items: end; padding: 0; }
+  .npc-dialog-card { width: 100%; max-height: min(90dvh, 760px); padding: 24px 18px calc(22px + env(safe-area-inset-bottom)); border-radius: 26px 26px 0 0; }
+  .npc-dialog-card h2 { font-size: 26px; }
+  .npc-dialog-event > p, .npc-dialog-result > p { font-size: 16px; }
+  .npc-dialog-choices button { min-height: 68px; }
+}
+
+@media (max-width: 900px) and (max-height: 500px) and (orientation: landscape) {
+  .npc-dialog-overlay { align-items: stretch; justify-items: center; padding: 10px max(18px, env(safe-area-inset-left)) 10px max(18px, env(safe-area-inset-right)); }
+  .npc-dialog-card { width: min(760px, 100%); max-height: calc(100dvh - 20px); padding: 20px; border-radius: 20px; }
+  .npc-dialog-card > header { min-height: 62px; }
+}
+
+@media (prefers-color-scheme: dark) {
+  .npc-residents { border-color: rgba(255, 255, 255, .11); background: rgba(34, 34, 36, .8); }
+  .npc-residents > header > small, .npc-resident-copy small, .npc-dialog-card > header small, .npc-dialog-choices small { color: #b7b7bd; }
+  .npc-resident-card, .npc-resident-card.absent { border-color: rgba(255, 255, 255, .1); background: rgba(48, 48, 51, .94); }
+  .npc-resident-copy p { color: #e0e0e5; }
+  .npc-portrait, .npc-dialog-portrait, .npc-resident-copy > div span { background: color-mix(in srgb, var(--npc-accent) 30%, #222225); color: #f5f5f7; }
+  .npc-dialog-card { border-color: rgba(255, 255, 255, .14); background: #242426; color: #f5f5f7; }
+  .npc-dialog-close { background: #3a3a3d; color: #f5f5f7; }
+  .npc-dialog-event, .npc-dialog-result { border-color: rgba(255, 255, 255, .12); }
+  .npc-dialog-event > p, .npc-dialog-result > p { color: #dedee3; }
+  .npc-dialog-choices button { border-color: rgba(255, 255, 255, .12); background: #303033; color: #f5f5f7; }
+  .npc-dialog-choices button:hover { background: color-mix(in srgb, var(--npc-accent) 22%, #303033); }
+}
+
 /* Information triage — reveal secondary systems only when requested. */
 .location-header::after,
 .stage-number,
@@ -718,6 +804,100 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
 @media (min-width: 1181px) {
   .game-grid {
     grid-template-columns: 274px minmax(560px, 1fr) 340px;
+  }
+}
+
+/* City wayfinding icons — a single crisp outline system for every location. */
+.location-glyph {
+  display: grid !important;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  margin: 0 auto 6px !important;
+  border: 1px solid rgba(8, 126, 164, .2);
+  border-radius: 12px;
+  background: linear-gradient(145deg, #f8fdff, #e4f3f7);
+  color: var(--city-blue-deep);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 3px 9px rgba(16, 77, 96, .08);
+  filter: none !important;
+  transition: background-color .18s ease, border-color .18s ease, color .18s ease, box-shadow .18s ease;
+}
+
+.location-glyph svg {
+  width: 24px;
+  height: 24px;
+  overflow: visible;
+}
+
+.location-strip button:hover:not(:disabled) .location-glyph {
+  border-color: rgba(8, 126, 164, .42);
+  background: #fff;
+  box-shadow: inset 0 1px 0 #fff, 0 5px 13px rgba(8, 126, 164, .14);
+}
+
+.location-strip button.active .location-glyph {
+  border-color: rgba(255, 255, 255, .36);
+  background: rgba(255, 255, 255, .14);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18);
+}
+
+.location-strip button.closed:not(.active) .location-glyph {
+  border-color: rgba(98, 117, 126, .22);
+  background: #e3e9ec;
+  color: #82929a;
+  box-shadow: none;
+}
+
+.location-header h2 .location-glyph.prominent {
+  display: inline-grid !important;
+  width: 50px;
+  height: 50px;
+  margin: 0 13px 0 0 !important;
+  border-color: rgba(255, 255, 255, .26);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, .12);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 10px 30px rgba(0, 0, 0, .12);
+  vertical-align: middle;
+}
+
+.location-header h2 .location-glyph.prominent svg {
+  width: 29px;
+  height: 29px;
+}
+
+@media (max-width: 560px) {
+  .location-glyph {
+    width: 36px;
+    height: 36px;
+  }
+
+  .location-header h2 .location-glyph.prominent {
+    width: 44px;
+    height: 44px;
+    margin-right: 10px !important;
+    border-radius: 13px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .location-glyph {
+    border-color: #315767;
+    background: linear-gradient(145deg, #223945, #172c36);
+    color: #8cd9ee;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 3px 10px rgba(0, 0, 0, .18);
+  }
+
+  .location-strip button:hover:not(:disabled) .location-glyph {
+    border-color: #4ca9c5;
+    background: #203b48;
+  }
+
+  .location-strip button.closed:not(.active) .location-glyph {
+    border-color: #3a4850;
+    background: #26343c;
+    color: #7c909a;
   }
 }
 

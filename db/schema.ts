@@ -167,6 +167,39 @@ export const playerProgress = sqliteTable("player_progress", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const playerNpcRelationships = sqliteTable("player_npc_relationships", {
+  userId: text("user_id").notNull(),
+  npcId: text("npc_id").notNull(),
+  lifeVersion: integer("life_version").notNull().default(0),
+  relationPoints: integer("relation_points").notNull().default(0),
+  lastInteractionDay: integer("last_interaction_day").notNull().default(0),
+  updatedAt: integer("updated_at").notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.userId, table.npcId, table.lifeVersion] }),
+  index("idx_npc_relationship_user_life").on(table.userId, table.lifeVersion),
+]);
+
+export const playerNpcStory = sqliteTable("player_npc_story", {
+  userId: text("user_id").notNull(),
+  lifeVersion: integer("life_version").notNull().default(0),
+  memories: text("memories").notNull().default("[]"),
+  updatedAt: integer("updated_at").notNull(),
+}, (table) => [primaryKey({ columns: [table.userId, table.lifeVersion] })]);
+
+export const playerNpcInteractions = sqliteTable("player_npc_interactions", {
+  userId: text("user_id").notNull(),
+  npcId: text("npc_id").notNull(),
+  lifeVersion: integer("life_version").notNull().default(0),
+  playDay: integer("play_day").notNull(),
+  eventId: text("event_id").notNull(),
+  choiceId: text("choice_id").notNull(),
+  outcome: text("outcome").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.userId, table.npcId, table.lifeVersion, table.playDay] }),
+  index("idx_npc_interaction_user_created").on(table.userId, table.createdAt),
+]);
+
 export const playerInventory = sqliteTable("player_inventory", {
   userId: text("user_id").notNull(),
   itemKey: text("item_key").notNull(),
