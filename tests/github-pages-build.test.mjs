@@ -171,7 +171,7 @@ test("administrative actions are instant and gameplay waits stay shortened", asy
   assert.match(worker, /完整治療", price: Math\.floor\(1500 \* careDiscount\), minutes: 30/);
   assert.match(worker, /急診治療", price: Math\.floor\(2500 \* careDiscount\), minutes: 20/);
   assert.match(page, /任何職位都能換職/);
-  assert.match(page, /睡眠 8 小時" meta="現實等待 2 分鐘/);
+  assert.match(page, /title="完整睡眠" meta=\{`現實等待 \$\{homeSleep\.waitSeconds\} 秒/);
   assert.match(page, /旅店臨時工 · 30 秒/);
   assert.match(page, /不扣體力、飽足、健康/);
   assert.match(page, /const canActDuringWait = \[.*"bank".*"beg_response".*"coop_contribute"/);
@@ -609,4 +609,28 @@ test("location NPCs provide durable relationships, daily choices, and career ser
   assert.match(page, /role="dialog" aria-modal="true"/);
   assert.match(css, /\.npc-resident-card > button \{[^}]*min-height: 44px/s);
   assert.match(css, /max-height: min\(90dvh, 760px\)/);
+});
+
+test("home location provides bounded daily activities and comfort upgrades", async () => {
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const schema = await readFile(new URL("db/schema.ts", root), "utf8");
+  const migration = await readFile(new URL("drizzle/0030_cozy_home_life.sql", root), "utf8");
+  const housing = await readFile(new URL("shared/housing.ts", root), "utf8");
+
+  assert.match(housing, /HOME_DAILY_COOK_LIMIT = 2/);
+  assert.match(housing, /HOME_NAP_WAIT_SECONDS = 30/);
+  assert.match(worker, /case "home"/);
+  assert.match(worker, /home_cook_uses/);
+  assert.match(worker, /home_chore_done/);
+  assert.match(worker, /talentExpGain \+= 2/);
+  assert.match(worker, /homeSleepBenefits\(next\.home_comfort\)/);
+  assert.match(page, /住所舒適度 \{player\.homeComfort\}\/3/);
+  assert.match(page, /短暫小睡/);
+  assert.match(page, /居家料理/);
+  assert.match(page, /整理生活空間/);
+  assert.match(page, /永久升級/);
+  assert.match(schema, /homeComfort: integer\("home_comfort"/);
+  assert.match(migration, /ADD COLUMN `home_comfort`/);
+  assert.match(migration, /ADD COLUMN `home_chore_done`/);
 });

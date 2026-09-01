@@ -8,6 +8,7 @@ import { ABILITY_LABELS, ABILITY_MAX, ACADEMIES, BANK_LOAN_RATE_BP, careerForCat
 import { CITY_EVENTS, PRODIGAL_SUCCESS_STORY, STORY_CHAPTERS, TALENTS } from "../shared/progression";
 import { isHospitalRegularOpen, isLocationOpen, worldMinutes } from "../shared/world";
 import { CAREER_PREVIEW_ROUTES } from "../shared/careerPreview";
+import { HOME_CHORE_WAIT_SECONDS, HOME_COMFORT_LEVELS, HOME_COOK_COST, HOME_COOK_WAIT_SECONDS, HOME_DAILY_COOK_LIMIT, HOME_NAP_WAIT_SECONDS, homeComfort, homeCookHunger, homeSleepBenefits } from "../shared/housing";
 
 type LocationId = "home" | "realtor" | "bank" | "business" | "shopping" | "bookstore" | "hotel" | "casino" | "school" | "hospital" | "underpass" | "prison";
 type StatKey = "energy" | "health" | "hunger";
@@ -55,6 +56,10 @@ type Player = {
   ownsHome: boolean;
   rentalName: string;
   rentedUntil: number;
+  homeComfort: number;
+  homeDay: number;
+  homeCookUses: number;
+  homeChoreDone: boolean;
   actionAvailableAt: number;
   actionLabel: string;
   elapsedMinutes: number;
@@ -325,6 +330,10 @@ const INITIAL_PLAYER: Player = {
   ownsHome: false,
   rentalName: "",
   rentedUntil: 0,
+  homeComfort: 0,
+  homeDay: 0,
+  homeCookUses: 0,
+  homeChoreDone: false,
   actionAvailableAt: 0,
   actionLabel: "",
   elapsedMinutes: 0,
@@ -633,7 +642,37 @@ function guestAction(current: Player, action: string, payload: Record<string, un
   } else if (action === "sleep") {
     if (next.location !== "home") return fail("請先回到溫暖小屋。");
     if (!next.ownsHome && next.rentedUntil <= sharedMinutes) return fail("租約已到期，請先到房仲續租。");
-    next.energy = 100; next.health = Math.min(100, next.health + 5); next.hunger = Math.max(0, next.hunger - 12); minutes = 120; title = "好好睡了一覺"; message = "體力完全恢復，健康 +5。";
+    const sleep = homeSleepBenefits(next.homeComfort);
+    next.energy = 100; next.health = Math.min(100, next.health + sleep.health); next.hunger = Math.max(0, next.hunger - 12); minutes = sleep.waitSeconds; title = "好好睡了一覺"; message = `體力完全恢復，健康 +${sleep.health}。`;
+  } else if (action === "home") {
+    if (next.location !== "home") return fail("請先回到我的住所。");
+    if (!next.ownsHome && next.rentedUntil <= sharedMinutes) return fail("租約已到期，請先到房仲續租。");
+    const playDay = Math.floor(next.elapsedMinutes / 1440) + 1;
+    const cookUses = next.homeDay === playDay ? next.homeCookUses : 0;
+    const choreDone = next.homeDay === playDay && next.homeChoreDone;
+    next.homeDay = playDay;
+    if (payload.kind === "nap") {
+      next.energy = Math.min(100, next.energy + 35); next.health = Math.min(100, next.health + (next.homeComfort >= 1 ? 3 : 2)); next.hunger = Math.max(0, next.hunger - 4); minutes = HOME_NAP_WAIT_SECONDS;
+      title = "在家小睡片刻"; message = `體力 +35、健康 +${next.homeComfort >= 1 ? 3 : 2}。`;
+    } else if (payload.kind === "cook") {
+      if (cookUses >= HOME_DAILY_COOK_LIMIT) return fail("今天已經在家料理兩次，明天再準備新餐點。");
+      if (next.cash < HOME_COOK_COST) return fail(`居家料理需要 NT$${HOME_COOK_COST} 購買食材。`);
+      const hunger = homeCookHunger(next.homeComfort);
+      next.cash -= HOME_COOK_COST; next.hunger = Math.min(100, next.hunger + hunger); next.homeCookUses = cookUses + 1; minutes = HOME_COOK_WAIT_SECONDS;
+      title = "完成居家料理"; message = `食材 NT$${HOME_COOK_COST}，飽足 +${hunger}；今天還可料理 ${HOME_DAILY_COOK_LIMIT - next.homeCookUses} 次。`;
+    } else if (payload.kind === "chore") {
+      if (choreDone) return fail("今天已經整理過住所了。");
+      if (next.energy < 4) return fail("體力不足，先休息再整理住所。");
+      next.energy -= 4; next.hunger = Math.max(0, next.hunger - 2); next.health = Math.min(100, next.health + 3); next.homeChoreDone = true; minutes = HOME_CHORE_WAIT_SECONDS;
+      title = "整理好生活空間"; message = "體力 -4、飽足 -2、健康 +3；登入後還會獲得少量天賦經驗。";
+    } else if (payload.kind === "upgrade") {
+      if (!next.ownsHome) return fail("永久家具升級只適用自有住宅，租屋仍可使用基本住所功能。");
+      const comfort = homeComfort(next.homeComfort);
+      if (comfort.upgradeCost === null) return fail("住所已完成最高階舒適升級。");
+      if (next.cash < comfort.upgradeCost) return fail(`升級住所需要 NT$${comfort.upgradeCost}。`);
+      next.cash -= comfort.upgradeCost; next.homeComfort += 1;
+      title = `住所升級：${homeComfort(next.homeComfort).name}`; message = homeComfort(next.homeComfort).description;
+    } else return fail("住所活動不存在。");
   } else if (action.startsWith("casino_")) {
     return fail("登入帳號後才能加入最多五人的二十一點牌桌。");
   } else if (action === "hospital") {
@@ -784,6 +823,13 @@ function GameHome() {
   const rentalMinutesLeft = Math.max(0, player.rentedUntil - displayElapsedMinutes);
   const rentalDaysLeft = rentalMinutesLeft ? Math.ceil(rentalMinutesLeft / 1440) : 0;
   const housingLabel = player.ownsHome ? "自有住宅 · 城市小宅" : rentalDaysLeft ? `租屋 · ${player.rentalName}（剩 ${rentalDaysLeft} 天）` : "目前沒有住所";
+  const playerPlayDay = Math.floor(displayElapsedMinutes / 1440) + 1;
+  const homeCookUses = player.homeDay === playerPlayDay ? player.homeCookUses : 0;
+  const homeChoreDone = player.homeDay === playerPlayDay && player.homeChoreDone;
+  const currentHomeComfort = homeComfort(player.homeComfort);
+  const nextHomeComfort = HOME_COMFORT_LEVELS[player.homeComfort + 1] ?? null;
+  const homeSleep = homeSleepBenefits(player.homeComfort);
+  const homeCookGain = homeCookHunger(player.homeComfort);
   const selectedJobCategory = JOB_CATEGORIES.find((category) => category.id === jobCategory) ?? JOB_CATEGORIES[0];
   const workSpecial = careerWorkSpecialFor(player.currentJob);
   const medicalWorkHealth = medicalWorkHealthBonusFor(player.currentJob);
@@ -1177,7 +1223,14 @@ function GameHome() {
             <div className="action-intro"><h3>{actionTitle(player.location)}</h3><p>{actionLocked ? `${player.actionLabel || "目前的行動"}進行中，剩餘 ${actionSecondsLeft} 秒。等待期間仍可移動、換職、使用銀行、與 NPC 交談或前往賭場。` : actionDescription(player.location, dailyRent)}</p></div>
             {npcs.residents.length > 0 && <NpcResidents state={npcs} signedIn={Boolean(profile)} busy={busy} onTalk={(npcId) => setNpcDialogId(npcId)} />}
             <div className="action-cards">
-              {player.location === "home" && <ActionCard icon="☾" title="睡眠 8 小時" meta="現實等待 2 分鐘 · 體力全滿 · 健康 +5" button="好好休息" onClick={() => void act("sleep")} disabled={actionBusy} />}
+              {player.location === "home" && <>
+                <div className="home-status-card"><div><span>住所舒適度 {player.homeComfort}/3</span><strong>{currentHomeComfort.name}</strong><small>{currentHomeComfort.description}</small></div><div className="home-comfort-track" aria-label={`住所舒適度 ${player.homeComfort} / 3`}><i style={{ width: `${player.homeComfort / 3 * 100}%` }} /></div><em>今日料理 {homeCookUses}/{HOME_DAILY_COOK_LIMIT} · 整理 {homeChoreDone ? "已完成" : "未完成"}</em></div>
+                <ActionCard icon="休" title="短暫小睡" meta={`現實等待 ${HOME_NAP_WAIT_SECONDS} 秒 · 體力 +35 · 健康 +${player.homeComfort >= 1 ? 3 : 2} · 飽足 -4`} button="小睡一下" onClick={() => void act("home", { kind: "nap" })} featured disabled={actionBusy} />
+                <ActionCard icon="☾" title="完整睡眠" meta={`現實等待 ${homeSleep.waitSeconds} 秒 · 體力全滿 · 健康 +${homeSleep.health} · 飽足 -12`} button="好好休息" onClick={() => void act("sleep")} disabled={actionBusy} />
+                <ActionCard icon="煮" title="居家料理" meta={`食材 NT$${HOME_COOK_COST} · 現實等待 ${HOME_COOK_WAIT_SECONDS} 秒 · 飽足 +${homeCookGain} · 每日 ${HOME_DAILY_COOK_LIMIT} 次`} button={homeCookUses >= HOME_DAILY_COOK_LIMIT ? "今日已料理完" : "準備餐點"} onClick={() => void act("home", { kind: "cook" })} disabled={actionBusy || homeCookUses >= HOME_DAILY_COOK_LIMIT || player.cash < HOME_COOK_COST} disabledLabel={homeCookUses >= HOME_DAILY_COOK_LIMIT ? "明日再料理" : player.cash < HOME_COOK_COST ? "食材費不足" : undefined} />
+                <ActionCard icon="整" title="整理生活空間" meta={`每日一次 · 現實等待 ${HOME_CHORE_WAIT_SECONDS} 秒 · 體力 -4 · 飽足 -2 · 健康 +3 · 天賦經驗 +2`} button={homeChoreDone ? "今日已整理" : "開始整理"} onClick={() => void act("home", { kind: "chore" })} disabled={actionBusy || homeChoreDone || player.energy < 4} disabledLabel={homeChoreDone ? "明日再整理" : player.energy < 4 ? "體力不足" : undefined} />
+                <ActionCard icon="家" title={nextHomeComfort ? `升級為${nextHomeComfort.name}` : "住所已達最高舒適度"} meta={nextHomeComfort ? `永久升級 NT$${formatMoney(currentHomeComfort.upgradeCost ?? 0)} · ${nextHomeComfort.description}` : "舒適寢具、家用廚房與安心小窩效果全部啟用"} button={!player.ownsHome ? "自有住宅才能升級" : nextHomeComfort ? "升級住所" : "已完成升級"} onClick={() => void act("home", { kind: "upgrade" })} disabled={actionBusy || !player.ownsHome || !nextHomeComfort || player.cash < (currentHomeComfort.upgradeCost ?? 0)} disabledLabel={!player.ownsHome ? "購屋後開放" : !nextHomeComfort ? "最高等級" : player.cash < (currentHomeComfort.upgradeCost ?? 0) ? "現金不足" : undefined} />
+              </>}
               {player.location === "prison" && isPrisoner && <ActionCard icon="▥" title="監獄服刑中" meta={`罪名：${player.prisonCrime || "違法行為"} · 剩餘在線遊玩約 ${prisonHoursLeft} 小時 · 其他玩家可查看紀錄`} button="等待服刑結束" onClick={() => undefined} disabled />}
               {player.location === "realtor" && <><ActionCard icon="01" title="城市小套房 · 1 天" meta={`每日 NT$${formatMoney(dailyRent)} · 租金 NT$${formatMoney(dailyRent)}${dailyRent < 350 ? " · 租屋高手 9 折" : ""}`} button="租 1 天" onClick={() => void act("housing", { kind: "rent", days: 1 })} disabled={actionBusy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /><ActionCard icon="07" title="城市小套房 · 7 天" meta={`每日 NT$${formatMoney(dailyRent)} · 租金 NT$${formatMoney(dailyRent * 7)}${dailyRent < 350 ? " · 租屋高手 9 折" : ""}`} button="租 7 天" onClick={() => void act("housing", { kind: "rent", days: 7 })} featured disabled={actionBusy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /><ActionCard icon="買" title="購買城市小宅" meta="NT$50,000 · 永久住所 · 買房後仍可查看租屋" button={player.ownsHome ? "已擁有，仍可看租屋" : "購買房屋"} onClick={() => void act("housing", { kind: "buy" })} disabled={actionBusy || !realtorOpen} disabledLabel={!realtorOpen ? "已關門" : undefined} /></>}
               {player.location === "bank" && <BankPanel player={player} busy={busy || !bankOpen} closed={!bankOpen} onAction={(kind, amount) => void act("bank", { kind, amount })} />}
@@ -1670,9 +1723,9 @@ function NpcDialogue({ resident, busy, onClose, onChoose }: { resident: NpcResid
 }
 
 function actionTitle(location: LocationId) {
-  return { home: "有一個落腳處，才有安心休息的地方", realtor: "先找到住所，再打造自己的生活", bank: "管理資產，也要衡量借貸成本", business: "累積經驗，向下一次升遷前進", shopping: "照顧日常，才能走得更遠", bookstore: "讓故事被看見，也讓作品流通", hotel: "沒有住所，也能有一晚落腳處", casino: "五人同桌，挑戰二十一點與德州撲克", school: "今天學會的，會成為明天的選項", hospital: "及早治療，才能繼續人生旅程", underpass: "在街頭尋找資源，也建立彼此照應的方式", prison: "為違法行為付出時間代價" }[location];
+  return { home: "把住所經營成真正能生活的地方", realtor: "先找到住所，再打造自己的生活", bank: "管理資產，也要衡量借貸成本", business: "累積經驗，向下一次升遷前進", shopping: "照顧日常，才能走得更遠", bookstore: "讓故事被看見，也讓作品流通", hotel: "沒有住所，也能有一晚落腳處", casino: "五人同桌，挑戰二十一點與德州撲克", school: "今天學會的，會成為明天的選項", hospital: "及早治療，才能繼續人生旅程", underpass: "在街頭尋找資源，也建立彼此照應的方式", prison: "為違法行為付出時間代價" }[location];
 }
 
 function actionDescription(location: LocationId, dailyRent = 350) {
-  return { home: "有效租約或自有住宅才能進入，全天 24 小時開放。睡一覺能恢復體力與健康。", realtor: `營業時間 07:00～23:00。租屋每日 NT$${formatMoney(dailyRent)}；城市小宅售價 NT$50,000。`, bank: "營業時間 07:00～23:00。存款收益依金融職位而定；一般貸款每日利息 0.5%；《浪子回頭》主線債務每日利息 0.2%。在線玩家也能申請金融玩家的銀行貸款方案。", business: "營業時間 06:00～24:00。第一階工作免能力門檻；各產業最高階時薪皆為 NT$1,300。犯罪路線的違法行動有被捕風險；詐騙犯可發起詐騙，駭客可嘗試竊取在線玩家現金。大橋頭營運長可設定一處地盤，每次有效進入記錄 NT$100，每日最多 NT$10,000。", shopping: "營業時間 06:00～24:00。用合理的花費補充飽足，也能購買刮刮樂；街頭背包物品可在此回收或出售。", bookstore: "營業時間 07:00～23:00。簽約作家起可建立書名並上架作品；其他玩家可以購買，每本每人最多十次。", hotel: "全天 24 小時營業。旅店臨時工等待 30 秒、收入 NT$100，不扣體力、飽足或健康，也不會獲得職業經驗；住宿與餐點也全天供應。", casino: "全天 24 小時開放。二十一點、德州撲克、多人賓果與五局錦標賽皆可實際同桌遊玩。", school: "開放時間 07:00～23:00。五所學院分別培養體力、智力、創造力、社交與魅力。", hospital: "健康低於 50 時，行動後開始有機率生病。急診 24 小時開放；一般診療為 07:00～23:00。", underpass: "全天 24 小時開放。街頭生存職業在此拾荒、使用背包與開設互助箱；乞討與分享食物可從多人世界操作。", prison: "服刑期間只計算你在線上遊玩的時間；其他玩家可在多人世界看到你的罪名與服刑狀態。" }[location];
+  return { home: "全天 24 小時開放。可選短休或完整睡眠、在家料理、每日整理；買下城市小宅後還能永久升級舒適度。", realtor: `營業時間 07:00～23:00。租屋每日 NT$${formatMoney(dailyRent)}；城市小宅售價 NT$50,000。`, bank: "營業時間 07:00～23:00。存款收益依金融職位而定；一般貸款每日利息 0.5%；《浪子回頭》主線債務每日利息 0.2%。在線玩家也能申請金融玩家的銀行貸款方案。", business: "營業時間 06:00～24:00。第一階工作免能力門檻；各產業最高階時薪皆為 NT$1,300。犯罪路線的違法行動有被捕風險；詐騙犯可發起詐騙，駭客可嘗試竊取在線玩家現金。大橋頭營運長可設定一處地盤，每次有效進入記錄 NT$100，每日最多 NT$10,000。", shopping: "營業時間 06:00～24:00。用合理的花費補充飽足，也能購買刮刮樂；街頭背包物品可在此回收或出售。", bookstore: "營業時間 07:00～23:00。簽約作家起可建立書名並上架作品；其他玩家可以購買，每本每人最多十次。", hotel: "全天 24 小時營業。旅店臨時工等待 30 秒、收入 NT$100，不扣體力、飽足或健康，也不會獲得職業經驗；住宿與餐點也全天供應。", casino: "全天 24 小時開放。二十一點、德州撲克、多人賓果與五局錦標賽皆可實際同桌遊玩。", school: "開放時間 07:00～23:00。五所學院分別培養體力、智力、創造力、社交與魅力。", hospital: "健康低於 50 時，行動後開始有機率生病。急診 24 小時開放；一般診療為 07:00～23:00。", underpass: "全天 24 小時開放。街頭生存職業在此拾荒、使用背包與開設互助箱；乞討與分享食物可從多人世界操作。", prison: "服刑期間只計算你在線上遊玩的時間；其他玩家可在多人世界看到你的罪名與服刑狀態。" }[location];
 }

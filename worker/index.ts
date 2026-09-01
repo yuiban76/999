@@ -2,6 +2,7 @@ import { ABILITY_LABELS, ABILITY_MAX, ACADEMIES, BANK_LOAN_RATE_BP, careerForCat
 import { CITY_EVENTS, STORY_CHAPTERS, storyChapterForDebt, talentInfo } from "../shared/progression";
 import { isHospitalRegularOpen, isLocationOpen, minuteOfDay, OPENING_HOURS, worldMinutes } from "../shared/world";
 import { eventMatchesMemories, NPC_EVENTS, NPCS, npcAvailableAt, relationshipLabel, type NpcChoice, type NpcDefinition, type NpcEvent, type NpcId } from "../shared/npcs";
+import { HOME_CHORE_WAIT_SECONDS, HOME_COOK_COST, HOME_COOK_WAIT_SECONDS, HOME_DAILY_COOK_LIMIT, HOME_NAP_WAIT_SECONDS, homeComfort, homeCookHunger, homeSleepBenefits } from "../shared/housing";
 
 type LocationId = "home" | "realtor" | "bank" | "business" | "shopping" | "bookstore" | "hotel" | "casino" | "school" | "hospital" | "underpass" | "prison";
 
@@ -54,6 +55,10 @@ type PlayerRow = {
   owns_home: number;
   rental_name: string;
   rented_until: number;
+  home_comfort: number;
+  home_day: number;
+  home_cook_uses: number;
+  home_chore_done: number;
   action_available_at: number;
   action_label: string;
   elapsed_minutes: number;
@@ -201,7 +206,7 @@ async function identity(request: Request, db?: D1Database): Promise<AuthUser | n
 }
 
 function guestPlayer() {
-  return { cash: 10000, bankBalance: 0, loanBalance: 0, loanProviderName: "", loanRateBp: null, loanSpreadBp: null, dailyMinimumPayment: 0, dailyPaymentMade: 0, missedPaymentDays: 0, writerFans: 0, writingUses: 0, ownsRestaurant: false, prisonUntil: 0, prisonCrime: "", territoryLocation: "", territoryDay: 0, territoryPayoutDay: 0, territoryVisits: 0, territoryIncome: 0, territoryPending: 0, hackDay: 0, hackUses: 0, streetDay: 0, streetScavenges: 0, streetBegIncome: 0, gameOver: "", mainStory: "legacy", energy: 100, health: 100, hunger: 80, intelligenceExp: 0, creativityExp: 0, physicalExp: 0, socialExp: 0, charismaExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, actionAvailableAt: 0, actionLabel: "", elapsedMinutes: 0, location: "realtor" as LocationId, talentExp: 0, talentLevel: 0, talentPoints: 0, talents: [] as string[], storyChapter: 0, storySeenChapter: 0, pendingEvent: "" };
+  return { cash: 10000, bankBalance: 0, loanBalance: 0, loanProviderName: "", loanRateBp: null, loanSpreadBp: null, dailyMinimumPayment: 0, dailyPaymentMade: 0, missedPaymentDays: 0, writerFans: 0, writingUses: 0, ownsRestaurant: false, prisonUntil: 0, prisonCrime: "", territoryLocation: "", territoryDay: 0, territoryPayoutDay: 0, territoryVisits: 0, territoryIncome: 0, territoryPending: 0, hackDay: 0, hackUses: 0, streetDay: 0, streetScavenges: 0, streetBegIncome: 0, gameOver: "", mainStory: "legacy", energy: 100, health: 100, hunger: 80, intelligenceExp: 0, creativityExp: 0, physicalExp: 0, socialExp: 0, charismaExp: 0, currentJob: "待業者", jobCategory: "unfixed", jobExp: 0, illness: "", ownsHome: false, rentalName: "", rentedUntil: 0, homeComfort: 0, homeDay: 0, homeCookUses: 0, homeChoreDone: false, actionAvailableAt: 0, actionLabel: "", elapsedMinutes: 0, location: "realtor" as LocationId, talentExp: 0, talentLevel: 0, talentPoints: 0, talents: [] as string[], storyChapter: 0, storySeenChapter: 0, pendingEvent: "" };
 }
 
 function parseList(value: string) {
@@ -213,7 +218,7 @@ function serializePlayer(row: PlayerRow, progress?: ProgressRow | null, loanCont
   const location = VALID_LOCATIONS.has(row.location) ? row.location : "casino";
   const talents = progress ? parseList(progress.talents) : [];
   const talentLevel = Math.min(10, Math.floor((progress?.talent_exp ?? 0) / 100));
-  return { cash: row.cash, bankBalance: row.bank_balance, loanBalance: row.loan_balance, loanProviderName: loanContract?.provider_name ?? "", loanRateBp: loanContract?.interest_rate_bp ?? null, loanSpreadBp: loanContract?.spread_bp ?? null, dailyMinimumPayment: row.daily_minimum_payment, dailyPaymentMade: row.daily_payment_made, missedPaymentDays: row.missed_payment_days, writerFans: row.writer_fans, writingUses: row.writer_writes, ownsRestaurant: Boolean(row.owns_restaurant), prisonUntil: row.prison_until, prisonCrime: row.prison_crime, territoryLocation: row.territory_location, territoryDay: row.territory_day, territoryPayoutDay: row.territory_payout_day, territoryVisits: row.territory_visits, territoryIncome: row.territory_income, territoryPending: row.territory_pending, hackDay: row.hack_day, hackUses: row.hack_uses, streetDay: row.street_day, streetScavenges: row.street_scavenges, streetBegIncome: row.street_beg_income, gameOver: row.game_over, mainStory: row.main_story, energy: row.energy, health: row.health, hunger: row.hunger, intelligenceExp: row.intelligence_exp, creativityExp: row.programming_exp, physicalExp: row.fitness_exp, socialExp: row.work_exp, charismaExp: row.charisma_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, actionAvailableAt: row.action_available_at, actionLabel: row.action_label, elapsedMinutes: row.elapsed_minutes, location, talentExp: progress?.talent_exp ?? 0, talentLevel, talentPoints: Math.max(0, talentLevel - talents.length), talents, storyChapter: progress?.story_chapter ?? 0, storySeenChapter: progress?.story_seen_chapter ?? 0, pendingEvent: progress?.pending_event ?? "" };
+  return { cash: row.cash, bankBalance: row.bank_balance, loanBalance: row.loan_balance, loanProviderName: loanContract?.provider_name ?? "", loanRateBp: loanContract?.interest_rate_bp ?? null, loanSpreadBp: loanContract?.spread_bp ?? null, dailyMinimumPayment: row.daily_minimum_payment, dailyPaymentMade: row.daily_payment_made, missedPaymentDays: row.missed_payment_days, writerFans: row.writer_fans, writingUses: row.writer_writes, ownsRestaurant: Boolean(row.owns_restaurant), prisonUntil: row.prison_until, prisonCrime: row.prison_crime, territoryLocation: row.territory_location, territoryDay: row.territory_day, territoryPayoutDay: row.territory_payout_day, territoryVisits: row.territory_visits, territoryIncome: row.territory_income, territoryPending: row.territory_pending, hackDay: row.hack_day, hackUses: row.hack_uses, streetDay: row.street_day, streetScavenges: row.street_scavenges, streetBegIncome: row.street_beg_income, gameOver: row.game_over, mainStory: row.main_story, energy: row.energy, health: row.health, hunger: row.hunger, intelligenceExp: row.intelligence_exp, creativityExp: row.programming_exp, physicalExp: row.fitness_exp, socialExp: row.work_exp, charismaExp: row.charisma_exp, currentJob, jobCategory: currentJob === "待業者" ? "unfixed" : row.job_category, jobExp: currentJob === "待業者" ? 0 : row.job_exp, illness: row.illness, ownsHome: Boolean(row.owns_home), rentalName: row.rental_name, rentedUntil: row.rented_until, homeComfort: row.home_comfort, homeDay: row.home_day, homeCookUses: row.home_cook_uses, homeChoreDone: Boolean(row.home_chore_done), actionAvailableAt: row.action_available_at, actionLabel: row.action_label, elapsedMinutes: row.elapsed_minutes, location, talentExp: progress?.talent_exp ?? 0, talentLevel, talentPoints: Math.max(0, talentLevel - talents.length), talents, storyChapter: progress?.story_chapter ?? 0, storySeenChapter: progress?.story_seen_chapter ?? 0, pendingEvent: progress?.pending_event ?? "" };
 }
 
 async function activeLoanContract(db: D1Database, borrowerId: string) {
@@ -294,6 +299,8 @@ async function ensureSchema(db: D1Database) {
       job_exp INTEGER NOT NULL DEFAULT 0,
       owns_home INTEGER NOT NULL DEFAULT 0, rental_name TEXT NOT NULL DEFAULT '',
       rented_until INTEGER NOT NULL DEFAULT 0,
+      home_comfort INTEGER NOT NULL DEFAULT 0, home_day INTEGER NOT NULL DEFAULT 0,
+      home_cook_uses INTEGER NOT NULL DEFAULT 0, home_chore_done INTEGER NOT NULL DEFAULT 0,
       action_available_at INTEGER NOT NULL DEFAULT 0, action_label TEXT NOT NULL DEFAULT '',
       elapsed_minutes INTEGER NOT NULL DEFAULT 0,
       elapsed_remainder_ms INTEGER NOT NULL DEFAULT 0,
@@ -582,6 +589,10 @@ async function ensureSchema(db: D1Database) {
     !columnNames.has("street_day") ? "ALTER TABLE players ADD COLUMN street_day INTEGER NOT NULL DEFAULT 0" : null,
     !columnNames.has("street_scavenges") ? "ALTER TABLE players ADD COLUMN street_scavenges INTEGER NOT NULL DEFAULT 0" : null,
     !columnNames.has("street_beg_income") ? "ALTER TABLE players ADD COLUMN street_beg_income INTEGER NOT NULL DEFAULT 0" : null,
+    !columnNames.has("home_comfort") ? "ALTER TABLE players ADD COLUMN home_comfort INTEGER NOT NULL DEFAULT 0" : null,
+    !columnNames.has("home_day") ? "ALTER TABLE players ADD COLUMN home_day INTEGER NOT NULL DEFAULT 0" : null,
+    !columnNames.has("home_cook_uses") ? "ALTER TABLE players ADD COLUMN home_cook_uses INTEGER NOT NULL DEFAULT 0" : null,
+    !columnNames.has("home_chore_done") ? "ALTER TABLE players ADD COLUMN home_chore_done INTEGER NOT NULL DEFAULT 0" : null,
   ].filter((item): item is string => Boolean(item))) await db.prepare(statement).run();
   const extraColumns: Record<string, Record<string, string>> = {
     writer_books: { author_life_version: "INTEGER NOT NULL DEFAULT 0" },
@@ -3820,7 +3831,7 @@ async function takeAction(request: Request, env: Env) {
     case "choose_story":
       if (next.main_story !== "unselected") return json({ message: "人生主線選定後不能再次更換。" }, 409);
       if (body.story !== "prodigal_return") return json({ message: "這條人生主線目前尚未開放。" }, 400);
-      Object.assign(next, { cash: 37, bank_balance: 0, loan_balance: 250_000, main_story: "prodigal_return", finance_day: Math.floor(next.elapsed_minutes / 1440) + 1, daily_minimum_payment: 750, daily_payment_made: 0, missed_payment_days: 0, writer_fans: 0, writer_day: Math.floor(next.elapsed_minutes / 1440) + 1, writer_writes: 0, owns_restaurant: 0, prison_until: 0, prison_crime: "", territory_location: "", territory_day: 0, territory_payout_day: 0, territory_visits: 0, territory_income: 0, territory_pending: 0, hack_day: 0, hack_uses: 0, street_day: 0, street_scavenges: 0, street_beg_income: 0, game_over: "", energy: 100, health: 100, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", location: "realtor" });
+      Object.assign(next, { cash: 37, bank_balance: 0, loan_balance: 250_000, main_story: "prodigal_return", finance_day: Math.floor(next.elapsed_minutes / 1440) + 1, daily_minimum_payment: 750, daily_payment_made: 0, missed_payment_days: 0, writer_fans: 0, writer_day: Math.floor(next.elapsed_minutes / 1440) + 1, writer_writes: 0, owns_restaurant: 0, prison_until: 0, prison_crime: "", territory_location: "", territory_day: 0, territory_payout_day: 0, territory_visits: 0, territory_income: 0, territory_pending: 0, hack_day: 0, hack_uses: 0, street_day: 0, street_scavenges: 0, street_beg_income: 0, game_over: "", energy: 100, health: 100, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, home_comfort: 0, home_day: 0, home_cook_uses: 0, home_chore_done: 0, action_available_at: 0, action_label: "", location: "realtor" });
       title = "選擇主線：《浪子回頭》"; message = "你帶著 NT$37 與 NT$250,000 負債，決定承認失敗並重新開始。"; tone = "neutral"; break;
     case "move": {
       if (!VALID_LOCATIONS.has(body.location as LocationId)) return json({ message: "目的地不存在。" }, 400);
@@ -4022,8 +4033,47 @@ async function takeAction(request: Request, env: Env) {
     case "sleep":
       if (next.location !== "home") return json({ message: "請先回到溫暖小屋。" }, 400);
       if (!next.owns_home && next.rented_until <= next.elapsed_minutes) return json({ message: "租約已到期，請先到房仲續租。" }, 400);
-      next.energy = talents.has("strong_body") ? 120 : 100; next.health = clamp(next.health + 5); next.hunger = clamp(next.hunger - 12); minutes = 120;
-      title = "好好睡了一覺"; message = "體力完全恢復，健康 +5。"; break;
+      {
+        const sleep = homeSleepBenefits(next.home_comfort);
+        next.energy = talents.has("strong_body") ? 120 : 100; next.health = clamp(next.health + sleep.health); next.hunger = clamp(next.hunger - 12); minutes = sleep.waitSeconds;
+        title = "好好睡了一覺"; message = `體力完全恢復，健康 +${sleep.health}。`; break;
+      }
+    case "home": {
+      if (next.location !== "home") return json({ message: "請先回到我的住所。" }, 400);
+      if (!next.owns_home && next.rented_until <= next.elapsed_minutes) return json({ message: "租約已到期，請先到房仲續租。" }, 400);
+      const playDay = Math.floor(next.elapsed_minutes / 1440) + 1;
+      const cookUses = next.home_day === playDay ? next.home_cook_uses : 0;
+      const choreDone = next.home_day === playDay && Boolean(next.home_chore_done);
+      next.home_day = playDay;
+      if (body.kind === "nap") {
+        const healthGain = next.home_comfort >= 1 ? 3 : 2;
+        next.energy = Math.min(talents.has("strong_body") ? 120 : 100, next.energy + 35);
+        next.health = clamp(next.health + healthGain); next.hunger = clamp(next.hunger - 4); minutes = HOME_NAP_WAIT_SECONDS;
+        title = "在家小睡片刻"; message = `體力 +35、健康 +${healthGain}、飽足 -4。`; break;
+      }
+      if (body.kind === "cook") {
+        if (cookUses >= HOME_DAILY_COOK_LIMIT) return json({ message: "今天已經在家料理兩次，明天再準備新餐點。" }, 409);
+        if (next.cash < HOME_COOK_COST) return json({ message: `居家料理需要 NT$${HOME_COOK_COST} 購買食材。` }, 400);
+        const hungerGain = homeCookHunger(next.home_comfort);
+        next.cash -= HOME_COOK_COST; next.hunger = clamp(next.hunger + hungerGain); next.home_cook_uses = cookUses + 1; next.home_chore_done = choreDone ? 1 : 0; minutes = HOME_COOK_WAIT_SECONDS;
+        title = "完成居家料理"; message = `支付食材 NT$${HOME_COOK_COST}，飽足 +${hungerGain}；今天還可料理 ${HOME_DAILY_COOK_LIMIT - next.home_cook_uses} 次。`; break;
+      }
+      if (body.kind === "chore") {
+        if (choreDone) return json({ message: "今天已經整理過住所了。" }, 409);
+        if (next.energy < 4) return json({ message: "體力不足，先休息再整理住所。" }, 400);
+        next.energy -= 4; next.hunger = clamp(next.hunger - 2); next.health = clamp(next.health + 3); next.home_cook_uses = cookUses; next.home_chore_done = 1; talentExpGain += 2; minutes = HOME_CHORE_WAIT_SECONDS;
+        title = "整理好生活空間"; message = "體力 -4、飽足 -2、健康 +3、天賦經驗 +2。"; break;
+      }
+      if (body.kind === "upgrade") {
+        if (!next.owns_home) return json({ message: "永久家具升級只適用自有住宅，租屋仍可使用基本住所功能。" }, 400);
+        const comfort = homeComfort(next.home_comfort);
+        if (comfort.upgradeCost === null) return json({ message: "住所已完成最高階舒適升級。" }, 409);
+        if (next.cash < comfort.upgradeCost) return json({ message: `升級住所需要 NT$${comfort.upgradeCost}。` }, 400);
+        next.cash -= comfort.upgradeCost; next.home_comfort += 1;
+        title = `住所升級：${homeComfort(next.home_comfort).name}`; message = homeComfort(next.home_comfort).description; break;
+      }
+      return json({ message: "住所活動不存在。" }, 400);
+    }
     case "hospital": {
       if (next.location !== "hospital") return json({ message: "請先前往市立醫院。" }, 400);
       if (body.kind !== "emergency" && !isHospitalRegularOpen(sharedMinutes)) return json({ message: "一般門診與完整治療時間為 07:00～23:00；急診 24 小時開放。" }, 400);
@@ -4115,7 +4165,7 @@ async function takeAction(request: Request, env: Env) {
         env.DB.prepare(`UPDATE casino_tournament_state SET host_user_id=COALESCE((SELECT user_id FROM casino_tournament_entries WHERE tournament_no=casino_tournament_state.round_no ORDER BY rowid LIMIT 1), ''), updated_at=? WHERE id='tournament-01' AND status='lobby' AND ${resetGate}`).bind(resetNow, user.userId, expectedLifeVersion, actionToken),
         env.DB.prepare(`UPDATE player_progress SET talent_exp=0, talents='[]', story_chapter=0, story_seen_chapter=0, last_event_day=0, pending_event='', updated_at=? WHERE user_id=? AND ${resetGate}`).bind(resetNow, user.userId, user.userId, expectedLifeVersion, actionToken),
       ];
-      Object.assign(next, { cash: next.main_story === "prodigal_return" ? 37 : 10000, bank_balance: 0, loan_balance: next.main_story === "prodigal_return" ? 250_000 : 0, finance_day: 1, daily_minimum_payment: next.main_story === "prodigal_return" ? 750 : 0, daily_payment_made: 0, missed_payment_days: 0, writer_fans: 0, writer_day: 1, writer_writes: 0, owns_restaurant: 0, prison_until: 0, prison_crime: "", territory_location: "", territory_day: 0, territory_payout_day: 0, territory_visits: 0, territory_income: 0, territory_pending: 0, hack_day: 0, hack_uses: 0, street_day: 0, street_scavenges: 0, street_beg_income: 0, game_over: "", reset_game_over: "", elapsed_remainder_ms: 0, energy: 100, health: 100, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, action_available_at: 0, action_label: "", elapsed_minutes: 0, location: "realtor" });
+      Object.assign(next, { cash: next.main_story === "prodigal_return" ? 37 : 10000, bank_balance: 0, loan_balance: next.main_story === "prodigal_return" ? 250_000 : 0, finance_day: 1, daily_minimum_payment: next.main_story === "prodigal_return" ? 750 : 0, daily_payment_made: 0, missed_payment_days: 0, writer_fans: 0, writer_day: 1, writer_writes: 0, owns_restaurant: 0, prison_until: 0, prison_crime: "", territory_location: "", territory_day: 0, territory_payout_day: 0, territory_visits: 0, territory_income: 0, territory_pending: 0, hack_day: 0, hack_uses: 0, street_day: 0, street_scavenges: 0, street_beg_income: 0, game_over: "", reset_game_over: "", elapsed_remainder_ms: 0, energy: 100, health: 100, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, home_comfort: 0, home_day: 0, home_cook_uses: 0, home_chore_done: 0, action_available_at: 0, action_label: "", elapsed_minutes: 0, location: "realtor" });
       progress = { ...progress, talent_exp: 0, talents: "[]", story_chapter: 0, story_seen_chapter: 0, last_event_day: 0, pending_event: "" }; talents = new Set();
       title = "重新開始人生"; message = "新的人生已開始，所有進度回到起點。"; tone = "neutral"; break;
     }
@@ -4183,7 +4233,7 @@ async function takeAction(request: Request, env: Env) {
     territory_visits=CASE WHEN ?=1 THEN territory_visits ELSE ? END,
     territory_income=CASE WHEN ?=1 THEN territory_income ELSE ? END,
     territory_pending=CASE WHEN ?=1 THEN territory_pending ELSE ? END,
-    hack_day=?, hack_uses=?, street_day=?, street_scavenges=?, street_beg_income=?, game_over=?, main_story=?, energy=?, health=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, charisma_exp=?, current_job=?, job_category=?, job_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, action_available_at=?, action_label=?, elapsed_minutes=?, elapsed_remainder_ms=?, location=?, updated_at=?, last_seen_at=?, reset_game_over=?, mutation_token=?
+    hack_day=?, hack_uses=?, street_day=?, street_scavenges=?, street_beg_income=?, game_over=?, main_story=?, energy=?, health=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, charisma_exp=?, current_job=?, job_category=?, job_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, home_comfort=?, home_day=?, home_cook_uses=?, home_chore_done=?, action_available_at=?, action_label=?, elapsed_minutes=?, elapsed_remainder_ms=?, location=?, updated_at=?, last_seen_at=?, reset_game_over=?, mutation_token=?
     WHERE user_id=? AND life_version=? AND updated_at=? AND reset_game_over=?
       AND (?=0 OR EXISTS (SELECT 1 FROM player_loan_contracts WHERE id=? AND status='active' AND outstanding_balance=? AND revision=?))
       AND (?=0 OR EXISTS (SELECT 1 FROM players target WHERE target.user_id=? AND target.life_version=? AND target.mutation_token=?))
@@ -4191,7 +4241,7 @@ async function takeAction(request: Request, env: Env) {
     .bind(next.cash, next.bank_balance, next.loan_balance, next.finance_day, next.daily_minimum_payment, next.daily_payment_made, next.missed_payment_days, next.writer_fans, next.writer_day, next.writer_writes, next.owns_restaurant, next.prison_until, next.prison_crime,
       preserveTerritoryState, next.territory_location, preserveTerritoryState, next.territory_day, preserveTerritoryState, next.territory_payout_day,
       preserveTerritoryState, next.territory_visits, preserveTerritoryState, next.territory_income, preserveTerritoryState, next.territory_pending,
-      next.hack_day, next.hack_uses, next.street_day, next.street_scavenges, next.street_beg_income, next.game_over, next.main_story, next.energy, next.health, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.charisma_exp, next.current_job, next.job_category, next.job_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.action_available_at, next.action_label, next.elapsed_minutes, next.elapsed_remainder_ms, next.location, now, now, next.reset_game_over, actionToken,
+      next.hack_day, next.hack_uses, next.street_day, next.street_scavenges, next.street_beg_income, next.game_over, next.main_story, next.energy, next.health, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.charisma_exp, next.current_job, next.job_category, next.job_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.home_comfort, next.home_day, next.home_cook_uses, next.home_chore_done, next.action_available_at, next.action_label, next.elapsed_minutes, next.elapsed_remainder_ms, next.location, now, now, next.reset_game_over, actionToken,
       user.userId, expectedLifeVersion, expectedRevision, expectedResetMarker,
       pendingLoanContractUpdate ? 1 : 0, pendingLoanContractUpdate?.id ?? "", pendingLoanContractUpdate?.previousBalance ?? 0, pendingLoanContractUpdate?.previousRevision ?? 0,
       pendingHack ? 1 : 0, pendingHack?.targetId ?? "", pendingHack?.targetLifeVersion ?? 0, actionToken);

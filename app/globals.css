@@ -325,6 +325,14 @@ button { color: inherit; }
 .action-card button:hover { background: var(--orange); transform: translateY(-1px); }
 .action-card button:active { transform: translateY(1px); }
 .action-card button:disabled, .location-strip button:disabled, .world-footer button:disabled { cursor: wait; opacity: .58; }
+.home-status-card { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(130px, .55fr); gap: 12px 20px; align-items: center; padding: 18px 20px; border: 1px solid rgba(8, 126, 164, .22); border-radius: 16px; background: linear-gradient(135deg, #f1f9ff, #f8f5ed); box-shadow: 0 8px 24px rgba(28, 74, 96, .08); }
+.home-status-card > div:first-child { display: grid; gap: 4px; }
+.home-status-card span { color: #087ea4; font-size: 10px; font-weight: 850; letter-spacing: .08em; }
+.home-status-card strong { color: #1d1d1f; font-size: 17px; }
+.home-status-card small, .home-status-card em { color: #6e6e73; font-size: 11px; font-style: normal; line-height: 1.5; }
+.home-status-card em { grid-column: 2; text-align: right; }
+.home-comfort-track { height: 8px; overflow: hidden; border-radius: 99px; background: rgba(8, 126, 164, .13); }
+.home-comfort-track i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #087ea4, #58b691); transition: width .3s ease; }
 
 .bank-panel { grid-column: 1 / -1; padding: 20px; border: 1px solid var(--ink); background: #e8eee8; box-shadow: 5px 5px 0 var(--moss); }
 .bank-panel > header { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -531,6 +539,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
   .action-stage { padding: 28px 18px; }
   .action-cards { grid-template-columns: 1fr; }
   .action-card { min-height: 156px; }
+  .home-status-card { grid-template-columns: 1fr; padding: 16px; }
+  .home-status-card em { grid-column: 1; text-align: left; }
   .bank-panel > header { grid-template-columns: 1fr; }
   .casino-seats { grid-template-columns: repeat(5, minmax(80px, 1fr)); overflow-x: auto; }
   .casino-table > header { align-items: flex-start; }
@@ -626,6 +636,9 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
 }
 
 @media (prefers-color-scheme: dark) {
+  .home-status-card { border-color: rgba(88, 182, 145, .3); background: linear-gradient(135deg, #152c35, #272820); box-shadow: none; }
+  .home-status-card strong { color: #f5f5f7; }
+  .home-status-card small, .home-status-card em { color: #b5b5ba; }
   .npc-residents { border-color: rgba(255, 255, 255, .11); background: rgba(34, 34, 36, .8); }
   .npc-residents > header > small, .npc-resident-copy small, .npc-dialog-card > header small, .npc-dialog-choices small { color: #b7b7bd; }
   .npc-resident-card, .npc-resident-card.absent { border-color: rgba(255, 255, 255, .1); background: rgba(48, 48, 51, .94); }
