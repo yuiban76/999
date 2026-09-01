@@ -3,6 +3,7 @@ import { CITY_EVENTS, STORY_CHAPTERS, storyChapterForDebt, talentInfo } from "..
 import { isHospitalRegularOpen, isLocationOpen, minuteOfDay, OPENING_HOURS, worldMinutes } from "../shared/world";
 import { eventMatchesMemories, NPC_EVENTS, NPCS, npcAvailableAt, relationshipLabel, type NpcChoice, type NpcDefinition, type NpcEvent, type NpcId } from "../shared/npcs";
 import { HOME_CHORE_WAIT_SECONDS, HOME_COOK_COST, HOME_COOK_WAIT_SECONDS, HOME_DAILY_COOK_LIMIT, HOME_NAP_WAIT_SECONDS, homeComfort, homeCookHunger, homeSleepBenefits } from "../shared/housing";
+import { LIFE_PLAN_CAREER_TARGET, LIFE_PLAN_COMPLETION_TALENT_EXP, LIFE_PLAN_CYCLE_DAYS, LIFE_PLAN_HOME_DAY_TARGET, LIFE_PLAN_NPC_TARGET, LIFE_PLAN_PARTIAL_TALENT_EXP, LIFE_PLAN_SOCIAL_TARGET, lifePlanCareerPoints, lifePlanDebtTarget, lifePlanDefinition, lifePlanProgressPercent, type LifePlanEffectKey, type LifePlanKey } from "../shared/lifeRhythm";
 
 type LocationId = "home" | "realtor" | "bank" | "business" | "shopping" | "bookstore" | "hotel" | "casino" | "school" | "hospital" | "underpass" | "prison";
 
@@ -88,6 +89,7 @@ type WriterBookRow = { id: string; author_id: string; author_name: string; autho
 type BegRequestRow = { id: string; requester_id: string; requester_name: string; recipient_id: string; requester_job: string; requester_life_version: number; recipient_life_version: number; status: string; outcome: string; amount: number; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
 type LifeContractRow = { id: string; creator_id: string; creator_name: string; creator_life_version: number; partner_id: string; partner_name: string; partner_life_version: number; target_per_player: number; stake: number; creator_deposit: number; partner_deposit: number; status: string; expires_day: number; resolution_token: string; created_at: number; updated_at: number };
 type NpcRelationshipRow = { user_id: string; npc_id: NpcId; life_version: number; relation_points: number; last_interaction_day: number; updated_at: number };
+type LifePlanRow = { id: string; user_id: string; life_version: number; plan_key: LifePlanKey; start_day: number; end_day: number; career_points: number; debt_repaid: number; debt_target: number; status: string; result: string; effect_key: LifePlanEffectKey; effect_expires_day: number; effect_consumed_at: number | null; reward_exp: number; settlement_token: string; created_at: number; updated_at: number; completed_at: number | null };
 
 const VALID_LOCATIONS = new Set<LocationId>(["home", "realtor", "bank", "business", "shopping", "bookstore", "hotel", "casino", "school", "hospital", "underpass", "prison"]);
 const TERRITORY_LOCATIONS = new Set<LocationId>(["realtor", "bank", "business", "shopping", "bookstore", "hotel", "casino", "school", "hospital", "underpass"]);
@@ -350,6 +352,19 @@ async function ensureSchema(db: D1Database) {
       last_event_day INTEGER NOT NULL DEFAULT 0, pending_event TEXT NOT NULL DEFAULT '',
       updated_at INTEGER NOT NULL
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS player_life_plans (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL, life_version INTEGER NOT NULL DEFAULT 0,
+      plan_key TEXT NOT NULL, start_day INTEGER NOT NULL, end_day INTEGER NOT NULL,
+      career_points INTEGER NOT NULL DEFAULT 0, debt_repaid INTEGER NOT NULL DEFAULT 0,
+      debt_target INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'active',
+      result TEXT NOT NULL DEFAULT '', effect_key TEXT NOT NULL DEFAULT '', effect_expires_day INTEGER NOT NULL DEFAULT 0,
+      effect_consumed_at INTEGER, reward_exp INTEGER NOT NULL DEFAULT 0, settlement_token TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, completed_at INTEGER
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS player_life_plan_markers (
+      plan_id TEXT NOT NULL, marker_type TEXT NOT NULL, marker_key TEXT NOT NULL, created_at INTEGER NOT NULL,
+      PRIMARY KEY (plan_id, marker_type, marker_key)
+    )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS player_npc_relationships (
       user_id TEXT NOT NULL, npc_id TEXT NOT NULL, life_version INTEGER NOT NULL DEFAULT 0,
       relation_points INTEGER NOT NULL DEFAULT 0,
@@ -546,6 +561,9 @@ async function ensureSchema(db: D1Database) {
     db.prepare("CREATE INDEX IF NOT EXISTS idx_inventory_user_life ON player_inventory(user_id, life_version)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_npc_relationship_user_life ON player_npc_relationships(user_id, life_version)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_npc_interaction_user_created ON player_npc_interactions(user_id, created_at DESC)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_life_plans_user_life_status ON player_life_plans(user_id, life_version, status)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_life_plans_user_completed ON player_life_plans(user_id, completed_at DESC)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_life_plan_markers_plan_type ON player_life_plan_markers(plan_id, marker_type)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_beg_recipient_status ON street_beg_requests(recipient_id, status, expires_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_beg_pair_created ON street_beg_requests(requester_id, recipient_id, created_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_aid_boxes_day_status ON street_aid_boxes(cycle_day, status)"),
@@ -1172,6 +1190,8 @@ async function npcState(db: D1Database, player: PlayerRow) {
   const residents = NPCS.filter((npc) => npc.location === player.location);
   if (!residents.length) return { residents: [], dailyLimit: 1, note: "每位 NPC 每個遊玩日提供一次重要互動。" };
   const playDay = Math.floor(player.elapsed_minutes / 1440) + 1;
+  const lifePlan = await activeLifePlan(db, player);
+  const planTitle = lifePlan ? lifePlanDefinition(lifePlan.plan_key)?.title ?? "生活計畫" : "";
   const memories = await npcStoryMemories(db, player);
   const rows = await db.prepare("SELECT * FROM player_npc_relationships WHERE user_id=? AND life_version=?")
     .bind(player.user_id, player.life_version).all<NpcRelationshipRow>();
@@ -1196,7 +1216,7 @@ async function npcState(db: D1Database, player: PlayerRow) {
       available,
       schedule: npc.schedule.label,
       absentText: npc.absentText,
-      status: available ? event?.status ?? "正在處理自己的事情" : "目前不在這裡",
+      status: available ? `${event?.status ?? "正在處理自己的事情"}${planTitle ? ` · 注意到你正在進行「${planTitle}」` : ""}` : "目前不在這裡",
       relationPoints: relation?.relation_points ?? 0,
       relationLabel: relationshipLabel(relation?.relation_points ?? 0),
       interactedToday,
@@ -1213,7 +1233,7 @@ async function npcState(db: D1Database, player: PlayerRow) {
       } : null,
     });
   }
-  return { residents: output, dailyLimit: 1, note: "每位 NPC 每個遊玩日提供一次重要互動；一般地點功能不受 NPC 作息影響。" };
+  return { residents: output, dailyLimit: 1, note: planTitle ? `居民會回應你的「${planTitle}」；每位 NPC 每個遊玩日提供一次重要互動。` : "每位 NPC 每個遊玩日提供一次重要互動；一般地點功能不受 NPC 作息影響。" };
 }
 
 function updatedNpcMemories(memories: Set<string>, choice: NpcChoice) {
@@ -1253,16 +1273,164 @@ async function contractState(db: D1Database, player: PlayerRow) {
   return { contracts };
 }
 
+function playerDay(player: PlayerRow) {
+  return Math.floor(player.elapsed_minutes / 1440) + 1;
+}
+
+async function lifePlanMarkerCounts(db: D1Database, planId: string) {
+  const rows = await db.prepare(`SELECT marker_type, COUNT(*) AS count FROM player_life_plan_markers
+    WHERE plan_id=? GROUP BY marker_type`).bind(planId).all<{ marker_type: string; count: number }>();
+  const counts = { home: 0, npc: 0, social: 0 };
+  for (const row of rows.results) {
+    if (row.marker_type === "home_day") counts.home = row.count;
+    if (row.marker_type === "npc") counts.npc = row.count;
+    if (row.marker_type === "social") counts.social = row.count;
+  }
+  return counts;
+}
+
+async function activeLifePlan(db: D1Database, player: PlayerRow, key?: LifePlanKey) {
+  return db.prepare(`SELECT * FROM player_life_plans WHERE user_id=? AND life_version=? AND status='active'
+    ${key ? "AND plan_key=?" : ""} ORDER BY created_at DESC LIMIT 1`)
+    .bind(player.user_id, player.life_version, ...(key ? [key] : [])).first<LifePlanRow>();
+}
+
+async function settleExpiredLifePlan(db: D1Database, player: PlayerRow) {
+  const active = await activeLifePlan(db, player);
+  const day = playerDay(player);
+  if (!active || day <= active.end_day) return active;
+  const markers = await lifePlanMarkerCounts(db, active.id);
+  const completed = active.plan_key === "debt" ? active.debt_repaid >= active.debt_target || player.loan_balance <= 0
+    : active.plan_key === "career" ? active.career_points >= LIFE_PLAN_CAREER_TARGET
+      : active.plan_key === "health" ? markers.home >= LIFE_PLAN_HOME_DAY_TARGET && player.health >= 75 && player.hunger >= 60
+        : markers.npc >= LIFE_PLAN_NPC_TARGET && markers.social >= LIFE_PLAN_SOCIAL_TARGET;
+  const madeProgress = active.debt_repaid > 0 || active.career_points > 0 || markers.home > 0 || markers.npc > 0 || markers.social > 0;
+  const rewardExp = completed ? LIFE_PLAN_COMPLETION_TALENT_EXP : madeProgress ? LIFE_PLAN_PARTIAL_TALENT_EXP : 0;
+  const definition = lifePlanDefinition(active.plan_key)!;
+  const result = completed ? `完成「${definition.title}」，獲得${definition.rewardName}。`
+    : madeProgress ? `「${definition.title}」部分完成，保留這段努力作為人生經驗。`
+      : `「${definition.title}」本期沒有累積進度，可以重新選擇方向。`;
+  const token = crypto.randomUUID();
+  const now = Date.now();
+  const effectKey = completed ? definition.effect : "";
+  const results = await db.batch([
+    db.prepare(`UPDATE player_life_plans SET status=?, result=?, effect_key=?, effect_expires_day=?, reward_exp=?,
+      settlement_token=?, completed_at=?, updated_at=? WHERE id=? AND status='active' RETURNING id`)
+      .bind(completed ? "completed" : "partial", result, effectKey, completed ? day + LIFE_PLAN_CYCLE_DAYS : 0,
+        rewardExp, token, now, now, active.id),
+    db.prepare(`UPDATE player_progress SET talent_exp=MIN(1099,talent_exp+?), updated_at=? WHERE user_id=?
+      AND EXISTS (SELECT 1 FROM player_life_plans WHERE id=? AND settlement_token=? AND status IN ('completed','partial'))`)
+      .bind(rewardExp, now, player.user_id, active.id, token),
+  ]);
+  if ((results[0]?.results?.length ?? 0) === 1) {
+    const detail = `${result}${rewardExp ? ` 天賦經驗 +${rewardExp}。` : ""}`;
+    await recordTransferEvent(db, player.user_id, player.display_name, completed ? "生活計畫完成" : "生活計畫結算", detail, completed ? "good" : "neutral");
+  }
+  return null;
+}
+
+async function lifePlanState(db: D1Database, player: PlayerRow) {
+  await settleExpiredLifePlan(db, player);
+  const active = await activeLifePlan(db, player);
+  const day = playerDay(player);
+  const activeCounts = active ? await lifePlanMarkerCounts(db, active.id) : { home: 0, npc: 0, social: 0 };
+  const historyRows = await db.prepare(`SELECT * FROM player_life_plans WHERE user_id=? AND life_version=? AND status IN ('completed','partial')
+    ORDER BY completed_at DESC LIMIT 6`).bind(player.user_id, player.life_version).all<LifePlanRow>();
+  const effect = await db.prepare(`SELECT * FROM player_life_plans WHERE user_id=? AND life_version=? AND status='completed'
+    AND effect_key<>'' AND effect_consumed_at IS NULL AND effect_expires_day>=? ORDER BY completed_at DESC LIMIT 1`)
+    .bind(player.user_id, player.life_version, day).first<LifePlanRow>();
+
+  let activeState: Record<string, unknown> | null = null;
+  if (active) {
+    const definition = lifePlanDefinition(active.plan_key)!;
+    const items = active.plan_key === "debt"
+      ? [{ key: "debt", label: "主動還款", current: active.debt_repaid, target: active.debt_target }]
+      : active.plan_key === "career"
+        ? [{ key: "career", label: "職涯進度", current: active.career_points, target: LIFE_PLAN_CAREER_TARGET }]
+        : active.plan_key === "health"
+          ? [
+              { key: "home", label: "不同日住所活動", current: activeCounts.home, target: LIFE_PLAN_HOME_DAY_TARGET },
+              { key: "health", label: "結算健康", current: player.health, target: 75 },
+              { key: "hunger", label: "結算飽足", current: player.hunger, target: 60 },
+            ]
+          : [
+              { key: "npc", label: "不同 NPC", current: activeCounts.npc, target: LIFE_PLAN_NPC_TARGET },
+              { key: "social", label: "不同玩家", current: activeCounts.social, target: LIFE_PLAN_SOCIAL_TARGET },
+            ];
+    const progress = Math.round(items.reduce((sum, item) => sum + lifePlanProgressPercent(item.current, item.target), 0) / items.length);
+    activeState = { id: active.id, key: active.plan_key, title: definition.title, description: definition.shortDescription,
+      rewardName: definition.rewardName, rewardDescription: definition.rewardDescription, startDay: active.start_day,
+      endDay: active.end_day, currentDay: day, daysLeft: Math.max(0, active.end_day - day + 1), progress, items };
+  }
+  const history = historyRows.results.map((row) => ({ id: row.id, key: row.plan_key, title: lifePlanDefinition(row.plan_key)?.title ?? row.plan_key,
+    status: row.status, result: row.result, rewardExp: row.reward_exp, completedDay: row.end_day }));
+  const completedFocus = historyRows.results.find((row) => row.status === "completed")?.plan_key;
+  const storyReflection = completedFocus === "debt" ? "你最近選擇正面處理債務，重新開始不再只是一句口號。"
+    : completedFocus === "career" ? "你把時間重新放回工作與能力上，生活開始出現可以掌握的方向。"
+      : completedFocus === "health" ? "你開始照顧自己的身體，明白撐下去不等於把自己耗盡。"
+        : completedFocus === "social" ? "你不再獨自承受一切，城市裡開始有人記得你的選擇。" : "";
+  return { cycleDays: LIFE_PLAN_CYCLE_DAYS, completionTalentExp: LIFE_PLAN_COMPLETION_TALENT_EXP,
+    partialTalentExp: LIFE_PLAN_PARTIAL_TALENT_EXP, active: activeState,
+    effect: effect ? { id: effect.id, key: effect.effect_key, name: lifePlanDefinition(effect.plan_key)?.rewardName ?? "短期狀態",
+      description: lifePlanDefinition(effect.plan_key)?.rewardDescription ?? "", expiresDay: effect.effect_expires_day } : null,
+    history, storyReflection };
+}
+
+async function activeLifeEffect(db: D1Database, player: PlayerRow, effectKey: LifePlanEffectKey) {
+  if (!effectKey) return null;
+  return db.prepare(`SELECT * FROM player_life_plans WHERE user_id=? AND life_version=? AND status='completed'
+    AND effect_key=? AND effect_consumed_at IS NULL AND effect_expires_day>=? ORDER BY completed_at DESC LIMIT 1`)
+    .bind(player.user_id, player.life_version, effectKey, playerDay(player)).first<LifePlanRow>();
+}
+
+async function addLifePlanCareerProgress(db: D1Database, player: PlayerRow, points: number) {
+  if (points <= 0) return;
+  await db.prepare(`UPDATE player_life_plans SET career_points=MIN(?,career_points+?), updated_at=?
+    WHERE user_id=? AND life_version=? AND plan_key='career' AND status='active'`)
+    .bind(LIFE_PLAN_CAREER_TARGET, points, Date.now(), player.user_id, player.life_version).run();
+}
+
+async function addLifePlanDebtProgress(db: D1Database, player: PlayerRow, amount: number) {
+  if (amount <= 0) return;
+  await db.prepare(`UPDATE player_life_plans SET debt_repaid=MIN(debt_target,debt_repaid+?), updated_at=?
+    WHERE user_id=? AND life_version=? AND plan_key='debt' AND status='active'`)
+    .bind(amount, Date.now(), player.user_id, player.life_version).run();
+}
+
+async function addLifePlanMarker(db: D1Database, player: PlayerRow, markerType: "home_day" | "npc" | "social", markerKey: string) {
+  const planKey = markerType === "home_day" ? "health" : markerType === "npc" || markerType === "social" ? "social" : "";
+  if (!planKey || !markerKey) return;
+  const plan = await activeLifePlan(db, player, planKey as LifePlanKey);
+  if (!plan) return;
+  await db.prepare(`INSERT INTO player_life_plan_markers (plan_id,marker_type,marker_key,created_at)
+    VALUES (?,?,?,?) ON CONFLICT(plan_id,marker_type,marker_key) DO NOTHING`)
+    .bind(plan.id, markerType, markerKey, Date.now()).run();
+}
+
+async function addLifePlanSocialPair(db: D1Database, first: { id: string; lifeVersion: number }, second: { id: string; lifeVersion: number }) {
+  if (!first.id || !second.id || first.id === second.id) return;
+  const now = Date.now();
+  const plans = await db.prepare(`SELECT * FROM player_life_plans WHERE status='active' AND plan_key='social'
+    AND ((user_id=? AND life_version=?) OR (user_id=? AND life_version=?))`)
+    .bind(first.id, first.lifeVersion, second.id, second.lifeVersion).all<LifePlanRow>();
+  const statements = plans.results.map((plan) => db.prepare(`INSERT INTO player_life_plan_markers
+    (plan_id,marker_type,marker_key,created_at) VALUES (?,'social',?,?)
+    ON CONFLICT(plan_id,marker_type,marker_key) DO NOTHING`)
+    .bind(plan.id, plan.user_id === first.id ? second.id : first.id, now));
+  if (statements.length) await db.batch(statements);
+}
+
 async function refreshedGameResponse(db: D1Database, user: AuthUser, message: string, extras: Record<string, unknown> = {}) {
   const player = await db.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
   if (!player) return json({ message: "找不到玩家資料。" }, 404);
-  const [progress, contract, world, transfers, medical, loans, begs, street, aidBoxes, coop, reputation, commissions, mystery, contracts, ledger] = await Promise.all([
+  const rhythm = await lifePlanState(db, player);
+  const [progress, contract, world, transfers, medical, loans, begs, street, aidBoxes, coop, reputation, commissions, mystery, contracts, ledger, npcs] = await Promise.all([
     ensureProgress(db, player), activeLoanContract(db, user.userId), multiplayer(db), pendingTransferRequests(db, user.userId),
     pendingMedicalRequests(db, user.userId), pendingLoanRequests(db, user.userId), pendingBegRequests(db, user.userId),
     streetState(db, player), aidBoxState(db, user.userId), coopState(db, player),
-    reputationState(db, player), commissionState(db, player), mysteryState(db, user.userId), contractState(db, player), lifeLedgerState(db, user.userId),
+    reputationState(db, player), commissionState(db, player), mysteryState(db, user.userId), contractState(db, player), lifeLedgerState(db, user.userId), npcState(db, player),
   ]);
-  return json({ player: serializePlayer(player, progress, contract), message, transferRequests: transfers, medicalRequests: medical, loanRequests: loans, begRequests: begs, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, ...world, ...extras });
+  return json({ player: serializePlayer(player, progress, contract), message, transferRequests: transfers, medicalRequests: medical, loanRequests: loans, begRequests: begs, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, lifeRhythm: rhythm, npcs, ...world, ...extras });
 }
 
 async function lifeLedgerState(db: D1Database, userId: string) {
@@ -1272,8 +1440,9 @@ async function lifeLedgerState(db: D1Database, userId: string) {
 }
 
 async function transferActionResponse(db: D1Database, user: AuthUser, player: PlayerRow, progress: ProgressRow, message: string) {
-  const [world, transfers, medicalRequests, loanRequests, loanContract] = await Promise.all([multiplayer(db), pendingTransferRequests(db, user.userId), pendingMedicalRequests(db, user.userId), pendingLoanRequests(db, user.userId), activeLoanContract(db, user.userId)]);
-  return json({ player: serializePlayer(player, progress, loanContract), message, transferRequests: transfers, medicalRequests, loanRequests, ...world });
+  const rhythm = await lifePlanState(db, player);
+  const [freshProgress, world, transfers, medicalRequests, loanRequests, loanContract] = await Promise.all([ensureProgress(db, player), multiplayer(db), pendingTransferRequests(db, user.userId), pendingMedicalRequests(db, user.userId), pendingLoanRequests(db, user.userId), activeLoanContract(db, user.userId)]);
+  return json({ player: serializePlayer(player, freshProgress ?? progress, loanContract), message, transferRequests: transfers, medicalRequests, loanRequests, lifeRhythm: rhythm, ...world });
 }
 
 async function recordTransferEvent(db: D1Database, senderId: string, senderName: string, title: string, detail: string, tone: "good" | "neutral" | "warn" = "neutral") {
@@ -2892,10 +3061,11 @@ async function getAvatar(userId: string, env: Env) {
 
 async function bootstrap(request: Request, env: Env) {
   const user = await identity(request, env.DB);
-  if (!user || !env.DB) return json({ serverNow: Date.now(), authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [], casino: { capacity: 5, activeCount: 0, seats: [], hand: null }, poker: { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 }, bingo: { status: "lobby", players: [], drawn: [], preview: [], winnerIds: [] }, dicePoker: { status: "lobby", players: [] }, tournament: { status: "lobby", players: [] }, medicalRequests: [], loanRequests: [], begRequests: [], street: { items: [], scavengesUsed: 0, scavengesMax: 4, begIncome: 0, begCap: 500 }, aidBoxes: { cycleDay: 1, dailyCap: 2000, boxes: [] }, coop: { cycleDay: 1, status: "open", reward: 600, talentExp: 8, eligibleRole: "", contributed: false, roles: [] }, reputation: { factions: [] }, commissions: { cycleDay: 1, commissions: [] }, mystery: { found: 0, total: 7, whispers: [] }, contracts: { contracts: [] }, lifeLedger: { entries: [] }, npcs: { residents: [], dailyLimit: 1, note: "登入後即可認識城市居民。" }, bookStore: { books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK } });
+  if (!user || !env.DB) return json({ serverNow: Date.now(), authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [], casino: { capacity: 5, activeCount: 0, seats: [], hand: null }, poker: { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 }, bingo: { status: "lobby", players: [], drawn: [], preview: [], winnerIds: [] }, dicePoker: { status: "lobby", players: [] }, tournament: { status: "lobby", players: [] }, medicalRequests: [], loanRequests: [], begRequests: [], street: { items: [], scavengesUsed: 0, scavengesMax: 4, begIncome: 0, begCap: 500 }, aidBoxes: { cycleDay: 1, dailyCap: 2000, boxes: [] }, coop: { cycleDay: 1, status: "open", reward: 600, talentExp: 8, eligibleRole: "", contributed: false, roles: [] }, reputation: { factions: [] }, commissions: { cycleDay: 1, commissions: [] }, mystery: { found: 0, total: 7, whispers: [] }, contracts: { contracts: [] }, lifeLedger: { entries: [] }, lifeRhythm: { cycleDays: LIFE_PLAN_CYCLE_DAYS, completionTalentExp: LIFE_PLAN_COMPLETION_TALENT_EXP, partialTalentExp: LIFE_PLAN_PARTIAL_TALENT_EXP, active: null, effect: null, history: [], storyReflection: "" }, npcs: { residents: [], dailyLimit: 1, note: "登入後即可認識城市居民。" }, bookStore: { books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK } });
   await ensureSchemaOnce(env.DB);
   const row = await upsertPlayer(env.DB, user);
   if (!row) return json({ message: "無法載入玩家資料" }, 500);
+  const rhythm = await lifePlanState(env.DB, row);
   const progress = await ensureProgress(env.DB, row);
   const world = await multiplayer(env.DB);
   const emptyCasino = { capacity: 5, activeCount: 0, seats: [], hand: null };
@@ -2918,7 +3088,7 @@ async function bootstrap(request: Request, env: Env) {
     row.location === "bookstore" ? bookStore(env.DB, user.userId) : Promise.resolve({ books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK }),
     reputationState(env.DB, row), commissionState(env.DB, row), mysteryState(env.DB, user.userId), contractState(env.DB, row), lifeLedgerState(env.DB, user.userId), npcState(env.DB, row),
   ]);
-  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress, loanContract), room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, bingo, dicePoker, tournament, cityMemory: memory, transferRequests, medicalRequests, loanRequests, begRequests, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, npcs, bookStore: bookStoreState });
+  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress, loanContract), room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, bingo, dicePoker, tournament, cityMemory: memory, transferRequests, medicalRequests, loanRequests, begRequests, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, lifeRhythm: rhythm, npcs, bookStore: bookStoreState });
 }
 
 async function takeAction(request: Request, env: Env) {
@@ -2932,12 +3102,12 @@ async function takeAction(request: Request, env: Env) {
   let talents = new Set(parseList(progress.talents));
   const clampEnergy = (value: number) => Math.max(0, Math.min(talents.has("strong_body") ? 120 : 100, value));
 
-  let body: { action?: string; location?: string; territoryLocation?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; quantity?: number; itemKey?: string; academy?: string; story?: string; talent?: string; choice?: string; targetId?: string; ownerId?: string; requestId?: string; medicalRequestId?: string; loanRequestId?: string; bookId?: string; commissionId?: string; contractId?: string; npcId?: string; eventId?: string; title?: string; status?: string };
+  let body: { action?: string; location?: string; territoryLocation?: string; hours?: number; kind?: string; days?: number; job?: string; amount?: number; quantity?: number; itemKey?: string; academy?: string; story?: string; talent?: string; choice?: string; targetId?: string; ownerId?: string; requestId?: string; medicalRequestId?: string; loanRequestId?: string; bookId?: string; commissionId?: string; contractId?: string; npcId?: string; eventId?: string; title?: string; status?: string; planKey?: string };
   try { body = await request.json(); } catch { return json({ message: "行動資料格式錯誤。" }, 400); }
   if ((current.game_over || current.reset_game_over) && body.action !== "reset") return json({ message: current.reset_game_over ? "人生資料正在重置，請稍候再試。" : "這段人生已經結束，請重新開始。" }, 409);
   if (current.main_story === "unselected" && body.action !== "choose_story") return json({ message: "請先選擇人生主線。" }, 409);
   if (current.prison_until > current.elapsed_minutes && body.action !== "reset") return json({ message: `你目前因「${current.prison_crime || "違法行為"}」在監獄服刑，還需在線遊玩 ${Math.ceil((current.prison_until - current.elapsed_minutes) / 60)} 小時。` }, 409);
-  if (!["move", "choose_story", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy", "beg_response", "inventory_use", "street_share_food", "aid_box_donate", "coop_contribute", "story_ack", "contract_create", "contract_accept", "contract_decline", "contract_deposit", "npc_interact"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
+  if (!["move", "choose_story", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy", "beg_response", "inventory_use", "street_share_food", "aid_box_donate", "coop_contribute", "story_ack", "contract_create", "contract_accept", "contract_decline", "contract_deposit", "npc_interact", "life_plan_start"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
   const next = { ...current };
   const sharedMinutes = worldMinutes();
   const memoryBefore = await cityMemory(env.DB);
@@ -2957,6 +3127,7 @@ async function takeAction(request: Request, env: Env) {
   let pendingTalentSet: string | null = null;
   let pendingCityEvent: { eventId: string; talentExp: number } | null = null;
   let pendingNpc: { npc: NpcDefinition; event: NpcEvent; choice: NpcChoice; playDay: number; relationPoints: number; memories: string } | null = null;
+  let pendingLifeEffectId = "";
   let pendingProviderJobCancellation = false;
   let resetStatements: D1PreparedStatement[] = [];
   let pendingLoanContractUpdate: { id: string; previousBalance: number; previousRevision: number; balance: number; closedAt: number | null } | null = null;
@@ -2966,6 +3137,27 @@ async function takeAction(request: Request, env: Env) {
   let expectedResetMarker = current.reset_game_over || "";
 
   switch (body.action) {
+    case "life_plan_start": {
+      if (current.location !== "home" || (!current.owns_home && current.rented_until <= current.elapsed_minutes)) return json({ message: "請先回到有效住所，再規劃接下來三個玩家日。" }, 409);
+      const plan = lifePlanDefinition(body.planKey || "");
+      if (!plan) return json({ message: "這項生活目標不存在。" }, 400);
+      if (plan.key === "debt" && current.loan_balance <= 0) return json({ message: "目前沒有貸款，不需要選擇債務整頓。" }, 409);
+      const existing = await activeLifePlan(env.DB, current);
+      if (existing) return json({ message: `目前正在進行「${lifePlanDefinition(existing.plan_key)?.title ?? "生活計畫"}」，結算後才能選擇下一期。` }, 409);
+      const startDay = playerDay(current);
+      const debtTarget = plan.key === "debt" ? lifePlanDebtTarget(current.loan_balance, current.daily_minimum_payment) : 0;
+      const now = Date.now();
+      const inserted = await env.DB.prepare(`INSERT INTO player_life_plans
+        (id,user_id,life_version,plan_key,start_day,end_day,debt_target,status,created_at,updated_at)
+        SELECT ?,?,?,?,?,?,?,'active',?,? WHERE NOT EXISTS (
+          SELECT 1 FROM player_life_plans WHERE user_id=? AND life_version=? AND status='active'
+        ) RETURNING id`)
+        .bind(crypto.randomUUID(), user.userId, current.life_version, plan.key, startDay, startDay + LIFE_PLAN_CYCLE_DAYS - 1,
+          debtTarget, now, now, user.userId, current.life_version).first<{ id: string }>();
+      if (!inserted) return json({ message: "生活計畫剛剛已開始，請重新整理確認。" }, 409);
+      await recordTransferEvent(env.DB, user.userId, current.display_name, "開始生活計畫", `選擇「${plan.title}」，用三個玩家日完成目標。`, "neutral");
+      return refreshedGameResponse(env.DB, user, `已開始「${plan.title}」。${plan.shortDescription} 完成後可獲得「${plan.rewardName}」。`);
+    }
     case "npc_interact": {
       const npc = NPCS.find((item) => item.id === body.npcId);
       if (!npc || npc.location !== current.location) return json({ message: "這名 NPC 目前不在你所在的地點。" }, 400);
@@ -2989,9 +3181,11 @@ async function takeAction(request: Request, env: Env) {
         next.current_job = careerForCategory(next.job_category, next.job_exp, next.current_job).title;
       }
       talentExpGain += choice.talentExp ?? 0;
-      const relationPoints = Math.max(0, Math.min(100, (relationship?.relation_points ?? 0) + choice.relation));
+      const warmth = await activeLifeEffect(env.DB, current, "human_warmth");
+      const relationPoints = Math.max(0, Math.min(100, (relationship?.relation_points ?? 0) + choice.relation + (warmth ? 2 : 0)));
       title = `${npc.name} · ${event.title}`;
       message = choice.outcome;
+      if (warmth) { pendingLifeEffectId = warmth.id; message += " 「人情溫度」生效，關係額外 +2。"; }
       tone = choice.relation < 0 ? "warn" : choice.relation > 0 ? "good" : "neutral";
       pendingNpc = { npc, event, choice, playDay, relationPoints, memories: updatedNpcMemories(memories, choice) };
       break;
@@ -3029,6 +3223,7 @@ async function takeAction(request: Request, env: Env) {
           .bind(now, user.userId, user.userId, current.life_version, token),
       ]);
       if ((results[0]?.results?.length ?? 0) !== 1 || (results[1]?.results?.length ?? 0) !== 1) return json({ message: "委託剛被更新，請重新整理後再試。" }, 409);
+      await addLifePlanCareerProgress(env.DB, { ...current, job_exp: jobExp, current_job: job } as PlayerRow, 2);
       await recordTransferEvent(env.DB, user.userId, current.display_name, "完成城市委託", `${commission.title}完成，獲得 NT$${reward}，${commission.faction}聲望 +15。`, "good");
       return refreshedGameResponse(env.DB, user, `完成「${commission.title}」，獲得 NT$${reward}、${commission.faction}聲望 +15、天賦經驗 +5。`);
     }
@@ -3064,6 +3259,7 @@ async function takeAction(request: Request, env: Env) {
           .bind(now, contract.id, user.userId, current.life_version, user.userId, current.life_version, token),
       ]);
       if ((results[0]?.results?.length ?? 0) !== 1 || (results[1]?.results?.length ?? 0) !== 1) return json({ message: "契約狀態剛剛改變，請重新整理後再試。" }, 409);
+      await addLifePlanSocialPair(env.DB, { id: user.userId, lifeVersion: current.life_version }, { id: contract.creator_id, lifeVersion: contract.creator_life_version });
       return refreshedGameResponse(env.DB, user, "人生契約已生效；雙方各存滿 NT$1,000 前，保證金會暫時保留。 ");
     }
     case "contract_decline": {
@@ -3133,6 +3329,7 @@ async function takeAction(request: Request, env: Env) {
         RETURNING item_key`).bind(user.userId, itemKey, quantity, current.life_version, now, user.userId, current.life_version, token));
       const results = await env.DB.batch(statements);
       if ((results[0]?.results?.length ?? 0) !== 1 || (itemKey && (results[1]?.results?.length ?? 0) !== 1)) return json({ message: "拾荒狀態剛剛改變，請再試一次。" }, 409);
+      await addLifePlanCareerProgress(env.DB, { ...current, job_exp: newExp, current_job: newJob } as PlayerRow, 2);
       return refreshedGameResponse(env.DB, user, `拾荒找到${findText}，街頭聲望 +10。${newJob !== current.current_job ? ` 你已晉升為${newJob}。` : ""}`);
     }
     case "inventory_use": {
@@ -3196,6 +3393,7 @@ async function takeAction(request: Request, env: Env) {
       if (body.kind !== "give") {
         await env.DB.prepare("UPDATE street_beg_requests SET status='resolved', outcome=?, resolved_at=? WHERE id=? AND status='processing' AND resolution_token=?")
           .bind(body.kind, now, requestRow.id, token).run();
+        await addLifePlanSocialPair(env.DB, { id: user.userId, lifeVersion: current.life_version }, { id: requestRow.requester_id, lifeVersion: requestRow.requester_life_version });
         return refreshedGameResponse(env.DB, user, body.kind === "decline" ? "你拒絕了這次乞討。" : "你選擇羞辱對方；不會造成任何數值損失。");
       }
       const amount = Math.floor(Number(body.amount ?? 0));
@@ -3228,6 +3426,7 @@ async function takeAction(request: Request, env: Env) {
           .bind(granted, now, requestRow.id, token, requester.user_id, requester.life_version, token),
       ]);
       if (results.some((result) => (result?.results?.length ?? 0) !== 1)) return json({ message: "付款狀態剛剛改變，請重新整理確認。" }, 409);
+      await addLifePlanSocialPair(env.DB, { id: user.userId, lifeVersion: current.life_version }, { id: requester.user_id, lifeVersion: requester.life_version });
       return refreshedGameResponse(env.DB, user, `你給了${requestRow.requester_name} NT$${granted}。`);
     }
     case "street_share_food": {
@@ -3541,6 +3740,7 @@ async function takeAction(request: Request, env: Env) {
       if (body.kind === "decline") {
         await env.DB.prepare("UPDATE player_transfer_requests SET status='declined', outcome='declined', resolved_at=? WHERE id=? AND resolution_token=?")
           .bind(Date.now(), request.id, token).run();
+        await addLifePlanSocialPair(env.DB, { id: request.sender_id, lifeVersion: request.sender_life_version }, { id: request.recipient_id, lifeVersion: request.recipient_life_version });
         return transferActionResponse(env.DB, user, current, progress, "你已拒絕這筆現金邀請。" );
       }
       if (request.kind === "gift") {
@@ -3566,12 +3766,14 @@ async function takeAction(request: Request, env: Env) {
           return transferActionResponse(env.DB, user, current, progress, "對方現金不足，這筆贈送已取消。" );
         }
         const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
+        await addLifePlanSocialPair(env.DB, { id: request.sender_id, lifeVersion: request.sender_life_version }, { id: request.recipient_id, lifeVersion: request.recipient_life_version });
         await recordTransferEvent(env.DB, request.sender_id, request.sender_name, "贈送現金", `向玩家贈送了 NT$${request.amount}。`, "good");
         return transferActionResponse(env.DB, user, saved ?? current, progress, `你已收下 NT$${request.amount} 的現金。`);
       }
       if (Math.random() >= .5) {
         await env.DB.prepare("UPDATE player_transfer_requests SET status='accepted', outcome='scam_failed', resolved_at=? WHERE id=? AND resolution_token=?")
           .bind(Date.now(), request.id, token).run();
+        await addLifePlanSocialPair(env.DB, { id: request.sender_id, lifeVersion: request.sender_life_version }, { id: request.recipient_id, lifeVersion: request.recipient_life_version });
         return transferActionResponse(env.DB, user, current, progress, "現金邀請沒有完成，沒有金錢變動。" );
       }
       const stolen = Math.floor(request.amount / 2);
@@ -3597,6 +3799,7 @@ async function takeAction(request: Request, env: Env) {
         return transferActionResponse(env.DB, user, current, progress, "現金邀請沒有完成，任一方的現金已低於邀請條件，沒有金錢變動。" );
       }
       const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
+      await addLifePlanSocialPair(env.DB, { id: request.sender_id, lifeVersion: request.sender_life_version }, { id: request.recipient_id, lifeVersion: request.recipient_life_version });
       await recordTransferEvent(env.DB, request.sender_id, request.sender_name, "詐騙成功", `成功取得了 NT$${stolen}。`, "warn");
       return transferActionResponse(env.DB, user, saved ?? current, progress, `你遭到詐騙，NT$${stolen} 已被對方取走。`);
     }
@@ -3640,6 +3843,7 @@ async function takeAction(request: Request, env: Env) {
       if (body.kind === "decline") {
         await env.DB.prepare("UPDATE player_medical_requests SET status='declined', outcome='declined', resolved_at=? WHERE id=? AND resolution_token=?")
           .bind(Date.now(), medicalRequest.id, token).run();
+        await addLifePlanSocialPair(env.DB, { id: medicalRequest.patient_id, lifeVersion: medicalRequest.patient_life_version }, { id: medicalRequest.provider_id, lifeVersion: medicalRequest.provider_life_version });
         return transferActionResponse(env.DB, user, current, progress, "你已拒絕這次玩家治療請求。");
       }
       const now = Date.now();
@@ -3687,6 +3891,7 @@ async function takeAction(request: Request, env: Env) {
         return cancel("settlement_failed", "治療條件在結算時已變更，這次治療沒有完成。");
       }
       await recordTransferEvent(env.DB, medicalRequest.provider_id, medicalRequest.provider_name, "玩家治療", `為${medicalRequest.patient_name}提供${medicalRequest.provider_job}，收取 NT$${medicalRequest.amount}。`, "good");
+      await addLifePlanSocialPair(env.DB, { id: medicalRequest.patient_id, lifeVersion: medicalRequest.patient_life_version }, { id: medicalRequest.provider_id, lifeVersion: medicalRequest.provider_life_version });
       const savedProvider = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
       return transferActionResponse(env.DB, user, savedProvider ?? provider, progress, `治療完成：${medicalRequest.patient_name}健康 +${medicalRequest.health_gain}，已收到 NT$${medicalRequest.amount}。`);
     }
@@ -3736,6 +3941,7 @@ async function takeAction(request: Request, env: Env) {
       if (body.kind === "decline") {
         await env.DB.prepare("UPDATE player_loan_requests SET status='declined', outcome='declined', resolved_at=? WHERE id=? AND resolution_token=?")
           .bind(Date.now(), loanRequest.id, token).run();
+        await addLifePlanSocialPair(env.DB, { id: loanRequest.borrower_id, lifeVersion: loanRequest.borrower_life_version }, { id: loanRequest.provider_id, lifeVersion: loanRequest.provider_life_version });
         return transferActionResponse(env.DB, user, current, progress, "你已拒絕這筆玩家貸款申請。");
       }
       const now = Date.now();
@@ -3785,6 +3991,7 @@ async function takeAction(request: Request, env: Env) {
         return cancel("borrower_has_loan", "借款玩家的貸款狀態已變更，這筆申請沒有完成。");
       }
       await recordTransferEvent(db, loanRequest.provider_id, loanRequest.provider_name, "玩家貸款成立", `為${loanRequest.borrower_name}媒合 NT$${loanRequest.amount} 貸款，優惠利率每日 ${(loanRequest.interest_rate_bp / 100).toFixed(2)}%。`, "good");
+      await addLifePlanSocialPair(db, { id: loanRequest.borrower_id, lifeVersion: loanRequest.borrower_life_version }, { id: loanRequest.provider_id, lifeVersion: loanRequest.provider_life_version });
       return transferActionResponse(db, user, provider, progress, `貸款申請已成立：銀行撥款 NT$${loanRequest.amount}。借款者每日支付 ${(loanRequest.interest_rate_bp / 100).toFixed(2)}% 利息，你可獲得 ${(loanRequest.spread_bp / 100).toFixed(2)}% 利差收益。`);
     }
     case "talent": {
@@ -3889,13 +4096,15 @@ async function takeAction(request: Request, env: Env) {
         if (next.cash < amount) return json({ message: "手上現金不足。" }, 400);
         const wasMinimumComplete = next.daily_payment_made >= next.daily_minimum_payment;
         next.cash -= amount; next.loan_balance -= amount;
+        const financialRhythm = await activeLifeEffect(env.DB, current, "financial_rhythm");
         if (next.main_story === "prodigal_return") {
           next.daily_payment_made += amount;
           if (!wasMinimumComplete && next.daily_payment_made >= next.daily_minimum_payment) talentExpGain += 3;
         }
+        if (financialRhythm) { talentExpGain += 2; pendingLifeEffectId = financialRhythm.id; }
         const loanContract = await activeLoanContract(env.DB, user.userId);
         if (loanContract) pendingLoanContractUpdate = { id: loanContract.id, previousBalance: loanContract.outstanding_balance, previousRevision: loanContract.revision, balance: next.loan_balance, closedAt: next.loan_balance > 0 ? null : Date.now() };
-        title = "償還貸款"; message = `已償還 NT$${amount}，剩餘貸款 NT$${next.loan_balance}。${next.main_story === "prodigal_return" ? ` 本日累計已繳 NT$${next.daily_payment_made}／最低 NT$${next.daily_minimum_payment}。` : ""}`;
+        title = "償還貸款"; message = `已償還 NT$${amount}，剩餘貸款 NT$${next.loan_balance}。${next.main_story === "prodigal_return" ? ` 本日累計已繳 NT$${next.daily_payment_made}／最低 NT$${next.daily_minimum_payment}。` : ""}${financialRhythm ? " 「財務節律」生效，天賦經驗 +2。" : ""}`;
       } else return json({ message: "銀行服務不存在。" }, 400);
       break;
     }
@@ -3977,7 +4186,9 @@ async function takeAction(request: Request, env: Env) {
         illegalCrime = `${previousCareer.title}${workSpecial ? `：${workSpecial.name}` : "工作"}`;
         illegalIncome = income;
       }
-      const jobGain = Math.ceil(hours * 4 * (talents.has("skilled") ? 1.15 : 1));
+      const momentum = await activeLifeEffect(env.DB, current, "career_momentum");
+      const jobGain = Math.ceil(hours * 4 * (talents.has("skilled") ? 1.15 : 1) * (momentum ? 1.1 : 1));
+      if (momentum) pendingLifeEffectId = momentum.id;
       const hungerGain = workSpecial && next.job_category === "hospitality" ? hospitalitySpecialHungerFor(next.current_job) : 0;
       next.cash += income; next.energy = Math.max(0, next.energy - energyCost); next.health = clamp(next.health - Math.ceil(hours / 2) + medicalWorkHealthBonusFor(next.current_job)); next.hunger = clamp(next.hunger - hours * 2 + hungerGain); next.job_exp += jobGain;
       minutes = careerWorkWaitSeconds(next.current_job, hours, talents.has("workaholic_2"));
@@ -3987,7 +4198,7 @@ async function takeAction(request: Request, env: Env) {
       title = newCareer.title !== previousCareer.title ? `升遷為${newCareer.title}` : workSpecial ? `${workSpecial.name} ${hours} 小時` : `工作 ${hours} 小時`;
       const medicalHealthBonus = medicalWorkHealthBonusFor(previousCareer.title);
       const incomeMessage = restaurantOwner ? "本次不另發時薪，餐廳收益每日結算" : `收入 +NT$${income}`;
-      message = `以${previousCareer.title}完成${workSpecial ? `「${workSpecial.name}」` : "工作"}，${incomeMessage}，職業經驗 +${jobGain}${hungerGain ? `，飽足 +${hungerGain}` : ""}${medicalHealthBonus ? `，健康 +${medicalHealthBonus}` : ""}。${newCareer.title !== previousCareer.title ? ` 恭喜升遷為${newCareer.title}！` : ""}`; break;
+      message = `以${previousCareer.title}完成${workSpecial ? `「${workSpecial.name}」` : "工作"}，${incomeMessage}，職業經驗 +${jobGain}${momentum ? "（職涯動能已生效）" : ""}${hungerGain ? `，飽足 +${hungerGain}` : ""}${medicalHealthBonus ? `，健康 +${medicalHealthBonus}` : ""}。${newCareer.title !== previousCareer.title ? ` 恭喜升遷為${newCareer.title}！` : ""}`; break;
     }
     case "study": {
       if (next.location !== "school") return json({ message: "請先前往未來學院。" }, 400);
@@ -4035,8 +4246,11 @@ async function takeAction(request: Request, env: Env) {
       if (!next.owns_home && next.rented_until <= next.elapsed_minutes) return json({ message: "租約已到期，請先到房仲續租。" }, 400);
       {
         const sleep = homeSleepBenefits(next.home_comfort);
-        next.energy = talents.has("strong_body") ? 120 : 100; next.health = clamp(next.health + sleep.health); next.hunger = clamp(next.hunger - 12); minutes = sleep.waitSeconds;
-        title = "好好睡了一覺"; message = `體力完全恢復，健康 +${sleep.health}。`; break;
+        const routine = await activeLifeEffect(env.DB, current, "healthy_routine");
+        const healthGain = sleep.health + (routine ? 3 : 0);
+        next.energy = talents.has("strong_body") ? 120 : 100; next.health = clamp(next.health + healthGain); next.hunger = clamp(next.hunger - 12); minutes = sleep.waitSeconds;
+        if (routine) pendingLifeEffectId = routine.id;
+        title = "好好睡了一覺"; message = `體力完全恢復，健康 +${healthGain}${routine ? "（規律作息已生效）" : ""}。`; break;
       }
     case "home": {
       if (next.location !== "home") return json({ message: "請先回到我的住所。" }, 400);
@@ -4282,6 +4496,10 @@ async function takeAction(request: Request, env: Env) {
   if (talentExpGain > 0) statements.push(env.DB.prepare(`UPDATE player_progress SET talent_exp=MIN(1099,talent_exp+?), updated_at=?
     WHERE user_id=? AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?)`)
     .bind(talentExpGain, now, user.userId, user.userId, expectedLifeVersion, actionToken));
+  if (pendingLifeEffectId) statements.push(env.DB.prepare(`UPDATE player_life_plans SET effect_consumed_at=?, updated_at=?
+    WHERE id=? AND user_id=? AND life_version=? AND effect_consumed_at IS NULL
+      AND EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?)`)
+    .bind(now, now, pendingLifeEffectId, user.userId, expectedLifeVersion, user.userId, expectedLifeVersion, actionToken));
   if (pendingNpc) {
     statements.push(env.DB.prepare(`INSERT INTO player_npc_relationships
       (user_id, npc_id, life_version, relation_points, last_interaction_day, updated_at)
@@ -4341,6 +4559,13 @@ async function takeAction(request: Request, env: Env) {
   }
   const metric = ["work", "writer_write"].includes(body.action || "") ? "work" : body.action === "hospital" ? "hospital" : body.action === "housing" ? "housing" : body.action === "study" ? "study" : ["city_event", "npc_interact"].includes(body.action || "") ? "event" : null;
   if (metric) await recordCityMemory(env.DB, user.userId, metric);
+  const careerPoints = lifePlanCareerPoints(body.action || "", Number(body.hours ?? 0));
+  if (careerPoints) await addLifePlanCareerProgress(env.DB, saved!, careerPoints);
+  if (body.action === "bank" && body.kind === "repay") await addLifePlanDebtProgress(env.DB, saved!, Number(body.amount ?? 0));
+  if (body.action === "sleep" || (body.action === "home" && ["nap", "cook", "chore"].includes(body.kind || ""))) {
+    await addLifePlanMarker(env.DB, saved!, "home_day", String(playerDay(saved!)));
+  }
+  if (pendingNpc) await addLifePlanMarker(env.DB, saved!, "npc", pendingNpc.npc.id);
   const chapterBefore = progress.story_chapter;
   progress = await ensureProgress(env.DB, saved!);
   if (progress.story_chapter > chapterBefore) {
@@ -4358,6 +4583,8 @@ async function takeAction(request: Request, env: Env) {
     progress = { ...progress, last_event_day: personalDay, pending_event: event?.id ?? "" };
   }
   if (eligibleEvent) message += await maybeFindMysteryClue(env.DB, user.userId, saved!.location);
+  const rhythm = await lifePlanState(env.DB, saved!);
+  progress = await ensureProgress(env.DB, saved!);
   const world = await multiplayer(env.DB);
   const [loanContract, loanRequests, begRequests, street, aidBoxes, coop, bookStoreState, reputation, commissions, mystery, contracts, ledger, npcs] = await Promise.all([
     activeLoanContract(env.DB, user.userId),
@@ -4372,7 +4599,7 @@ async function takeAction(request: Request, env: Env) {
   const casinoSnapshot = body.action === "move" && saved!.location === "casino"
     ? await Promise.all([casinoState(env.DB, user.userId), pokerState(env.DB, user.userId), bingoState(env.DB, user.userId), dicePokerState(env.DB, user.userId), tournamentState(env.DB, user.userId)])
     : null;
-  return json({ player: serializePlayer(saved!, progress, loanContract), message, scratch, loanRequests, begRequests, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, bookStore: bookStoreState, npcs, cityMemory: await cityMemory(env.DB), ...world,
+  return json({ player: serializePlayer(saved!, progress, loanContract), message, scratch, loanRequests, begRequests, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, lifeRhythm: rhythm, bookStore: bookStoreState, npcs, cityMemory: await cityMemory(env.DB), ...world,
     ...(casinoSnapshot ? { casino: casinoSnapshot[0], poker: casinoSnapshot[1], bingo: casinoSnapshot[2], dicePoker: casinoSnapshot[3], tournament: casinoSnapshot[4] } : {}) });
 }
 

@@ -218,6 +218,13 @@
       "when": 1788272824450,
       "tag": "0030_cozy_home_life",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1788276424450,
+      "tag": "0031_life_rhythm",
+      "breakpoints": true
     }
   ]
 }

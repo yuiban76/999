@@ -171,6 +171,41 @@ export const playerProgress = sqliteTable("player_progress", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const playerLifePlans = sqliteTable("player_life_plans", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  lifeVersion: integer("life_version").notNull().default(0),
+  planKey: text("plan_key").notNull(),
+  startDay: integer("start_day").notNull(),
+  endDay: integer("end_day").notNull(),
+  careerPoints: integer("career_points").notNull().default(0),
+  debtRepaid: integer("debt_repaid").notNull().default(0),
+  debtTarget: integer("debt_target").notNull().default(0),
+  status: text("status").notNull().default("active"),
+  result: text("result").notNull().default(""),
+  effectKey: text("effect_key").notNull().default(""),
+  effectExpiresDay: integer("effect_expires_day").notNull().default(0),
+  effectConsumedAt: integer("effect_consumed_at"),
+  rewardExp: integer("reward_exp").notNull().default(0),
+  settlementToken: text("settlement_token").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+  completedAt: integer("completed_at"),
+}, (table) => [
+  index("idx_life_plans_user_life_status").on(table.userId, table.lifeVersion, table.status),
+  index("idx_life_plans_user_completed").on(table.userId, table.completedAt),
+]);
+
+export const playerLifePlanMarkers = sqliteTable("player_life_plan_markers", {
+  planId: text("plan_id").notNull(),
+  markerType: text("marker_type").notNull(),
+  markerKey: text("marker_key").notNull(),
+  createdAt: integer("created_at").notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.planId, table.markerType, table.markerKey] }),
+  index("idx_life_plan_markers_plan_type").on(table.planId, table.markerType),
+]);
+
 export const playerNpcRelationships = sqliteTable("player_npc_relationships", {
   userId: text("user_id").notNull(),
   npcId: text("npc_id").notNull(),

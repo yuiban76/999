@@ -9,6 +9,7 @@ import { CITY_EVENTS, PRODIGAL_SUCCESS_STORY, STORY_CHAPTERS, TALENTS } from "..
 import { isHospitalRegularOpen, isLocationOpen, worldMinutes } from "../shared/world";
 import { CAREER_PREVIEW_ROUTES } from "../shared/careerPreview";
 import { HOME_CHORE_WAIT_SECONDS, HOME_COMFORT_LEVELS, HOME_COOK_COST, HOME_COOK_WAIT_SECONDS, HOME_DAILY_COOK_LIMIT, HOME_NAP_WAIT_SECONDS, homeComfort, homeCookHunger, homeSleepBenefits } from "../shared/housing";
+import { LIFE_PLAN_DEFINITIONS, LIFE_PLAN_CYCLE_DAYS, type LifePlanKey } from "../shared/lifeRhythm";
 
 type LocationId = "home" | "realtor" | "bank" | "business" | "shopping" | "bookstore" | "hotel" | "casino" | "school" | "hospital" | "underpass" | "prison";
 type StatKey = "energy" | "health" | "hunger";
@@ -231,6 +232,15 @@ type CommissionState = { cycleDay: number; commissions: Array<{ id: string; titl
 type MysteryState = { found: number; total: number; whispers: string[] };
 type LifeContractState = { contracts: Array<{ id: string; status: string; partnerName: string; isCreator: boolean; targetPerPlayer: number; stake: number; mineDeposit: number; partnerDeposit: number; expiresDay: number }> };
 type LifeLedgerState = { entries: Array<{ title: string; detail: string; tone: "good" | "neutral" | "warn"; gameTime: string }> };
+type LifeRhythmState = {
+  cycleDays: number;
+  completionTalentExp: number;
+  partialTalentExp: number;
+  active: null | { id: string; key: LifePlanKey; title: string; description: string; rewardName: string; rewardDescription: string; startDay: number; endDay: number; currentDay: number; daysLeft: number; progress: number; items: Array<{ key: string; label: string; current: number; target: number }> };
+  effect: null | { id: string; key: string; name: string; description: string; expiresDay: number };
+  history: Array<{ id: string; key: LifePlanKey; title: string; status: string; result: string; rewardExp: number; completedDay: number }>;
+  storyReflection: string;
+};
 type NpcResident = {
   id: string;
   name: string;
@@ -274,6 +284,7 @@ type Bootstrap = {
   mystery?: MysteryState;
   contracts?: LifeContractState;
   lifeLedger?: LifeLedgerState;
+  lifeRhythm?: LifeRhythmState;
   bookStore?: BookStoreState;
   npcs?: NpcState;
 };
@@ -286,6 +297,7 @@ type CityMemory = {
 };
 
 const EMPTY_CITY_MEMORY: CityMemory = { cycleDay: 1, days: 3, state: { name: "平靜日常", description: "城市正在記住每位居民今天做出的選擇。", tone: "neutral" }, totals: { work: 0, hospital: 0, housing: 0, casino: 0, study: 0, event: 0 } };
+const EMPTY_LIFE_RHYTHM: LifeRhythmState = { cycleDays: LIFE_PLAN_CYCLE_DAYS, completionTalentExp: 6, partialTalentExp: 2, active: null, effect: null, history: [], storyReflection: "" };
 
 const INITIAL_PLAYER: Player = {
   cash: 10000,
@@ -784,6 +796,8 @@ function GameHome() {
   const [mystery, setMystery] = useState<MysteryState>({ found: 0, total: 7, whispers: [] });
   const [contracts, setContracts] = useState<LifeContractState>({ contracts: [] });
   const [lifeLedger, setLifeLedger] = useState<LifeLedgerState>({ entries: [] });
+  const [lifeRhythm, setLifeRhythm] = useState<LifeRhythmState>(EMPTY_LIFE_RHYTHM);
+  const [lifeGuideOpen, setLifeGuideOpen] = useState(false);
   const [npcs, setNpcs] = useState<NpcState>({ residents: [], dailyLimit: 1, note: "登入後即可認識城市居民。" });
   const [npcDialogId, setNpcDialogId] = useState<string | null>(null);
   const closeNpcDialog = useCallback(() => setNpcDialogId(null), []);
@@ -914,6 +928,7 @@ function GameHome() {
       if (data.mystery) setMystery(data.mystery);
       if (data.contracts) setContracts(data.contracts);
       if (data.lifeLedger) setLifeLedger(data.lifeLedger);
+      if (data.lifeRhythm) setLifeRhythm(data.lifeRhythm);
       if (data.npcs) setNpcs(data.npcs);
       if (!quiet) {
         setNotice(data.authenticated ? `歡迎回來，${data.profile?.displayName}。進度已同步。` : "目前是訪客試玩；登入後即可永久保存並加入多人世界。");
@@ -971,7 +986,7 @@ function GameHome() {
 
   async function act(action: string, payload: Record<string, unknown> = {}) {
     if (busy) return;
-    const canActDuringWait = ["move", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy", "beg_response", "inventory_use", "street_share_food", "aid_box_donate", "coop_contribute", "story_ack", "contract_create", "contract_accept", "contract_decline", "contract_deposit", "npc_interact"].includes(action)
+    const canActDuringWait = ["move", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy", "beg_response", "inventory_use", "street_share_food", "aid_box_donate", "coop_contribute", "story_ack", "contract_create", "contract_accept", "contract_decline", "contract_deposit", "npc_interact", "life_plan_start"].includes(action)
       || action.startsWith("casino_") || action.startsWith("poker_") || action.startsWith("bingo_") || action.startsWith("dice_") || action.startsWith("tournament_");
     if (actionLocked && !canActDuringWait) {
       setNotice(`${player.actionLabel || "目前的行動"}尚未完成，請等待 ${actionSecondsLeft} 秒；期間可移動、換職、使用銀行、與 NPC 交談、處理玩家請求，或前往賭場遊玩。`);
@@ -996,7 +1011,7 @@ function GameHome() {
         headers: apiHeaders(true),
         body: JSON.stringify({ action: action.startsWith("casino_") ? action.slice(7) : action.startsWith("poker_") ? action.slice(6) : action.startsWith("bingo_") ? action.slice(6) : action.startsWith("dice_") ? action.slice(5) : action.startsWith("tournament_") ? action.slice(11) : action, ...payload }),
       });
-      const data = await response.json() as { serverNow?: number; player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; bingo?: BingoState; dicePoker?: DicePokerState; tournament?: TournamentState; bookStore?: BookStoreState; cityMemory?: CityMemory; transferRequests?: TransferRequest[]; medicalRequests?: MedicalRequest[]; loanRequests?: LoanRequest[]; begRequests?: BegRequest[]; street?: StreetState; aidBoxes?: AidBoxState; coop?: CoopState; reputation?: ReputationState; commissions?: CommissionState; mystery?: MysteryState; contracts?: LifeContractState; lifeLedger?: LifeLedgerState; npcs?: NpcState; scratch?: { price: number; prize: number } | null; message?: string };
+      const data = await response.json() as { serverNow?: number; player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; bingo?: BingoState; dicePoker?: DicePokerState; tournament?: TournamentState; bookStore?: BookStoreState; cityMemory?: CityMemory; transferRequests?: TransferRequest[]; medicalRequests?: MedicalRequest[]; loanRequests?: LoanRequest[]; begRequests?: BegRequest[]; street?: StreetState; aidBoxes?: AidBoxState; coop?: CoopState; reputation?: ReputationState; commissions?: CommissionState; mystery?: MysteryState; contracts?: LifeContractState; lifeLedger?: LifeLedgerState; lifeRhythm?: LifeRhythmState; npcs?: NpcState; scratch?: { price: number; prize: number } | null; message?: string };
       if (typeof data.serverNow === "number") setServerTimeOffsetMs(data.serverNow - currentWallClockMs());
       if (!response.ok || !data.player) throw new Error(data.message || "行動失敗");
       syncPlayer(data.player, action === "reset");
@@ -1021,6 +1036,7 @@ function GameHome() {
       if (data.mystery) setMystery(data.mystery);
       if (data.contracts) setContracts(data.contracts);
       if (data.lifeLedger) setLifeLedger(data.lifeLedger);
+      if (data.lifeRhythm) setLifeRhythm(data.lifeRhythm);
       if (data.npcs) setNpcs(data.npcs);
       if (data.scratch) setScratchResult(data.scratch);
       setNotice(data.message || "行動完成");
@@ -1129,7 +1145,7 @@ function GameHome() {
   async function logout() {
     try { await fetch(`${API_ORIGIN}/api/auth/logout`, { method: "POST", headers: apiHeaders() }); } catch { /* local logout still works */ }
     window.localStorage.removeItem(TOKEN_KEY);
-    setProfile(null); setNameOpen(false); setOnline([]); setFeed([]); setTransferRequests([]); setMedicalRequests([]); setLoanRequests([]); setTransferTarget(null); setLoanTarget(null); setNpcDialogId(null); setNpcs({ residents: [], dailyLimit: 1, note: "登入後即可認識城市居民。" }); setBookTitle(""); setBookStore({ books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK }); setCasino({ capacity: 5, activeCount: 0, seats: [], hand: null }); syncPlayer(INITIAL_PLAYER, true);
+    setProfile(null); setNameOpen(false); setOnline([]); setFeed([]); setTransferRequests([]); setMedicalRequests([]); setLoanRequests([]); setTransferTarget(null); setLoanTarget(null); setNpcDialogId(null); setNpcs({ residents: [], dailyLimit: 1, note: "登入後即可認識城市居民。" }); setLifeRhythm(EMPTY_LIFE_RHYTHM); setBookTitle(""); setBookStore({ books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK }); setCasino({ capacity: 5, activeCount: 0, seats: [], hand: null }); syncPlayer(INITIAL_PLAYER, true);
     setNotice("已登出；目前為訪客試玩模式。");
   }
 
@@ -1168,6 +1184,7 @@ function GameHome() {
         </a>
         <div className="world-time"><span>城市時間</span><strong>{gameClock.time}</strong><span>{playClock.day} · 玩家 {playClock.time} · 每滿 24:00 結算</span></div>
         <div className="account-area">
+          <button className="account-button game-guide-button" type="button" onClick={() => setLifeGuideOpen(true)}>玩法</button>
           <span className={`connection-dot ${profile ? "connected" : ""}`} />
           {profile ? (
             <><div><strong>{profile.displayName}</strong><small>進度已儲存 · 大廳 01</small></div><button className="account-button" type="button" onClick={openNameEditor} disabled={busy}>改名</button><button className="account-button" type="button" onClick={() => void logout()} disabled={busy}>登出</button></>
@@ -1224,6 +1241,7 @@ function GameHome() {
             {npcs.residents.length > 0 && <NpcResidents state={npcs} signedIn={Boolean(profile)} busy={busy} onTalk={(npcId) => setNpcDialogId(npcId)} />}
             <div className="action-cards">
               {player.location === "home" && <>
+                <LifeRhythmPanel state={lifeRhythm} signedIn={Boolean(profile)} hasDebt={player.loanBalance > 0} busy={busy} onStart={(planKey) => void act("life_plan_start", { planKey })} onGuide={() => setLifeGuideOpen(true)} />
                 <div className="home-status-card"><div><span>住所舒適度 {player.homeComfort}/3</span><strong>{currentHomeComfort.name}</strong><small>{currentHomeComfort.description}</small></div><div className="home-comfort-track" aria-label={`住所舒適度 ${player.homeComfort} / 3`}><i style={{ width: `${player.homeComfort / 3 * 100}%` }} /></div><em>今日料理 {homeCookUses}/{HOME_DAILY_COOK_LIMIT} · 整理 {homeChoreDone ? "已完成" : "未完成"}</em></div>
                 <ActionCard icon="休" title="短暫小睡" meta={`現實等待 ${HOME_NAP_WAIT_SECONDS} 秒 · 體力 +35 · 健康 +${player.homeComfort >= 1 ? 3 : 2} · 飽足 -4`} button="小睡一下" onClick={() => void act("home", { kind: "nap" })} featured disabled={actionBusy} />
                 <ActionCard icon="☾" title="完整睡眠" meta={`現實等待 ${homeSleep.waitSeconds} 秒 · 體力全滿 · 健康 +${homeSleep.health} · 飽足 -12`} button="好好休息" onClick={() => void act("sleep")} disabled={actionBusy} />
@@ -1296,6 +1314,7 @@ function GameHome() {
           <section className="innovation-card"><span>共同目標</span><strong>人生契約</strong>{contracts.contracts.length ? contracts.contracts.map((contract) => <div className="innovation-row" key={contract.id}><b>{contract.partnerName} · {contract.status === "pending" ? "等待回覆" : "共同儲蓄中"}</b><small>你 NT${formatMoney(contract.mineDeposit)} / NT${formatMoney(contract.targetPerPlayer)} · 對方 NT${formatMoney(contract.partnerDeposit)} · 第 {contract.expiresDay} 天前完成</small>{contract.status === "active" && <button disabled={busy || player.cash < 100 || contract.mineDeposit >= contract.targetPerPlayer} onClick={() => void act("contract_deposit", { contractId: contract.id, amount: 100 })}>存入 NT$100</button>}</div>) : <p>對其他在線玩家發起契約；各存 NT$1,000，完成各得 NT$150。</p>}</section>
           </div>}
           {socialView === "records" && <div className="story-tab-panel" role="tabpanel">
+          {lifeRhythm.history.length > 0 && <section className="innovation-card life-rhythm-history"><span>三日生活計畫</span><strong>生活節奏紀錄</strong>{lifeRhythm.history.slice(0, 4).map((entry) => <div className="innovation-row" key={entry.id}><b>{entry.title} · {entry.status === "completed" ? "完成" : "部分完成"}</b><small>第 {entry.completedDay} 天結算 · 天賦經驗 +{entry.rewardExp}</small><p>{entry.result}</p></div>)}</section>}
           {(mystery.found > 0 || lifeLedger.entries.length > 0) && <section className="innovation-card"><span>個人紀錄</span><strong>人生紀錄</strong>{mystery.found > 0 && <p>城市傳聞 {mystery.found}/{mystery.total}：{mystery.whispers[0]}</p>}<ol className="life-ledger">{lifeLedger.entries.slice(0, 4).map((entry, index) => <li key={`${entry.gameTime}-${index}`} className={entry.tone}><b>{entry.gameTime} · {entry.title}</b><small>{entry.detail}</small></li>)}</ol></section>}
           <div className="section-heading feed-heading"><span>城市動態</span><small>最近 6 筆</small></div>
           <ol className="feed-list">
@@ -1317,7 +1336,8 @@ function GameHome() {
       {profile && player.gameOver === "prodigal_insolvent" && <div className="story-select-overlay game-over-overlay" role="dialog" aria-modal="true" aria-labelledby="game-over-title">
         <section className="story-select-card game-over-card"><header><span>BAD ENDING</span><h2 id="game-over-title">《浪子回頭：無力償還》</h2><p>連續兩個遊戲日未繳足每日最低還款額</p></header><article><div className="story-prologue">{PRODIGAL_FAILURE_STORY.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div><button type="button" onClick={() => void act("reset")} disabled={busy}>{busy ? "正在重新開始……" : "重新開始《浪子回頭》"}<span>↻</span></button></article></section>
       </div>}
-      {profile && unlockedStoryChapter && <div className="auth-overlay city-event-overlay" role="dialog" aria-modal="true" aria-labelledby="story-chapter-title"><section className="city-event-card story-chapter-card"><span>PRODIGAL RETURN · CHAPTER {unlockedStoryChapter.chapter}</span><h2 id="story-chapter-title">{unlockedStoryChapter.title}</h2>{unlockedStoryChapter.chapter === 6 ? PRODIGAL_SUCCESS_STORY.map((paragraph, index) => <p key={index}>{paragraph}</p>) : <p>{unlockedStoryChapter.story}</p>}<button disabled={busy} onClick={() => void act("story_ack")}>收進人生紀錄</button></section></div>}
+      {profile && unlockedStoryChapter && <div className="auth-overlay city-event-overlay" role="dialog" aria-modal="true" aria-labelledby="story-chapter-title"><section className="city-event-card story-chapter-card"><span>PRODIGAL RETURN · CHAPTER {unlockedStoryChapter.chapter}</span><h2 id="story-chapter-title">{unlockedStoryChapter.title}</h2>{unlockedStoryChapter.chapter === 6 ? PRODIGAL_SUCCESS_STORY.map((paragraph, index) => <p key={index}>{paragraph}</p>) : <p>{unlockedStoryChapter.story}</p>}{lifeRhythm.storyReflection && <p className="story-life-reflection">這一段路上，{lifeRhythm.storyReflection}</p>}<button disabled={busy} onClick={() => void act("story_ack")}>收進人生紀錄</button></section></div>}
+      {lifeGuideOpen && <LifeRhythmGuide onClose={() => setLifeGuideOpen(false)} />}
       {talentOpen && <div className="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="talent-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setTalentOpen(false); }}><section className="talent-board"><button className="auth-close" type="button" aria-label="關閉天賦樹" onClick={() => setTalentOpen(false)}>×</button><span className="panel-kicker">LIFE TALENTS</span><h2 id="talent-title">天賦樹</h2><p>等級 {player.talentLevel} · 可用 {player.talentPoints} 點 · 每 100 經驗獲得 1 點。天賦不會改變賭場或刮刮樂機率。</p><div className="talent-branches">{["職涯", "生存", "財務", "機會"].map((branch) => <section key={branch}><h3>{branch}</h3>{TALENTS.filter((talent) => talent.branch === branch).map((talent) => { const owned = player.talents.includes(talent.id); const locked = talent.requires.some((required) => !player.talents.includes(required)); return <button className={owned ? "owned" : ""} key={talent.id} disabled={busy || owned || locked || player.talentPoints < 1} onClick={() => void act("talent", { talent: talent.id })}><strong>{talent.name}</strong><small>{talent.description}</small><em>{owned ? "已解鎖" : locked ? "需要前置天賦" : "使用 1 點"}</em></button>; })}</section>)}</div><button className="talent-reset" disabled={busy || !player.talents.length || player.cash < 2_000} onClick={() => void act("talent", { kind: "reset" })}>支付 NT$2,000 重置天賦</button></section></div>}
       {profile && pendingCityEvent && <div className="auth-overlay city-event-overlay" role="dialog" aria-modal="true" aria-labelledby="city-event-title"><section className="city-event-card"><span>THE CITY FOUND YOU</span><h2 id="city-event-title">{pendingCityEvent.title}</h2><p>{pendingCityEvent.text}</p><div>{pendingCityEvent.choices.map((choice) => { const unavailable = "requires" in choice && choice.requires && !player.talents.includes(choice.requires); return <button key={choice.id} disabled={busy || Boolean(unavailable)} onClick={() => void act("city_event", { choice: choice.id })}>{choice.label}{unavailable ? <small>需要談判能力</small> : null}</button>; })}</div></section></div>}
       {selectedNpc && <NpcDialogue resident={selectedNpc} busy={busy} onClose={closeNpcDialog} onChoose={(choiceId) => void act("npc_interact", { npcId: selectedNpc.id, eventId: selectedNpc.event?.id, choice: choiceId })} />}
@@ -1670,6 +1690,58 @@ function CardRow({ cards }: { cards: string[] }) {
 
 function BetForm({ bet, setBet, maxBet, busy, submitBet, onLeave }: { bet: string; setBet: (value: string) => void; maxBet: number; busy: boolean; submitBet: (event: React.FormEvent) => void; onLeave: () => void }) {
   return <form className="custom-bet" onSubmit={submitBet}><label>輸入下注金額 <small>目前現金 NT${formatMoney(maxBet)}</small></label><div><span>NT$</span><input type="number" inputMode="numeric" min="1" max={Math.min(maxBet, 1_000_000)} step="1" value={bet} onChange={(event) => setBet(event.target.value)} required /><button disabled={busy || maxBet < 1}>確定下注</button></div><button className="leave-seat" type="button" onClick={onLeave} disabled={busy}>不下注，離開座位</button></form>;
+}
+
+function LifeRhythmPanel({ state, signedIn, hasDebt, busy, onStart, onGuide }: { state: LifeRhythmState; signedIn: boolean; hasDebt: boolean; busy: boolean; onStart: (key: LifePlanKey) => void; onGuide: () => void }) {
+  return <section className="life-rhythm-panel" aria-labelledby="life-rhythm-title">
+    <header><div><span>三日生活計畫</span><h4 id="life-rhythm-title">人生節奏</h4></div><button type="button" className="life-rhythm-help" onClick={onGuide}>這是什麼？能玩什麼？</button></header>
+    {state.active ? <div className="life-rhythm-active">
+      <div className="life-rhythm-active-heading"><div><small>本期目標 · 還有 {state.active.daysLeft} 個玩家日</small><strong>{state.active.title}</strong><p>{state.active.description}</p></div><b aria-label={`完成進度 ${state.active.progress}%`}>{state.active.progress}%</b></div>
+      <div className="life-rhythm-main-track" aria-hidden="true"><i style={{ width: `${state.active.progress}%` }} /></div>
+      <div className="life-rhythm-progress-list">{state.active.items.map((item) => {
+        const done = item.current >= item.target;
+        return <div key={item.key} className={done ? "done" : ""}><span>{done ? "已達成" : "進行中"}</span><strong>{item.label}</strong><b>{formatMoney(Math.min(item.current, item.target))} / {formatMoney(item.target)}</b></div>;
+      })}</div>
+      <footer><span>完成獎勵</span><strong>{state.active.rewardName}</strong><small>{state.active.rewardDescription} 完整完成另得 {state.completionTalentExp} 點天賦經驗。</small></footer>
+    </div> : <div className="life-rhythm-choices">
+      <p>選一個方向，接下來三個玩家日的既有行動會自動累積進度。離線不計時，失敗也不會結束遊戲。</p>
+      <div>{LIFE_PLAN_DEFINITIONS.map((plan, index) => {
+        const unavailable = plan.key === "debt" && !hasDebt;
+        return <article key={plan.key}><span>0{index + 1}</span><h5>{plan.title}</h5><p>{plan.shortDescription}</p><small>{plan.howToPlay.join(" · ")}</small><em>{plan.rewardName}：{plan.rewardDescription}</em><button type="button" disabled={busy || !signedIn || unavailable} onClick={() => onStart(plan.key)}>{!signedIn ? "登入後可開始" : unavailable ? "目前沒有貸款" : `選擇${plan.title}`}</button></article>;
+      })}</div>
+    </div>}
+    {state.effect && <aside className="life-rhythm-effect"><span>目前生效</span><strong>{state.effect.name}</strong><p>{state.effect.description}</p><small>使用一次後消失；最晚於第 {state.effect.expiresDay} 個玩家日失效。</small></aside>}
+  </section>;
+}
+
+function LifeRhythmGuide({ onClose }: { onClose: () => void }) {
+  const dialogRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusable = () => dialogRef.current ? Array.from(dialogRef.current.querySelectorAll<HTMLElement>("button:not([disabled])")) : [];
+    window.setTimeout(() => focusable()[0]?.focus(), 0);
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); onClose(); return; }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      if (!items.length) return;
+      const first = items[0]; const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    window.addEventListener("keydown", keydown);
+    return () => { window.removeEventListener("keydown", keydown); previous?.focus(); };
+  }, [onClose]);
+  return <div className="auth-overlay life-rhythm-guide-overlay" role="dialog" aria-modal="true" aria-labelledby="life-rhythm-guide-title" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
+    <section ref={dialogRef} className="life-rhythm-guide">
+      <button type="button" className="auth-close" aria-label="關閉人生節奏玩法說明" onClick={onClose}>×</button>
+      <header><span>GAMEPLAY GUIDE</span><h2 id="life-rhythm-guide-title">人生節奏是什麼？</h2><p>這是一個把你原本會做的工作、還款、休息、交談與多人互動，串成三日人生目標的系統。它不會限制你去賭場、換工作或自由探索城市。</p></header>
+      <div className="life-rhythm-loop" aria-label="玩法流程"><b>1 選擇目標</b><span>→</span><b>2 照常生活</b><span>→</span><b>3 查看進度</b><span>→</span><b>4 三日結算</b></div>
+      <section><h3>你可以玩什麼？</h3><div className="life-rhythm-guide-grid">{LIFE_PLAN_DEFINITIONS.map((plan) => <article key={plan.key}><h4>{plan.title}</h4><p>{plan.shortDescription}</p><ul>{plan.howToPlay.map((step) => <li key={step}>{step}</li>)}</ul><strong>完成：{plan.rewardName}</strong><small>{plan.rewardDescription}</small></article>)}</div></section>
+      <section className="life-rhythm-rules"><h3>時間、獎勵與失敗</h3><ul><li>三個玩家日等於在線遊玩 72 分鐘；下線完全不推進。</li><li>完整完成得到 6 點天賦經驗與一次性效果；部分完成得到 2 點。</li><li>同一名 NPC、同一名玩家只計算一次，不能互刷進度。</li><li>沒有直接現金獎勵，不會造成遊戲通膨。</li><li>生活計畫失敗不會遊戲結束，也不會增加債務。</li><li>《浪子回頭》章節仍只依債務比例解鎖，生活計畫只會讓故事回顧更貼近你的玩法。</li></ul></section>
+      <button type="button" className="life-rhythm-guide-done" onClick={onClose}>知道了，回到遊戲</button>
+    </section>
+  </div>;
 }
 
 function NpcResidents({ state, signedIn, busy, onTalk }: { state: NpcState; signedIn: boolean; busy: boolean; onTalk: (npcId: string) => void }) {

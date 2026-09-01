@@ -634,3 +634,35 @@ test("home location provides bounded daily activities and comfort upgrades", asy
   assert.match(migration, /ADD COLUMN `home_comfort`/);
   assert.match(migration, /ADD COLUMN `home_chore_done`/);
 });
+
+test("three-day life rhythm connects existing play without creating cash inflation", async () => {
+  const rules = await readFile(new URL("shared/lifeRhythm.ts", root), "utf8");
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const css = await readFile(new URL("app/globals.css", root), "utf8");
+  const schema = await readFile(new URL("db/schema.ts", root), "utf8");
+  const migration = await readFile(new URL("drizzle/0031_life_rhythm.sql", root), "utf8");
+
+  assert.match(rules, /LIFE_PLAN_CYCLE_DAYS = 3/);
+  assert.match(rules, /title: "債務整頓"/);
+  assert.match(rules, /title: "職涯突破"/);
+  assert.match(rules, /title: "健康生活"/);
+  assert.match(rules, /title: "社會連結"/);
+  assert.doesNotMatch(rules, /cash|現金獎勵|金錢獎勵/i);
+  assert.match(schema, /playerLifePlans = sqliteTable\("player_life_plans"/);
+  assert.match(schema, /playerLifePlanMarkers = sqliteTable\("player_life_plan_markers"/);
+  assert.match(migration, /CREATE TABLE `player_life_plans`/);
+  assert.match(migration, /CREATE TABLE `player_life_plan_markers`/);
+  assert.match(worker, /case "life_plan_start"/);
+  assert.match(worker, /async function settleExpiredLifePlan/);
+  assert.match(worker, /async function addLifePlanSocialPair/);
+  assert.match(worker, /effect_consumed_at IS NULL/);
+  assert.match(worker, /lifeRhythm: rhythm/);
+  assert.match(page, /<LifeRhythmPanel/);
+  assert.match(page, /人生節奏是什麼？/);
+  assert.match(page, /三個玩家日等於在線遊玩 72 分鐘/);
+  assert.match(page, /失敗不會遊戲結束/);
+  assert.match(css, /\.life-rhythm-guide-overlay/);
+  assert.match(css, /\.life-rhythm-choices > div/);
+  assert.match(css, /@media \(max-width: 760px\)/);
+});

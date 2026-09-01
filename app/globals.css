@@ -820,6 +820,349 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
   }
 }
 
+/* 人生節奏：把長線目標濃縮在一張卡片，詳細規則只在玩家需要時展開。 */
+.life-rhythm-panel {
+  grid-column: 1 / -1;
+  position: relative;
+  overflow: hidden;
+  padding: 22px;
+  border: 1px solid color-mix(in srgb, var(--city-blue) 34%, var(--city-line));
+  border-radius: 22px;
+  background: var(--city-surface);
+  box-shadow: var(--city-shadow-small);
+}
+
+.life-rhythm-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: var(--city-blue);
+}
+
+.life-rhythm-panel > header,
+.life-rhythm-active-heading,
+.life-rhythm-panel footer,
+.life-rhythm-effect {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.life-rhythm-panel > header > div > span,
+.life-rhythm-panel footer > span,
+.life-rhythm-effect > span,
+.life-rhythm-guide header > span {
+  display: block;
+  color: var(--city-blue-deep);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.life-rhythm-panel h4,
+.life-rhythm-panel h5,
+.life-rhythm-panel p,
+.life-rhythm-guide h2,
+.life-rhythm-guide h3,
+.life-rhythm-guide h4,
+.life-rhythm-guide p,
+.life-rhythm-guide ul {
+  margin-top: 0;
+}
+
+.life-rhythm-panel h4 {
+  margin-bottom: 0;
+  font-size: clamp(22px, 3vw, 30px);
+  letter-spacing: -.035em;
+}
+
+.life-rhythm-help,
+.life-rhythm-choices button,
+.life-rhythm-guide-done {
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.life-rhythm-help {
+  padding: 10px 14px;
+  border: 1px solid var(--city-line);
+  background: var(--city-surface-soft);
+  color: var(--city-blue-deep);
+}
+
+.life-rhythm-help:hover,
+.life-rhythm-help:focus-visible {
+  border-color: var(--city-blue);
+  background: var(--city-blue-soft);
+}
+
+.life-rhythm-choices > p {
+  max-width: 760px;
+  margin: 14px 0 16px;
+  color: var(--city-muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.life-rhythm-choices > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.life-rhythm-choices article {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-content: start;
+  gap: 5px 12px;
+  min-width: 0;
+  padding: 17px;
+  border: 1px solid var(--city-line);
+  border-radius: 17px;
+  background: var(--city-surface-soft);
+}
+
+.life-rhythm-choices article > span {
+  grid-row: 1 / span 4;
+  color: var(--city-blue);
+  font: 800 13px/1.4 Consolas, monospace;
+}
+
+.life-rhythm-choices h5 {
+  margin-bottom: 1px;
+  color: var(--city-ink);
+  font-size: 17px;
+}
+
+.life-rhythm-choices article p,
+.life-rhythm-choices article small,
+.life-rhythm-choices article em {
+  grid-column: 2;
+  margin-bottom: 0;
+  color: var(--city-muted);
+  font-size: 13px;
+  font-style: normal;
+  line-height: 1.55;
+}
+
+.life-rhythm-choices article em {
+  margin-top: 4px;
+  color: var(--city-blue-deep);
+  font-weight: 750;
+}
+
+.life-rhythm-choices button {
+  grid-column: 1 / -1;
+  margin-top: 9px;
+  padding: 10px 14px;
+  background: var(--city-blue);
+  color: #fff;
+}
+
+.life-rhythm-choices button:disabled {
+  cursor: not-allowed;
+  opacity: .52;
+}
+
+.life-rhythm-active {
+  margin-top: 17px;
+  padding: 18px;
+  border-radius: 17px;
+  background: var(--city-blue-soft);
+}
+
+.life-rhythm-active-heading small,
+.life-rhythm-active-heading p {
+  color: var(--city-muted);
+  font-size: 13px;
+}
+
+.life-rhythm-active-heading strong {
+  display: block;
+  margin: 3px 0;
+  color: var(--city-ink);
+  font-size: 21px;
+}
+
+.life-rhythm-active-heading p { margin-bottom: 0; }
+
+.life-rhythm-active-heading > b {
+  display: grid;
+  flex: 0 0 66px;
+  place-items: center;
+  width: 66px;
+  height: 66px;
+  border: 2px solid var(--city-blue);
+  border-radius: 50%;
+  background: var(--city-surface);
+  color: var(--city-blue-deep);
+  font-size: 18px;
+}
+
+.life-rhythm-main-track {
+  height: 9px;
+  margin: 15px 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--city-line) 74%, transparent);
+}
+
+.life-rhythm-main-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--city-blue);
+}
+
+.life-rhythm-progress-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.life-rhythm-progress-list > div {
+  display: grid;
+  gap: 3px;
+  padding: 11px;
+  border: 1px solid var(--city-line);
+  border-radius: 12px;
+  background: var(--city-surface);
+}
+
+.life-rhythm-progress-list span { color: var(--city-muted); font-size: 11px; }
+.life-rhythm-progress-list strong { font-size: 14px; }
+.life-rhythm-progress-list b { color: var(--city-blue-deep); font-size: 13px; }
+.life-rhythm-progress-list > div.done { border-color: var(--city-jade); background: var(--city-jade-soft); }
+.life-rhythm-progress-list > div.done span { color: var(--city-jade); font-weight: 800; }
+
+.life-rhythm-panel footer {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid color-mix(in srgb, var(--city-blue) 24%, var(--city-line));
+}
+
+.life-rhythm-panel footer strong { color: var(--city-ink); }
+.life-rhythm-panel footer small { color: var(--city-muted); line-height: 1.5; }
+
+.life-rhythm-effect {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding: 13px 15px;
+  border: 1px solid color-mix(in srgb, var(--city-jade) 42%, var(--city-line));
+  border-radius: 14px;
+  background: var(--city-jade-soft);
+}
+
+.life-rhythm-effect p { margin: 0; color: var(--city-ink-soft); font-size: 13px; }
+.life-rhythm-effect small { color: var(--city-muted); }
+
+.life-rhythm-guide-overlay { z-index: 70; }
+
+.life-rhythm-guide {
+  position: relative;
+  width: min(920px, 100%);
+  max-height: min(90dvh, 880px);
+  overflow: auto;
+  padding: clamp(22px, 4vw, 42px);
+  border: 1px solid var(--city-line);
+  border-radius: 24px;
+  background: var(--city-surface);
+  color: var(--city-ink);
+  box-shadow: var(--city-shadow);
+}
+
+.life-rhythm-guide header { max-width: 720px; }
+.life-rhythm-guide h2 { margin: 6px 0 10px; font-size: clamp(28px, 5vw, 45px); letter-spacing: -.045em; }
+.life-rhythm-guide header p { color: var(--city-muted); font-size: 16px; line-height: 1.75; }
+
+.life-rhythm-loop {
+  display: grid;
+  grid-template-columns: auto 20px auto 20px auto 20px auto;
+  align-items: center;
+  justify-content: start;
+  gap: 8px;
+  margin: 24px 0 30px;
+}
+
+.life-rhythm-loop b {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--city-blue-soft);
+  color: var(--city-blue-deep);
+  font-size: 13px;
+}
+
+.life-rhythm-loop span { color: var(--city-muted); text-align: center; }
+.life-rhythm-guide > section > h3 { margin-bottom: 13px; font-size: 20px; }
+
+.life-rhythm-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.life-rhythm-guide-grid article {
+  padding: 17px;
+  border: 1px solid var(--city-line);
+  border-radius: 16px;
+  background: var(--city-surface-soft);
+}
+
+.life-rhythm-guide-grid h4 { margin-bottom: 7px; font-size: 17px; }
+.life-rhythm-guide-grid p,
+.life-rhythm-guide-grid li,
+.life-rhythm-guide-grid small,
+.life-rhythm-rules li { color: var(--city-muted); font-size: 14px; line-height: 1.65; }
+.life-rhythm-guide-grid ul,
+.life-rhythm-rules ul { padding-left: 20px; }
+.life-rhythm-guide-grid strong { display: block; margin-top: 12px; color: var(--city-blue-deep); }
+.life-rhythm-guide-grid small { display: block; margin-top: 3px; }
+.life-rhythm-rules { margin-top: 26px; }
+
+.life-rhythm-guide-done {
+  width: 100%;
+  margin-top: 16px;
+  padding: 13px 16px;
+  background: var(--city-blue);
+  color: #fff;
+}
+
+.life-rhythm-help:focus-visible,
+.life-rhythm-choices button:focus-visible,
+.life-rhythm-guide button:focus-visible {
+  outline: 3px solid var(--city-amber);
+  outline-offset: 3px;
+}
+
+.story-life-reflection {
+  padding: 12px 14px;
+  border-left: 4px solid var(--city-blue);
+  background: var(--city-blue-soft);
+}
+
+@media (max-width: 760px) {
+  .life-rhythm-panel { padding: 17px; border-radius: 17px; }
+  .life-rhythm-panel > header { align-items: flex-start; flex-direction: column; }
+  .life-rhythm-help { width: 100%; }
+  .life-rhythm-choices > div,
+  .life-rhythm-guide-grid { grid-template-columns: 1fr; }
+  .life-rhythm-active-heading { align-items: flex-start; }
+  .life-rhythm-active-heading > b { flex-basis: 58px; width: 58px; height: 58px; font-size: 16px; }
+  .life-rhythm-loop { grid-template-columns: 1fr; }
+  .life-rhythm-loop span { display: none; }
+  .life-rhythm-guide { max-height: 94dvh; padding: 24px 18px; border-radius: 18px; }
+  .life-rhythm-guide .auth-close { min-width: 44px; min-height: 44px; top: 7px; right: 7px; }
+}
+
 /* City wayfinding icons — a single crisp outline system for every location. */
 .location-glyph {
   display: grid !important;
