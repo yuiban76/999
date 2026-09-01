@@ -589,6 +589,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
 .npc-resident-copy strong { font-size: 15px; }
 .npc-resident-copy > div span { padding: 3px 7px; border-radius: 999px; background: color-mix(in srgb, var(--npc-accent) 10%, white); color: var(--npc-accent); font-size: 10px; font-weight: 800; }
 .npc-resident-copy small { display: block; margin-top: 3px; color: #6e6e73; font-size: 10px; }
+.npc-relation-meter { width: min(190px, 100%); height: 5px; margin-top: 7px; overflow: hidden; border-radius: 999px; background: rgba(29, 29, 31, .09); }
+.npc-relation-meter i { display: block; height: 100%; border-radius: inherit; background: var(--npc-accent); transition: width .25s ease; }
 .npc-resident-copy p { overflow: hidden; margin: 5px 0 0; color: #3f3f43; font-size: 12px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
 .npc-resident-card > button { min-width: 92px; min-height: 44px; padding: 10px 14px; border: 0; border-radius: 12px; background: var(--npc-accent); color: #fff; font-size: 12px; font-weight: 800; cursor: pointer; transition: filter .15s ease, opacity .15s ease; }
 .npc-resident-card > button:hover { filter: brightness(.94); }
@@ -603,6 +605,18 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
 .npc-dialog-card > header span, .npc-dialog-event > span, .npc-dialog-result > span { color: var(--npc-accent); font-size: 10px; font-weight: 850; letter-spacing: .1em; }
 .npc-dialog-card h2 { margin: 0; font: 700 29px/1.15 Georgia, "Noto Serif TC", serif; }
 .npc-dialog-card > header small { color: #6e6e73; font-size: 11px; }
+.npc-favor-panel { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px 18px; margin-top: 22px; padding: 18px; border: 1px solid color-mix(in srgb, var(--npc-accent) 24%, white); border-radius: 18px; background: color-mix(in srgb, var(--npc-accent) 6%, white); }
+.npc-favor-panel > div > span { color: var(--npc-accent); font-size: 9px; font-weight: 850; letter-spacing: .12em; }
+.npc-favor-panel h3 { margin: 5px 0 6px; font-size: 17px; }
+.npc-favor-panel p { margin: 0; color: #4a4a4f; font-size: 13px; line-height: 1.5; }
+.npc-favor-panel dl { display: grid; grid-template-columns: repeat(3, auto); grid-column: 1 / -1; gap: 8px; margin: 0; }
+.npc-favor-panel dl div { min-width: 0; padding: 9px 11px; border-radius: 11px; background: rgba(255, 255, 255, .72); }
+.npc-favor-panel dt { color: #74747a; font-size: 9px; font-weight: 750; }
+.npc-favor-panel dd { margin: 3px 0 0; color: #262629; font-size: 12px; font-weight: 800; }
+.npc-favor-panel > button { grid-column: 1 / -1; min-height: 48px; border: 0; border-radius: 13px; background: var(--npc-accent); color: white; font-size: 13px; font-weight: 850; cursor: pointer; }
+.npc-favor-panel > button:disabled { cursor: default; opacity: .46; }
+.npc-favor-panel > small { grid-column: 1 / -1; color: #66666c; font-size: 10px; line-height: 1.5; }
+.npc-favor-panel.locked { border-color: rgba(29, 29, 31, .1); background: #f4f4f6; }
 .npc-dialog-event, .npc-dialog-result { margin-top: 24px; padding-top: 22px; border-top: 1px solid rgba(29, 29, 31, .11); }
 .npc-dialog-event h3 { margin: 7px 0 9px; font-size: 20px; }
 .npc-dialog-event > p, .npc-dialog-result > p { margin: 0; color: #424247; font-size: 15px; line-height: 1.7; }
@@ -625,6 +639,9 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
   .npc-dialog-overlay { align-items: end; padding: 0; }
   .npc-dialog-card { width: 100%; max-height: min(90dvh, 760px); padding: 24px 18px calc(22px + env(safe-area-inset-bottom)); border-radius: 26px 26px 0 0; }
   .npc-dialog-card h2 { font-size: 26px; }
+  .npc-favor-panel { grid-template-columns: 1fr; padding: 16px; }
+  .npc-favor-panel dl { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .npc-favor-panel dl div { padding: 8px; }
   .npc-dialog-event > p, .npc-dialog-result > p { font-size: 16px; }
   .npc-dialog-choices button { min-height: 68px; }
 }
@@ -640,12 +657,17 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
   .home-status-card strong { color: #f5f5f7; }
   .home-status-card small, .home-status-card em { color: #b5b5ba; }
   .npc-residents { border-color: rgba(255, 255, 255, .11); background: rgba(34, 34, 36, .8); }
-  .npc-residents > header > small, .npc-resident-copy small, .npc-dialog-card > header small, .npc-dialog-choices small { color: #b7b7bd; }
+  .npc-residents > header > small, .npc-resident-copy small, .npc-dialog-card > header small, .npc-dialog-choices small, .npc-favor-panel > small { color: #b7b7bd; }
   .npc-resident-card, .npc-resident-card.absent { border-color: rgba(255, 255, 255, .1); background: rgba(48, 48, 51, .94); }
   .npc-resident-copy p { color: #e0e0e5; }
   .npc-portrait, .npc-dialog-portrait, .npc-resident-copy > div span { background: color-mix(in srgb, var(--npc-accent) 30%, #222225); color: #f5f5f7; }
   .npc-dialog-card { border-color: rgba(255, 255, 255, .14); background: #242426; color: #f5f5f7; }
   .npc-dialog-close { background: #3a3a3d; color: #f5f5f7; }
+  .npc-relation-meter { background: rgba(255, 255, 255, .14); }
+  .npc-favor-panel, .npc-favor-panel.locked { border-color: rgba(255, 255, 255, .13); background: color-mix(in srgb, var(--npc-accent) 15%, #29292c); }
+  .npc-favor-panel p { color: #dedee3; }
+  .npc-favor-panel dl div { background: rgba(255, 255, 255, .07); }
+  .npc-favor-panel dt, .npc-favor-panel dd { color: #e4e4e8; }
   .npc-dialog-event, .npc-dialog-result { border-color: rgba(255, 255, 255, .12); }
   .npc-dialog-event > p, .npc-dialog-result > p { color: #dedee3; }
   .npc-dialog-choices button { border-color: rgba(255, 255, 255, .12); background: #303033; color: #f5f5f7; }

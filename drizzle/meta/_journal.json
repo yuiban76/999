@@ -225,6 +225,13 @@
       "when": 1788276424450,
       "tag": "0031_life_rhythm",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1788362824450,
+      "tag": "0032_city_favor_network",
+      "breakpoints": true
     }
   ]
 }

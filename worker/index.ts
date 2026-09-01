@@ -1,7 +1,7 @@
 import { ABILITY_LABELS, ABILITY_MAX, ACADEMIES, BANK_LOAN_RATE_BP, careerForCategory, careerRequirements, careerWorkSpecialFor, careerWorkWaitSeconds, categoryInfo, crimeArrestChanceFor, crimeSentenceMinutesFor, financeDepositRateFor, financeLoanTermsFor, HACK_DAILY_LIMIT, HACK_MAX_STEAL, HACK_STEAL_RATE, HACK_SUCCESS_CHANCE, hospitalitySpecialHungerFor, jobInfo, medicalHospitalDiscountFor, medicalTreatmentFor, medicalWorkHealthBonusFor, meetsCareerRequirements, RESTAURANT_DAILY_NET, RESTAURANT_PURCHASE_PRICE, STREET_BEG_PAIR_COOLDOWN_MS, STREET_BEG_REQUEST_TIMEOUT_MS, STREET_INVENTORY, STREET_SCAVENGE_WAIT_SECONDS, streetBegDailyCapFor, streetBegDonationsFor, streetCanSellPriceFor, streetRankIndex, streetScavengeLimitFor, TERRITORY_DAILY_CAP, TERRITORY_VISIT_COOLDOWN_MINUTES, TERRITORY_VISIT_REWARD, WRITER_DAILY_FAN_RATE, WRITER_DAILY_WRITING_LIMIT, WRITER_MAX_ACTIVE_BOOKS, WRITER_MAX_PURCHASES_PER_BOOK, writerBookPriceFor, writerFanRangeFor, type Abilities } from "../shared/jobs";
 import { CITY_EVENTS, STORY_CHAPTERS, storyChapterForDebt, talentInfo } from "../shared/progression";
 import { isHospitalRegularOpen, isLocationOpen, minuteOfDay, OPENING_HOURS, worldMinutes } from "../shared/world";
-import { eventMatchesMemories, NPC_EVENTS, NPCS, npcAvailableAt, relationshipLabel, type NpcChoice, type NpcDefinition, type NpcEvent, type NpcId } from "../shared/npcs";
+import { eventMatchesMemories, NPC_EVENTS, NPC_FAVOR_RELATION_COST, NPC_FAVOR_TRUSTED_COST, NPC_FAVOR_TRUSTED_POINTS, NPC_FAVOR_UNLOCK_POINTS, NPCS, npcAvailableAt, npcFavorDefinition, npcFavorTier, relationshipLabel, type NpcChoice, type NpcDefinition, type NpcEvent, type NpcId } from "../shared/npcs";
 import { HOME_CHORE_WAIT_SECONDS, HOME_COOK_COST, HOME_COOK_WAIT_SECONDS, HOME_DAILY_COOK_LIMIT, HOME_NAP_WAIT_SECONDS, homeComfort, homeCookHunger, homeSleepBenefits } from "../shared/housing";
 import { LIFE_PLAN_CAREER_TARGET, LIFE_PLAN_COMPLETION_TALENT_EXP, LIFE_PLAN_CYCLE_DAYS, LIFE_PLAN_HOME_DAY_TARGET, LIFE_PLAN_NPC_TARGET, LIFE_PLAN_PARTIAL_TALENT_EXP, LIFE_PLAN_SOCIAL_TARGET, lifePlanCareerPoints, lifePlanDebtTarget, lifePlanDefinition, lifePlanProgressPercent, type LifePlanEffectKey, type LifePlanKey } from "../shared/lifeRhythm";
 
@@ -382,6 +382,12 @@ async function ensureSchema(db: D1Database) {
       outcome TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL,
       PRIMARY KEY (user_id, npc_id, life_version, play_day)
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS player_npc_favors (
+      user_id TEXT NOT NULL, life_version INTEGER NOT NULL DEFAULT 0,
+      play_day INTEGER NOT NULL, npc_id TEXT NOT NULL, benefit_key TEXT NOT NULL,
+      relation_cost INTEGER NOT NULL, action_token TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, life_version, play_day)
+    )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS city_memory_contributions (
       user_id TEXT NOT NULL, cycle_day INTEGER NOT NULL,
       work_count INTEGER NOT NULL DEFAULT 0, hospital_count INTEGER NOT NULL DEFAULT 0,
@@ -561,6 +567,7 @@ async function ensureSchema(db: D1Database) {
     db.prepare("CREATE INDEX IF NOT EXISTS idx_inventory_user_life ON player_inventory(user_id, life_version)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_npc_relationship_user_life ON player_npc_relationships(user_id, life_version)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_npc_interaction_user_created ON player_npc_interactions(user_id, created_at DESC)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_npc_favors_user_created ON player_npc_favors(user_id, created_at DESC)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_life_plans_user_life_status ON player_life_plans(user_id, life_version, status)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_life_plans_user_completed ON player_life_plans(user_id, completed_at DESC)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_life_plan_markers_plan_type ON player_life_plan_markers(plan_id, marker_type)"),
@@ -1180,6 +1187,33 @@ function npcChoiceAvailable(choice: NpcChoice, player: PlayerRow) {
   return !choice.requiredCategory || choice.requiredCategory === player.job_category;
 }
 
+function npcFavorAvailability(npcId: NpcId, player: PlayerRow, relationPoints: number, usedNpcId: NpcId | "", energyMax: number) {
+  const definition = npcFavorDefinition(npcId)!;
+  const tier = npcFavorTier(relationPoints);
+  const trusted = tier === "trusted";
+  const relationCost = trusted ? NPC_FAVOR_TRUSTED_COST : NPC_FAVOR_RELATION_COST;
+  const description = trusted ? definition.trustedDescription : definition.baseDescription;
+  const usedToday = Boolean(usedNpcId);
+  let reason = "";
+  if (usedToday) reason = `今天已向${NPCS.find((npc) => npc.id === usedNpcId)?.name ?? "一名居民"}請求過協助`;
+  else if (tier === "locked") reason = `關係達到熟識（${NPC_FAVOR_UNLOCK_POINTS}）後解鎖`;
+  else if (npcId === "jiang" && player.hunger >= 100 && player.energy >= energyMax) reason = "目前飽足與體力都已滿";
+  else if (npcId === "lin" && player.health >= 100) reason = "目前健康已滿";
+  else if (npcId === "zhou" && player.intelligence_exp >= ABILITY_MAX) reason = "目前智力已達上限";
+  else if (npcId === "shen" && player.programming_exp >= ABILITY_MAX && player.job_category !== "literary") reason = "目前創造力已達上限";
+  return {
+    title: definition.title,
+    description,
+    relationCost,
+    requiredPoints: NPC_FAVOR_UNLOCK_POINTS,
+    trustedAt: NPC_FAVOR_TRUSTED_POINTS,
+    tier,
+    available: !reason,
+    usedToday,
+    reason,
+  };
+}
+
 async function npcStoryMemories(db: D1Database, player: PlayerRow) {
   const row = await db.prepare("SELECT memories FROM player_npc_story WHERE user_id=? AND life_version=?")
     .bind(player.user_id, player.life_version).first<{ memories: string }>();
@@ -1188,14 +1222,21 @@ async function npcStoryMemories(db: D1Database, player: PlayerRow) {
 
 async function npcState(db: D1Database, player: PlayerRow) {
   const residents = NPCS.filter((npc) => npc.location === player.location);
-  if (!residents.length) return { residents: [], dailyLimit: 1, note: "每位 NPC 每個遊玩日提供一次重要互動。" };
+  if (!residents.length) return { residents: [], dailyLimit: 1, favorUsedToday: false, note: "每位 NPC 每個遊玩日提供一次重要互動。" };
   const playDay = Math.floor(player.elapsed_minutes / 1440) + 1;
-  const lifePlan = await activeLifePlan(db, player);
+  const [lifePlan, memories, rows, favorClaim, progress] = await Promise.all([
+    activeLifePlan(db, player),
+    npcStoryMemories(db, player),
+    db.prepare("SELECT * FROM player_npc_relationships WHERE user_id=? AND life_version=?")
+      .bind(player.user_id, player.life_version).all<NpcRelationshipRow>(),
+    db.prepare("SELECT npc_id FROM player_npc_favors WHERE user_id=? AND life_version=? AND play_day=?")
+      .bind(player.user_id, player.life_version, playDay).first<{ npc_id: NpcId }>(),
+    db.prepare("SELECT talents FROM player_progress WHERE user_id=?").bind(player.user_id).first<{ talents: string }>(),
+  ]);
   const planTitle = lifePlan ? lifePlanDefinition(lifePlan.plan_key)?.title ?? "生活計畫" : "";
-  const memories = await npcStoryMemories(db, player);
-  const rows = await db.prepare("SELECT * FROM player_npc_relationships WHERE user_id=? AND life_version=?")
-    .bind(player.user_id, player.life_version).all<NpcRelationshipRow>();
   const relations = new Map(rows.results.map((row) => [row.npc_id, row]));
+  const energyMax = parseList(progress?.talents ?? "[]").includes("strong_body") ? 120 : 100;
+  const usedNpcId = favorClaim?.npc_id ?? "";
   const output = [] as Array<Record<string, unknown>>;
   for (const npc of residents) {
     const relation = relations.get(npc.id);
@@ -1218,7 +1259,9 @@ async function npcState(db: D1Database, player: PlayerRow) {
       absentText: npc.absentText,
       status: available ? `${event?.status ?? "正在處理自己的事情"}${planTitle ? ` · 注意到你正在進行「${planTitle}」` : ""}` : "目前不在這裡",
       relationPoints: relation?.relation_points ?? 0,
+      relationMax: 100,
       relationLabel: relationshipLabel(relation?.relation_points ?? 0),
+      favor: npcFavorAvailability(npc.id, player, relation?.relation_points ?? 0, usedNpcId, energyMax),
       interactedToday,
       lastOutcome: lastInteraction?.outcome ?? "",
       event: event ? {
@@ -1233,7 +1276,7 @@ async function npcState(db: D1Database, player: PlayerRow) {
       } : null,
     });
   }
-  return { residents: output, dailyLimit: 1, note: planTitle ? `居民會回應你的「${planTitle}」；每位 NPC 每個遊玩日提供一次重要互動。` : "每位 NPC 每個遊玩日提供一次重要互動；一般地點功能不受 NPC 作息影響。" };
+  return { residents: output, dailyLimit: 1, favorUsedToday: Boolean(usedNpcId), note: planTitle ? `居民會回應你的「${planTitle}」；熟識後可消耗關係請求協助，每個玩家日只能選一人。` : "互動會累積關係；熟識後可消耗關係請求協助，每個玩家日只能選一人。" };
 }
 
 function updatedNpcMemories(memories: Set<string>, choice: NpcChoice) {
@@ -3107,7 +3150,7 @@ async function takeAction(request: Request, env: Env) {
   if ((current.game_over || current.reset_game_over) && body.action !== "reset") return json({ message: current.reset_game_over ? "人生資料正在重置，請稍候再試。" : "這段人生已經結束，請重新開始。" }, 409);
   if (current.main_story === "unselected" && body.action !== "choose_story") return json({ message: "請先選擇人生主線。" }, 409);
   if (current.prison_until > current.elapsed_minutes && body.action !== "reset") return json({ message: `你目前因「${current.prison_crime || "違法行為"}」在監獄服刑，還需在線遊玩 ${Math.ceil((current.prison_until - current.elapsed_minutes) / 60)} 小時。` }, 409);
-  if (!["move", "choose_story", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy", "beg_response", "inventory_use", "street_share_food", "aid_box_donate", "coop_contribute", "story_ack", "contract_create", "contract_accept", "contract_decline", "contract_deposit", "npc_interact", "life_plan_start"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
+  if (!["move", "choose_story", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy", "beg_response", "inventory_use", "street_share_food", "aid_box_donate", "coop_contribute", "story_ack", "contract_create", "contract_accept", "contract_decline", "contract_deposit", "npc_interact", "npc_favor", "life_plan_start"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
   const next = { ...current };
   const sharedMinutes = worldMinutes();
   const memoryBefore = await cityMemory(env.DB);
@@ -3157,6 +3200,70 @@ async function takeAction(request: Request, env: Env) {
       if (!inserted) return json({ message: "生活計畫剛剛已開始，請重新整理確認。" }, 409);
       await recordTransferEvent(env.DB, user.userId, current.display_name, "開始生活計畫", `選擇「${plan.title}」，用三個玩家日完成目標。`, "neutral");
       return refreshedGameResponse(env.DB, user, `已開始「${plan.title}」。${plan.shortDescription} 完成後可獲得「${plan.rewardName}」。`);
+    }
+    case "npc_favor": {
+      const npc = NPCS.find((item) => item.id === body.npcId);
+      if (!npc || npc.location !== current.location) return json({ message: "這名 NPC 目前不在你所在的地點。" }, 400);
+      if (!npcAvailableAt(npc, sharedMinutes)) return json({ message: `${npc.name}目前不在場，出現時間為 ${npc.schedule.label}。` }, 409);
+      const favor = npcFavorDefinition(npc.id);
+      if (!favor) return json({ message: "這名居民目前沒有可請求的協助。" }, 400);
+      const playDay = playerDay(current);
+      const [relationship, existing] = await Promise.all([
+        env.DB.prepare("SELECT * FROM player_npc_relationships WHERE user_id=? AND npc_id=? AND life_version=?")
+          .bind(user.userId, npc.id, current.life_version).first<NpcRelationshipRow>(),
+        env.DB.prepare("SELECT npc_id FROM player_npc_favors WHERE user_id=? AND life_version=? AND play_day=?")
+          .bind(user.userId, current.life_version, playDay).first<{ npc_id: NpcId }>(),
+      ]);
+      if (existing) return json({ message: `今天已向${NPCS.find((item) => item.id === existing.npc_id)?.name ?? "一名居民"}請求過協助，下一個玩家日才能再選一人。` }, 409);
+      const relationPoints = relationship?.relation_points ?? 0;
+      const tier = npcFavorTier(relationPoints);
+      if (tier === "locked") return json({ message: `與${npc.name}的關係達到熟識（${NPC_FAVOR_UNLOCK_POINTS}）後，才能請求協助。` }, 409);
+      const trusted = tier === "trusted";
+      const relationCost = trusted ? NPC_FAVOR_TRUSTED_COST : NPC_FAVOR_RELATION_COST;
+      const benefit = trusted ? favor.trusted : favor.base;
+      const energyMax = talents.has("strong_body") ? 120 : 100;
+      const healthGain = Math.min(benefit.health ?? 0, 100 - current.health);
+      const hungerGain = Math.min(benefit.hunger ?? 0, 100 - current.hunger);
+      const energyGain = Math.min(benefit.energy ?? 0, energyMax - current.energy);
+      const intelligenceGain = Math.min(benefit.intelligence ?? 0, ABILITY_MAX - current.intelligence_exp);
+      const creativityGain = Math.min(benefit.creativity ?? 0, ABILITY_MAX - current.programming_exp);
+      const writerFansGain = current.job_category === "literary" ? benefit.writerFans ?? 0 : 0;
+      if (healthGain + hungerGain + energyGain + intelligenceGain + creativityGain + writerFansGain <= 0) return json({ message: "目前狀態不需要這項協助，先把今天的人情留給真正需要的時候。" }, 409);
+      const now = Math.max(Date.now(), current.updated_at + 1);
+      const favorToken = crypto.randomUUID();
+      const results = await env.DB.batch([
+        env.DB.prepare(`INSERT INTO player_npc_favors
+          (user_id,life_version,play_day,npc_id,benefit_key,relation_cost,action_token,created_at)
+          SELECT ?,?,?,?,?,?,?,? WHERE NOT EXISTS (
+            SELECT 1 FROM player_npc_favors WHERE user_id=? AND life_version=? AND play_day=?
+          ) AND EXISTS (
+            SELECT 1 FROM player_npc_relationships WHERE user_id=? AND npc_id=? AND life_version=? AND relation_points>=?
+          ) ON CONFLICT(user_id,life_version,play_day) DO NOTHING RETURNING npc_id`)
+          .bind(user.userId, current.life_version, playDay, npc.id, tier, relationCost, favorToken, now,
+            user.userId, current.life_version, playDay, user.userId, npc.id, current.life_version, relationCost),
+        env.DB.prepare(`UPDATE player_npc_relationships SET relation_points=MAX(0,relation_points-?), updated_at=?
+          WHERE user_id=? AND npc_id=? AND life_version=? AND relation_points>=? AND EXISTS (
+            SELECT 1 FROM player_npc_favors WHERE user_id=? AND life_version=? AND play_day=? AND action_token=?
+          ) RETURNING relation_points`)
+          .bind(relationCost, now, user.userId, npc.id, current.life_version, relationCost,
+            user.userId, current.life_version, playDay, favorToken),
+        env.DB.prepare(`UPDATE players SET health=MIN(100,health+?), hunger=MIN(100,hunger+?), energy=MIN(?,energy+?),
+          intelligence_exp=MIN(?,intelligence_exp+?), programming_exp=MIN(?,programming_exp+?), writer_fans=writer_fans+?,
+          updated_at=MAX(updated_at+1,?), last_seen_at=?, mutation_token=?
+          WHERE user_id=? AND life_version=? AND EXISTS (
+            SELECT 1 FROM player_npc_favors WHERE user_id=? AND life_version=? AND play_day=? AND action_token=?
+          ) RETURNING user_id`)
+          .bind(healthGain, hungerGain, energyMax, energyGain, ABILITY_MAX, intelligenceGain, ABILITY_MAX, creativityGain, writerFansGain,
+            now, now, favorToken, user.userId, current.life_version, user.userId, current.life_version, playDay, favorToken),
+      ]);
+      if (results.some((result) => (result.results?.length ?? 0) !== 1)) return json({ message: "人情協助剛被更新，請重新整理後再試。" }, 409);
+      const detail = `${npc.name}提供「${favor.title}」：${trusted ? favor.trustedDescription : favor.baseDescription}；關係 -${relationCost}。`;
+      await Promise.all([
+        recordTransferEvent(env.DB, user.userId, current.display_name, "城市人情網", detail, "good"),
+        recordCityMemory(env.DB, user.userId, "event"),
+        addLifePlanMarker(env.DB, current, "npc", npc.id),
+      ]);
+      return refreshedGameResponse(env.DB, user, `${detail} 今天已使用一次人情協助，下一個玩家日可再次選擇。`);
     }
     case "npc_interact": {
       const npc = NPCS.find((item) => item.id === body.npcId);

@@ -43,6 +43,65 @@ export type NpcDefinition = {
   absentText: string;
 };
 
+export const NPC_FAVOR_UNLOCK_POINTS = 20;
+export const NPC_FAVOR_TRUSTED_POINTS = 50;
+export const NPC_FAVOR_RELATION_COST = 6;
+export const NPC_FAVOR_TRUSTED_COST = 10;
+
+export type NpcFavorDefinition = {
+  npcId: NpcId;
+  title: string;
+  baseDescription: string;
+  trustedDescription: string;
+  base: { health?: number; hunger?: number; energy?: number; intelligence?: number; creativity?: number; writerFans?: number };
+  trusted: { health?: number; hunger?: number; energy?: number; intelligence?: number; creativity?: number; writerFans?: number };
+};
+
+export const NPC_FAVORS: readonly NpcFavorDefinition[] = [
+  {
+    npcId: "jiang",
+    title: "熱食與歇腳",
+    baseDescription: "飽足 +18、體力 +8",
+    trustedDescription: "飽足 +28、體力 +12",
+    base: { hunger: 18, energy: 8 },
+    trusted: { hunger: 28, energy: 12 },
+  },
+  {
+    npcId: "lin",
+    title: "健康評估",
+    baseDescription: "健康 +12；不會治癒疾病",
+    trustedDescription: "健康 +18；不會治癒疾病",
+    base: { health: 12 },
+    trusted: { health: 18 },
+  },
+  {
+    npcId: "zhou",
+    title: "財務整理指導",
+    baseDescription: "智力 +6",
+    trustedDescription: "智力 +10",
+    base: { intelligence: 6 },
+    trusted: { intelligence: 10 },
+  },
+  {
+    npcId: "shen",
+    title: "閱讀與選書建議",
+    baseDescription: "創造力 +6；文學作家另得粉絲 +8",
+    trustedDescription: "創造力 +10；文學作家另得粉絲 +15",
+    base: { creativity: 6, writerFans: 8 },
+    trusted: { creativity: 10, writerFans: 15 },
+  },
+] as const;
+
+export function npcFavorDefinition(npcId: NpcId) {
+  return NPC_FAVORS.find((favor) => favor.npcId === npcId) ?? null;
+}
+
+export function npcFavorTier(points: number) {
+  if (points >= NPC_FAVOR_TRUSTED_POINTS) return "trusted" as const;
+  if (points >= NPC_FAVOR_UNLOCK_POINTS) return "familiar" as const;
+  return "locked" as const;
+}
+
 export const NPCS: NpcDefinition[] = [
   { id: "jiang", name: "江叔", role: "不夜旅店老闆", location: "hotel", portrait: "江", accent: "amber", schedule: { opens: 18 * 60, closes: 6 * 60, label: "18:00～翌日 06:00" }, absentText: "江叔去市場補貨了，旅店櫃檯仍照常營業。" },
   { id: "lin", name: "林護理長", role: "市立醫院護理長", location: "hospital", portrait: "林", accent: "teal", schedule: { opens: 8 * 60, closes: 20 * 60, label: "08:00～20:00" }, absentText: "林護理長已下班，急診與一般醫療功能不受影響。" },
@@ -224,4 +283,3 @@ export function eventMatchesMemories(event: NpcEvent, memories: Set<string>) {
   if (event.forbidsAnyMemories?.some((memory) => memories.has(memory))) return false;
   return true;
 }
-

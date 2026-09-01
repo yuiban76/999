@@ -239,6 +239,20 @@ export const playerNpcInteractions = sqliteTable("player_npc_interactions", {
   index("idx_npc_interaction_user_created").on(table.userId, table.createdAt),
 ]);
 
+export const playerNpcFavors = sqliteTable("player_npc_favors", {
+  userId: text("user_id").notNull(),
+  lifeVersion: integer("life_version").notNull().default(0),
+  playDay: integer("play_day").notNull(),
+  npcId: text("npc_id").notNull(),
+  benefitKey: text("benefit_key").notNull(),
+  relationCost: integer("relation_cost").notNull(),
+  actionToken: text("action_token").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.userId, table.lifeVersion, table.playDay] }),
+  index("idx_npc_favors_user_created").on(table.userId, table.createdAt),
+]);
+
 export const playerInventory = sqliteTable("player_inventory", {
   userId: text("user_id").notNull(),
   itemKey: text("item_key").notNull(),

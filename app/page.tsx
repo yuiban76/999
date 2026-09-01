@@ -251,12 +251,15 @@ type NpcResident = {
   schedule: string;
   absentText: string;
   status: string;
+  relationPoints: number;
+  relationMax: number;
   relationLabel: string;
+  favor: { title: string; description: string; relationCost: number; requiredPoints: number; trustedAt: number; tier: "locked" | "familiar" | "trusted"; available: boolean; usedToday: boolean; reason: string };
   interactedToday: boolean;
   lastOutcome: string;
   event: null | { id: string; title: string; prompt: string; choices: Array<{ id: string; label: string; detail: string }> };
 };
-type NpcState = { residents: NpcResident[]; dailyLimit: number; note: string };
+type NpcState = { residents: NpcResident[]; dailyLimit: number; favorUsedToday: boolean; note: string };
 
 type Bootstrap = {
   serverNow?: number;
@@ -986,7 +989,7 @@ function GameHome() {
 
   async function act(action: string, payload: Record<string, unknown> = {}) {
     if (busy) return;
-    const canActDuringWait = ["move", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy", "beg_response", "inventory_use", "street_share_food", "aid_box_donate", "coop_contribute", "story_ack", "contract_create", "contract_accept", "contract_decline", "contract_deposit", "npc_interact", "life_plan_start"].includes(action)
+    const canActDuringWait = ["move", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy", "beg_response", "inventory_use", "street_share_food", "aid_box_donate", "coop_contribute", "story_ack", "contract_create", "contract_accept", "contract_decline", "contract_deposit", "npc_interact", "npc_favor", "life_plan_start"].includes(action)
       || action.startsWith("casino_") || action.startsWith("poker_") || action.startsWith("bingo_") || action.startsWith("dice_") || action.startsWith("tournament_");
     if (actionLocked && !canActDuringWait) {
       setNotice(`${player.actionLabel || "目前的行動"}尚未完成，請等待 ${actionSecondsLeft} 秒；期間可移動、換職、使用銀行、與 NPC 交談、處理玩家請求，或前往賭場遊玩。`);
@@ -1340,7 +1343,7 @@ function GameHome() {
       {lifeGuideOpen && <LifeRhythmGuide onClose={() => setLifeGuideOpen(false)} />}
       {talentOpen && <div className="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="talent-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setTalentOpen(false); }}><section className="talent-board"><button className="auth-close" type="button" aria-label="關閉天賦樹" onClick={() => setTalentOpen(false)}>×</button><span className="panel-kicker">LIFE TALENTS</span><h2 id="talent-title">天賦樹</h2><p>等級 {player.talentLevel} · 可用 {player.talentPoints} 點 · 每 100 經驗獲得 1 點。天賦不會改變賭場或刮刮樂機率。</p><div className="talent-branches">{["職涯", "生存", "財務", "機會"].map((branch) => <section key={branch}><h3>{branch}</h3>{TALENTS.filter((talent) => talent.branch === branch).map((talent) => { const owned = player.talents.includes(talent.id); const locked = talent.requires.some((required) => !player.talents.includes(required)); return <button className={owned ? "owned" : ""} key={talent.id} disabled={busy || owned || locked || player.talentPoints < 1} onClick={() => void act("talent", { talent: talent.id })}><strong>{talent.name}</strong><small>{talent.description}</small><em>{owned ? "已解鎖" : locked ? "需要前置天賦" : "使用 1 點"}</em></button>; })}</section>)}</div><button className="talent-reset" disabled={busy || !player.talents.length || player.cash < 2_000} onClick={() => void act("talent", { kind: "reset" })}>支付 NT$2,000 重置天賦</button></section></div>}
       {profile && pendingCityEvent && <div className="auth-overlay city-event-overlay" role="dialog" aria-modal="true" aria-labelledby="city-event-title"><section className="city-event-card"><span>THE CITY FOUND YOU</span><h2 id="city-event-title">{pendingCityEvent.title}</h2><p>{pendingCityEvent.text}</p><div>{pendingCityEvent.choices.map((choice) => { const unavailable = "requires" in choice && choice.requires && !player.talents.includes(choice.requires); return <button key={choice.id} disabled={busy || Boolean(unavailable)} onClick={() => void act("city_event", { choice: choice.id })}>{choice.label}{unavailable ? <small>需要談判能力</small> : null}</button>; })}</div></section></div>}
-      {selectedNpc && <NpcDialogue resident={selectedNpc} busy={busy} onClose={closeNpcDialog} onChoose={(choiceId) => void act("npc_interact", { npcId: selectedNpc.id, eventId: selectedNpc.event?.id, choice: choiceId })} />}
+      {selectedNpc && <NpcDialogue resident={selectedNpc} busy={busy} onClose={closeNpcDialog} onChoose={(choiceId) => void act("npc_interact", { npcId: selectedNpc.id, eventId: selectedNpc.event?.id, choice: choiceId })} onFavor={() => void act("npc_favor", { npcId: selectedNpc.id })} />}
       {transferTarget && <div className="auth-overlay transfer-overlay" role="dialog" aria-modal="true" aria-labelledby="transfer-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setTransferTarget(null); }}><form className="transfer-card" onSubmit={submitTransfer}><button className="auth-close" type="button" aria-label="關閉" onClick={() => setTransferTarget(null)}>×</button><span className="panel-kicker">PLAYER TO PLAYER</span><h2 id="transfer-title">{transferTarget.kind === "gift" ? "贈送現金" : "發送詐騙邀請"}</h2><p>{transferTarget.kind === "gift" ? `向 ${transferTarget.player.displayName} 贈送現金；對方接受後才會完成轉帳。` : `向 ${transferTarget.player.displayName} 發送與贈送相同外觀的現金邀請。對方接受時，有 50% 機率被騙走填寫金額的一半。`}</p><label>金額（最多 NT${formatMoney(player.cash)}）<input inputMode="numeric" type="number" min={transferTarget.kind === "scam" ? 2 : 1} max={player.cash} step="1" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} required /></label><small>{transferTarget.kind === "scam" ? "詐騙金額以你手上的現金為上限；成功時對方失去此金額的一半。" : "送出邀請後，請等待對方接受或拒絕。"}</small><button className="transfer-submit" disabled={busy || player.cash < (transferTarget.kind === "scam" ? 2 : 1)}>{transferTarget.kind === "gift" ? "送出贈送邀請" : "送出現金邀請"}</button></form></div>}
       {loanTarget && <div className="auth-overlay transfer-overlay" role="dialog" aria-modal="true" aria-labelledby="loan-request-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setLoanTarget(null); }}><form className="transfer-card loan-request-card" onSubmit={submitLoanRequest}><button className="auth-close" type="button" aria-label="關閉貸款申請" onClick={() => setLoanTarget(null)}>×</button><span className="panel-kicker">PLAYER LOAN DESK</span><h2 id="loan-request-title">申請玩家貸款</h2><p>向 <strong>{loanTarget.displayName}</strong>（{loanTarget.currentJob}）申請由銀行撥款的優惠貸款。</p>{(() => { const terms = financeLoanTermsFor(loanTarget.currentJob); return terms ? <small>每日利率 {(terms.rateBp / 100).toFixed(2)}% · 金融玩家每日獲得 {(terms.spreadBp / 100).toFixed(2)}% 利差 · 最高 NT$50,000</small> : null; })()}<label>申請金額<input inputMode="numeric" type="number" min="1" max="50000" step="1" value={loanAmount} onChange={(event) => setLoanAmount(event.target.value)} required /></label><small>本金由銀行撥入你的現金，不會扣除對方現金；接受後會建立一筆一般貸款。</small><button className="transfer-submit finance-submit" disabled={busy || player.loanBalance > 0}>送出貸款申請</button></form></div>}
       {profile && pendingTransfer && <div className="auth-overlay transfer-overlay" role="dialog" aria-modal="true" aria-labelledby="incoming-transfer-title"><section className="transfer-card incoming-transfer"><span className="panel-kicker">CASH INVITATION</span><h2 id="incoming-transfer-title">現金邀請</h2><p><strong>{pendingTransfer.senderName}</strong> 想送給你 NT${formatMoney(pendingTransfer.amount)}，要接受這筆現金嗎？</p><small>接受後將立即處理；你也可以直接拒絕。</small><div className="transfer-response"><button type="button" className="decline" disabled={busy} onClick={() => void act("transfer_response", { requestId: pendingTransfer.id, kind: "decline" })}>拒絕</button><button type="button" disabled={busy} onClick={() => void act("transfer_response", { requestId: pendingTransfer.id, kind: "accept" })}>接受</button></div></section></div>}
@@ -1753,7 +1756,7 @@ function NpcResidents({ state, signedIn, busy, onTalk }: { state: NpcState; sign
         const buttonLabel = !signedIn ? "登入後交談" : !resident.available ? "目前不在" : resident.interactedToday ? "查看今日對話" : "交談";
         return <article className={`npc-resident-card ${resident.accent} ${resident.available ? "available" : "absent"}`} key={resident.id}>
           <div className="npc-portrait" aria-hidden="true">{resident.portrait}</div>
-          <div className="npc-resident-copy"><div><strong>{resident.name}</strong><span>{resident.relationLabel}</span></div><small>{resident.role} · {resident.schedule}</small><p>{resident.available ? resident.status : resident.absentText}</p></div>
+          <div className="npc-resident-copy"><div><strong>{resident.name}</strong><span>{resident.relationLabel} · {resident.relationPoints}/{resident.relationMax}</span></div><small>{resident.role} · {resident.schedule}</small><div className="npc-relation-meter" role="progressbar" aria-label={`與${resident.name}的關係`} aria-valuemin={0} aria-valuemax={resident.relationMax} aria-valuenow={resident.relationPoints}><i style={{ width: `${Math.min(100, resident.relationPoints)}%` }} /></div><p>{resident.available ? resident.status : resident.absentText}</p></div>
           <button type="button" disabled={disabled} onClick={() => onTalk(resident.id)}>{buttonLabel}</button>
         </article>;
       })}
@@ -1761,7 +1764,7 @@ function NpcResidents({ state, signedIn, busy, onTalk }: { state: NpcState; sign
   </section>;
 }
 
-function NpcDialogue({ resident, busy, onClose, onChoose }: { resident: NpcResident; busy: boolean; onClose: () => void; onChoose: (choiceId: string) => void }) {
+function NpcDialogue({ resident, busy, onClose, onChoose, onFavor }: { resident: NpcResident; busy: boolean; onClose: () => void; onChoose: (choiceId: string) => void; onFavor: () => void }) {
   const cardRef = useRef<HTMLElement>(null);
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -1785,7 +1788,13 @@ function NpcDialogue({ resident, busy, onClose, onChoose }: { resident: NpcResid
   return <div className="auth-overlay npc-dialog-overlay" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId} onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
     <section ref={cardRef} className={`npc-dialog-card ${resident.accent}`}>
       <button type="button" className="npc-dialog-close" aria-label={`關閉與${resident.name}的對話`} onClick={onClose}>×</button>
-      <header><div className="npc-dialog-portrait" aria-hidden="true">{resident.portrait}</div><div><span>{resident.role}</span><h2 id={titleId}>{resident.name}</h2><small>關係：{resident.relationLabel}</small></div></header>
+      <header><div className="npc-dialog-portrait" aria-hidden="true">{resident.portrait}</div><div><span>{resident.role}</span><h2 id={titleId}>{resident.name}</h2><small>關係：{resident.relationLabel} · {resident.relationPoints}/{resident.relationMax}</small></div></header>
+      <aside className={`npc-favor-panel ${resident.favor.available ? "ready" : "locked"}`}>
+        <div><span>CITY FAVOR</span><h3>{resident.favor.title}</h3><p>{resident.favor.description}</p></div>
+        <dl><div><dt>解鎖</dt><dd>熟識 {resident.favor.requiredPoints}</dd></div><div><dt>信任強化</dt><dd>{resident.favor.trustedAt}</dd></div><div><dt>消耗關係</dt><dd>{resident.favor.relationCost}</dd></div></dl>
+        <button type="button" disabled={busy || !resident.favor.available} onClick={onFavor}>{resident.favor.usedToday ? "今日已請求協助" : resident.favor.tier === "locked" ? "關係尚未達到熟識" : "請求這次協助"}</button>
+        <small>{resident.favor.reason || "每個玩家日只能向一名居民請求協助；不會直接獲得現金。"}</small>
+      </aside>
       {resident.interactedToday ? <div className="npc-dialog-result"><span>今日的對話</span><p id={descriptionId}>{resident.lastOutcome || `${resident.name}今天暫時沒有其他事情。`}</p><button type="button" onClick={onClose}>結束交談</button></div> : resident.event ? <div className="npc-dialog-event">
         <span>今日事件</span><h3>{resident.event.title}</h3><p id={descriptionId}>{resident.event.prompt}</p>
         <div className="npc-dialog-choices">{resident.event.choices.map((choice) => <button type="button" key={choice.id} disabled={busy} onClick={() => onChoose(choice.id)}><strong>{choice.label}</strong><small>{choice.detail}</small></button>)}</div>

@@ -666,3 +666,31 @@ test("three-day life rhythm connects existing play without creating cash inflati
   assert.match(css, /\.life-rhythm-choices > div/);
   assert.match(css, /@media \(max-width: 760px\)/);
 });
+
+test("city favor network turns NPC trust into one bounded daily choice", async () => {
+  const rules = await readFile(new URL("shared/npcs.ts", root), "utf8");
+  const worker = await readFile(new URL("worker/index.ts", root), "utf8");
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const css = await readFile(new URL("app/globals.css", root), "utf8");
+  const schema = await readFile(new URL("db/schema.ts", root), "utf8");
+  const migration = await readFile(new URL("drizzle/0032_city_favor_network.sql", root), "utf8");
+
+  assert.match(rules, /NPC_FAVOR_UNLOCK_POINTS = 20/);
+  assert.match(rules, /NPC_FAVOR_TRUSTED_POINTS = 50/);
+  assert.match(rules, /title: "熱食與歇腳"/);
+  assert.match(rules, /title: "健康評估"/);
+  assert.match(rules, /title: "財務整理指導"/);
+  assert.match(rules, /title: "閱讀與選書建議"/);
+  assert.doesNotMatch(rules.slice(rules.indexOf("NPC_FAVORS"), rules.indexOf("export const NPCS")), /cash|money|現金/i);
+  assert.match(schema, /playerNpcFavors = sqliteTable\("player_npc_favors"/);
+  assert.match(migration, /PRIMARY KEY\(`user_id`, `life_version`, `play_day`\)/);
+  assert.match(worker, /case "npc_favor"/);
+  assert.match(worker, /action_token=\?/);
+  assert.match(worker, /今天已向.*請求過協助/);
+  assert.match(worker, /"npc_interact", "npc_favor"/);
+  assert.match(page, /CITY FAVOR/);
+  assert.match(page, /每個玩家日只能向一名居民請求協助/);
+  assert.match(page, /role="progressbar"/);
+  assert.match(css, /\.npc-favor-panel/);
+  assert.match(css, /\.npc-relation-meter/);
+});
