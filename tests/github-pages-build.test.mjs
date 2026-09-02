@@ -580,6 +580,10 @@ test("dense game information is grouped behind clear disclosures and tabs", asyn
   assert.doesNotMatch(page, /CITY · LOBBY 01/);
   assert.match(css, /Information triage/);
   assert.match(css, /\.location-strip button:not\(\.closed\) em/);
+  assert.match(page, /className="story-tab-panel records-panel"/);
+  assert.match(css, /\.records-panel \{\s*grid-template-columns: minmax\(0, 1fr\)/s);
+  assert.match(css, /\.records-panel \.feed-heading[\s\S]*?grid-row: auto/);
+  assert.match(css, /\.story-panel > \.story-tab-panel/);
 });
 
 test("location NPCs provide durable relationships, daily choices, and career services", async () => {
