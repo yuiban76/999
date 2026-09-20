@@ -232,6 +232,13 @@
       "when": 1788362824450,
       "tag": "0032_city_favor_network",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1788370024450,
+      "tag": "0033_poker_npc_cash",
+      "breakpoints": true
     }
   ]
 }

@@ -668,6 +668,10 @@ test("three-day life rhythm connects existing play without creating cash inflati
   assert.match(page, /失敗不會遊戲結束/);
   assert.match(css, /\.life-rhythm-guide-overlay/);
   assert.match(css, /\.life-rhythm-choices > div/);
+  assert.match(css, /\.life-rhythm-panel \{[\s\S]*overflow-anchor: none;/);
+  assert.match(css, /\.action-stage \{ overflow: visible; \}/);
+  assert.match(css, /\.life-rhythm-guide \{[\s\S]*overscroll-behavior: contain;/);
+  assert.match(page, /setLifeRhythm\(\(current\) => JSON\.stringify\(current\) === JSON\.stringify\(data\.lifeRhythm\)/);
   assert.match(css, /@media \(max-width: 760px\)/);
 });
 

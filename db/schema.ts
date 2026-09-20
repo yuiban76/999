@@ -160,6 +160,25 @@ export const pokerTableState = sqliteTable("poker_table_state", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const pokerNpcSessions = sqliteTable("poker_npc_sessions", {
+  id: text("id").primaryKey(),
+  hostUserId: text("host_user_id").notNull(),
+  hostLifeVersion: integer("host_life_version").notNull().default(0),
+  npcCount: integer("npc_count").notNull().default(3),
+  bigBlind: integer("big_blind").notNull().default(100),
+  buyIn: integer("buy_in").notNull().default(3000),
+  feeRateBp: integer("fee_rate_bp").notNull().default(300),
+  stateJson: text("state_json").notNull().default("{}"),
+  status: text("status").notNull().default("idle"),
+  nextActionAt: integer("next_action_at").notNull().default(0),
+  lastResult: text("last_result").notNull().default(""),
+  lastPayout: integer("last_payout").notNull().default(0),
+  lastFee: integer("last_fee").notNull().default(0),
+  actionToken: text("action_token").notNull().default(""),
+  updatedAt: integer("updated_at").notNull(),
+  createdAt: integer("created_at").notNull(),
+}, (table) => [index("idx_poker_npc_host_status").on(table.hostUserId, table.status, table.updatedAt)]);
+
 export const playerProgress = sqliteTable("player_progress", {
   userId: text("user_id").primaryKey(),
   talentExp: integer("talent_exp").notNull().default(0),
