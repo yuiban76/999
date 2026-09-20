@@ -3063,8 +3063,15 @@ async function startPokerNpc(db: D1Database, player: PlayerRow, user: AuthUser, 
   return { message: `NPC 金錢牌桌已開局：${count} 名 NPC、買入 NT$${buyIn}，桌費 3%。` };
 }
 
+function normalizePokerNpcAction(value: string) {
+  // Keep the endpoint compatible with clients built before the poker action
+  // prefix was stripped in the shared action dispatcher.
+  const normalized = value.replace(/^poker_/, "");
+  return normalized === "npc_npc_start" || normalized === "npc_npc_action" ? normalized.slice(4) : normalized;
+}
+
 async function pokerNpcAction(request: Request, env: Env, user: AuthUser, player: PlayerRow, body: { action?: string; npcCount?: number; bigBlind?: number; move?: string; amount?: number }) {
-  const action = body.action || "";
+  const action = normalizePokerNpcAction(body.action || "");
   if (player.location !== "casino") return json({ message: "請先進入幸運賭場。" }, 409);
   let message = "";
   if (action === "npc_start") {
@@ -3100,7 +3107,10 @@ async function pokerAction(request: Request, env: Env) {
   if (!player || player.location !== "casino") return json({ message: "請先前往幸運賭場。" }, 400);
   let body: { action?: string; bet?: number; seatNo?: number; amount?: number; npcCount?: number; bigBlind?: number; move?: string };
   try { body = await request.json(); } catch { return json({ message: "牌桌資料格式錯誤。" }, 400); }
-  if (body.action?.startsWith("npc_")) return pokerNpcAction(request, env, user, player, body);
+  const rawAction = body.action || "";
+  if (rawAction.startsWith("npc_") || rawAction.startsWith("poker_npc_") || rawAction === "npc_npc_start" || rawAction === "npc_npc_action") {
+    return pokerNpcAction(request, env, user, player, { ...body, action: normalizePokerNpcAction(rawAction) });
+  }
   await recoverStalePokerStart(env.DB);
   await recoverStalePokerSettlement(env.DB);
   await expireIdlePokerSeats(env.DB);
