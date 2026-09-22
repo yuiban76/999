@@ -288,6 +288,16 @@ type NpcResident = {
   event: null | { id: string; title: string; prompt: string; choices: Array<{ id: string; label: string; detail: string }> };
 };
 type NpcState = { residents: NpcResident[]; dailyLimit: number; favorUsedToday: boolean; note: string };
+type LastChipsState = {
+  room: null | {
+    code: string; status: "lobby" | "active" | "won" | "bankrupt" | "missed"; isHost: boolean;
+    bankroll: number; debt: number; day: number; dayProgress: number; paymentMade: number;
+    missedPeriods: number; chapter: number; chapterTitle: string; chapterStory: string;
+    members: Array<{ id: string; displayName: string; ready: boolean; online: boolean; totalBet: number; net: number; isMine: boolean }>;
+    events: Array<{ userId: string; displayName: string; delta: number; at: number }>;
+  };
+  history: Array<{ code: string; status: string; bankroll: number; debt: number; started_at: number | null; finished_at: number | null }>;
+};
 
 type Bootstrap = {
   serverNow?: number;
@@ -319,6 +329,7 @@ type Bootstrap = {
   lifeRhythm?: LifeRhythmState;
   bookStore?: BookStoreState;
   npcs?: NpcState;
+  lastChips?: LastChipsState;
 };
 
 type CityMemory = {
@@ -802,6 +813,9 @@ function GameHome() {
   const [casino, setCasino] = useState<CasinoState>({ capacity: 5, activeCount: 0, seats: [], hand: null });
   const [poker, setPoker] = useState<PokerState>({ capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 });
   const [pokerNpc, setPokerNpc] = useState<PokerNpcState>({ mode: "npc", capacity: 5, status: "idle", playerCount: 0, npcCount: 0, bigBlind: 100, buyIn: 3000, feeRateBp: 300, communityCards: [], pot: 0, seats: [], hand: null, lastResult: "", lastPayout: 0, lastFee: 0 });
+  const [lastChips, setLastChips] = useState<LastChipsState>({ room: null, history: [] });
+  const [lastChipsCode, setLastChipsCode] = useState("");
+  const [lastChipsPayment, setLastChipsPayment] = useState("");
   const [bookStore, setBookStore] = useState<BookStoreState>({ books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK });
   const [bingo, setBingo] = useState<BingoState>({ status: "lobby", drawn: [], preview: [], winnerIds: [], players: [] });
   const [dicePoker, setDicePoker] = useState<DicePokerState>({ status: "lobby", players: [] });
@@ -945,6 +959,7 @@ function GameHome() {
       setCasino(data.casino);
       if (data.poker) setPoker(data.poker);
       if (data.pokerNpc) setPokerNpc(data.pokerNpc);
+      if (data.lastChips) setLastChips(data.lastChips);
       if (data.bingo) setBingo(data.bingo);
       if (data.dicePoker) setDicePoker(data.dicePoker);
       if (data.tournament) setTournament(data.tournament);
@@ -1021,7 +1036,7 @@ function GameHome() {
   async function act(action: string, payload: Record<string, unknown> = {}) {
     if (busy) return;
     const canActDuringWait = ["move", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy", "beg_response", "inventory_use", "street_share_food", "aid_box_donate", "coop_contribute", "story_ack", "contract_create", "contract_accept", "contract_decline", "contract_deposit", "npc_interact", "npc_favor", "life_plan_start"].includes(action)
-      || action.startsWith("casino_") || action.startsWith("poker_") || action.startsWith("bingo_") || action.startsWith("dice_") || action.startsWith("tournament_");
+      || action.startsWith("casino_") || action.startsWith("poker_") || action.startsWith("bingo_") || action.startsWith("dice_") || action.startsWith("tournament_") || action.startsWith("lastchips_");
     if (actionLocked && !canActDuringWait) {
       setNotice(`${player.actionLabel || "目前的行動"}尚未完成，請等待 ${actionSecondsLeft} 秒；期間可移動、換職、使用銀行、與 NPC 交談、處理玩家請求，或前往賭場遊玩。`);
       return;
@@ -1040,12 +1055,12 @@ function GameHome() {
       return;
     }
     try {
-      const response = await fetch(`${API_ORIGIN}${action.startsWith("casino_") ? "/api/casino/action" : action.startsWith("poker_") ? "/api/poker/action" : action.startsWith("bingo_") ? "/api/bingo/action" : action.startsWith("dice_") ? "/api/dice-poker/action" : action.startsWith("tournament_") ? "/api/tournament/action" : "/api/game/action"}`, {
+      const response = await fetch(`${API_ORIGIN}${action.startsWith("lastchips_") ? "/api/last-chips/action" : action.startsWith("casino_") ? "/api/casino/action" : action.startsWith("poker_") ? "/api/poker/action" : action.startsWith("bingo_") ? "/api/bingo/action" : action.startsWith("dice_") ? "/api/dice-poker/action" : action.startsWith("tournament_") ? "/api/tournament/action" : "/api/game/action"}`, {
         method: "POST",
         headers: apiHeaders(true),
-        body: JSON.stringify({ action: action.startsWith("casino_") ? action.slice(7) : action.startsWith("poker_") ? action.slice(6) : action.startsWith("bingo_") ? action.slice(6) : action.startsWith("dice_") ? action.slice(5) : action.startsWith("tournament_") ? action.slice(11) : action, ...payload }),
+        body: JSON.stringify({ action: action.startsWith("lastchips_") ? action.slice(10) : action.startsWith("casino_") ? action.slice(7) : action.startsWith("poker_") ? action.slice(6) : action.startsWith("bingo_") ? action.slice(6) : action.startsWith("dice_") ? action.slice(5) : action.startsWith("tournament_") ? action.slice(11) : action, ...payload }),
       });
-      const data = await response.json() as { serverNow?: number; player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; pokerNpc?: PokerNpcState; bingo?: BingoState; dicePoker?: DicePokerState; tournament?: TournamentState; bookStore?: BookStoreState; cityMemory?: CityMemory; transferRequests?: TransferRequest[]; medicalRequests?: MedicalRequest[]; loanRequests?: LoanRequest[]; begRequests?: BegRequest[]; street?: StreetState; aidBoxes?: AidBoxState; coop?: CoopState; reputation?: ReputationState; commissions?: CommissionState; mystery?: MysteryState; contracts?: LifeContractState; lifeLedger?: LifeLedgerState; lifeRhythm?: LifeRhythmState; npcs?: NpcState; scratch?: { price: number; prize: number } | null; message?: string };
+      const data = await response.json() as { serverNow?: number; player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; pokerNpc?: PokerNpcState; bingo?: BingoState; dicePoker?: DicePokerState; tournament?: TournamentState; bookStore?: BookStoreState; cityMemory?: CityMemory; transferRequests?: TransferRequest[]; medicalRequests?: MedicalRequest[]; loanRequests?: LoanRequest[]; begRequests?: BegRequest[]; street?: StreetState; aidBoxes?: AidBoxState; coop?: CoopState; reputation?: ReputationState; commissions?: CommissionState; mystery?: MysteryState; contracts?: LifeContractState; lifeLedger?: LifeLedgerState; lifeRhythm?: LifeRhythmState; npcs?: NpcState; lastChips?: LastChipsState; scratch?: { price: number; prize: number } | null; message?: string };
       if (typeof data.serverNow === "number") setServerTimeOffsetMs(data.serverNow - currentWallClockMs());
       if (!response.ok || !data.player) throw new Error(data.message || "行動失敗");
       syncPlayer(data.player, action === "reset");
@@ -1054,6 +1069,7 @@ function GameHome() {
       if (data.casino) setCasino(data.casino);
       if (data.poker) setPoker(data.poker);
       if (data.pokerNpc) setPokerNpc(data.pokerNpc);
+      if (data.lastChips) setLastChips(data.lastChips);
       if (data.bingo) setBingo(data.bingo);
       if (data.dicePoker) setDicePoker(data.dicePoker);
       if (data.tournament) setTournament(data.tournament);
@@ -1075,6 +1091,7 @@ function GameHome() {
       if (data.npcs) setNpcs(data.npcs);
       if (data.scratch) setScratchResult(data.scratch);
       setNotice(data.message || "行動完成");
+      if (player.mainStory === "last_chips" && (action.startsWith("casino_") || action.startsWith("poker_") || action.startsWith("bingo_") || action.startsWith("dice_") || action.startsWith("tournament_"))) void loadWorld(true);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "行動失敗，請稍後再試。");
     } finally {
@@ -1241,15 +1258,16 @@ function GameHome() {
               {avatarSrc ? <img src={avatarSrc} alt={`${profile?.displayName}的大頭貼`} /> : (profile?.displayName.slice(0, 1) ?? "旅")}
               {profile && <label className="avatar-upload" title="上傳自己的照片">換照片<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => void uploadAvatar(event)} disabled={busy} /></label>}
             </div>
-            <div><h1>{profile?.displayName ?? "旅行者"}</h1><span className="job-tag">{career.title}</span>{player.mainStory === "prodigal_return" && <span className="story-tag">主線 · 浪子回頭</span>}</div>
+            <div><h1>{profile?.displayName ?? "旅行者"}</h1><span className="job-tag">{career.title}</span>{player.mainStory === "prodigal_return" && <span className="story-tag">主線 · 浪子回頭</span>}{player.mainStory === "last_chips" && <span className="story-tag">主線 · 最後的籌碼</span>}</div>
           </div>
-          <div className="cash-card"><span>資產概況</span><strong><small>手上 NT$</small>{formatMoney(player.cash)}</strong><div className="cash-breakdown"><p><span>銀行存款</span><b>NT${formatMoney(player.bankBalance)}</b></p><p className={player.loanBalance ? "debt" : ""}><span>貸款餘額</span><b>NT${formatMoney(player.loanBalance)}</b></p></div><small>{profile ? "伺服器已安全保存" : "訪客模式暫存"}</small></div>
+          <div className="cash-card"><span>{player.mainStory === "last_chips" ? "全隊資產概況" : "資產概況"}</span><strong><small>{player.mainStory === "last_chips" ? "共用賭本 NT$" : "手上 NT$"}</small>{formatMoney(player.mainStory === "last_chips" ? lastChips.room?.bankroll ?? player.cash : player.cash)}</strong><div className="cash-breakdown"><p><span>{player.mainStory === "last_chips" ? "所有隊友可動用" : "銀行存款"}</span><b>{player.mainStory === "last_chips" ? "全部" : `NT$${formatMoney(player.bankBalance)}`}</b></p><p className={player.mainStory === "last_chips" ? lastChips.room?.debt ? "debt" : "" : player.loanBalance ? "debt" : ""}><span>{player.mainStory === "last_chips" ? "全隊欠款" : "貸款餘額"}</span><b>NT${formatMoney(player.mainStory === "last_chips" ? lastChips.room?.debt ?? 0 : player.loanBalance)}</b></p></div><small>{profile ? "伺服器已安全保存" : "訪客模式暫存"}</small></div>
+          {player.mainStory === "last_chips" && lastChips.room && <LastChipsPanel state={lastChips.room} history={lastChips.history} busy={busy} payment={lastChipsPayment} setPayment={setLastChipsPayment} onAction={act} />}
           {player.mainStory === "prodigal_return" && player.loanBalance > 0 && <div className={`debt-deadline ${player.missedPaymentDays ? "warning" : ""}`}><span>本日最低繳款</span><strong>NT${formatMoney(player.dailyMinimumPayment)}</strong><small>已繳 NT${formatMoney(player.dailyPaymentMade)} · 尚欠 NT${formatMoney(Math.max(0, player.dailyMinimumPayment - player.dailyPaymentMade))} · 連續欠繳 {player.missedPaymentDays}/2 天</small></div>}
-          <div className="career-card">
+          {player.mainStory !== "last_chips" && <div className="career-card">
              <div><span>目前職業</span><strong>{career.title}</strong></div><small>{isCrime ? `違法行動被捕機率 ${crimeRisk}% · 服刑 ${crimeSentence} 小時` : isStreet ? `今日乞討 NT$${formatMoney(street.begIncome)} / NT$${formatMoney(street.begCap)} · 無固定薪資` : isWriter ? `粉絲 ${formatMoney(player.writerFans)} · 每日收益約 NT$${formatMoney(player.writerFans * WRITER_DAILY_FAN_RATE)}` : hasRestaurant ? `每日結算淨收益 NT$${formatMoney(RESTAURANT_DAILY_NET)}` : `時薪 NT$${formatMoney(career.hourlyPay)}`}</small>
             <div className="career-track"><i style={{ width: `${careerProgress}%` }} /></div>
             <p>{isWriter && nextCareer ? `升遷為${nextCareerTitle}：還需 ${Math.max(0, nextCareer.threshold - player.writerFans)} 位粉絲` : isWriter ? "已達文學作家最高職位" : hasRestaurant ? "餐廳已啟用每日結算，改職後收益暫停" : nextCareer && player.jobCategory !== "unfixed" ? `升遷為${nextCareerTitle}：${Math.max(0, nextCareer.threshold - player.jobExp)} EXP，${formatRequirements(nextCareer.requirements)}` : player.jobCategory === "unfixed" ? "前往工作地選擇產業路線" : "已達此產業最高職位"}</p>
-          </div>
+          </div>}
           {player.illness && <div className="illness-alert"><strong>目前生病：{player.illness}</strong><span>工作與上課暫停，請前往市立醫院。</span></div>}
           <div className="stat-list">
             {statMeta.map((item) => <div className="stat-row" key={item.key}><span className="stat-label"><span>{item.icon}</span>{item.label}</span><div className="stat-track"><i style={{ width: `${Math.min(100, player[item.key] / (item.key === "energy" && player.talents.includes("strong_body") ? 120 : 100) * 100)}%` }} /></div><strong>{player[item.key]}</strong></div>)}
@@ -1269,7 +1287,7 @@ function GameHome() {
         <section className="world-panel panel">
           <div className="location-header"><div><p>目前位置</p><h2>{currentLocation.image ? <img className="location-photo" src={currentLocation.image} alt="" /> : <LocationIcon id={currentLocation.id as Exclude<LocationId, "casino">} prominent />}{currentLocation.name}</h2><small>{currentLocation.caption} · {currentLocation.hours}</small></div>{player.location === "business" ? <div className="location-career-progress"><span>升遷進度</span><strong>{player.jobCategory === "unfixed" ? "尚未選擇產業" : nextCareer ? `下一階：${nextCareerTitle}` : "已達產業最高職位"}</strong><div><i style={{ width: `${player.jobCategory === "unfixed" ? 0 : careerProgress}%` }} /></div><small>{player.jobCategory === "unfixed" ? "請從下方「找工作」選擇產業路線" : isWriter ? `粉絲數：${player.writerFans} / ${nextCareer?.threshold ?? player.writerFans}` : nextCareer ? `職業經驗：${player.jobExp} / ${nextCareer.threshold} EXP` : `目前累積 ${player.jobExp} EXP`}</small><small>{isWriter ? `每日寫作最多 ${WRITER_DAILY_WRITING_LIMIT} 次；升遷只看粉絲數` : nextCareer && player.jobCategory !== "unfixed" ? `能力要求：${formatRequirements(nextCareer.requirements) || "無"}` : player.jobCategory === "unfixed" ? "入行第一階免能力門檻" : "能力與經驗均已達標"}</small></div> : null}</div>
           <nav className="location-strip" aria-label="城市地點">
-            {locations.map((item) => <button className={`${item.id === player.location ? "active" : ""} ${!isLocationOpen(item.id, sharedMinutes) ? "closed" : ""}`} key={item.id} onClick={() => void act("move", { location: item.id })} disabled={busy || (item.id === "prison" && player.location !== "prison")}>{item.image ? <img className="location-photo" src={item.image} alt="" /> : <LocationIcon id={item.id as Exclude<LocationId, "casino">} />}<small>{item.name}</small><em>{item.id === "prison" && player.location !== "prison" ? "僅限服刑" : isLocationOpen(item.id, sharedMinutes) ? item.hours : "已關門"}</em></button>)}
+            {locations.map((item) => <button className={`${item.id === player.location ? "active" : ""} ${!isLocationOpen(item.id, sharedMinutes) ? "closed" : ""}`} key={item.id} onClick={() => void act("move", { location: item.id })} disabled={busy || (item.id === "prison" && player.location !== "prison") || (player.mainStory === "last_chips" && !["casino", "shopping"].includes(item.id))}>{item.image ? <img className="location-photo" src={item.image} alt="" /> : <LocationIcon id={item.id as Exclude<LocationId, "casino">} />}<small>{item.name}</small><em>{item.id === "prison" && player.location !== "prison" ? "僅限服刑" : isLocationOpen(item.id, sharedMinutes) ? item.hours : "已關門"}</em></button>)}
           </nav>
           <div className="action-stage" id="city-actions">
             <div className="action-intro"><h3>{actionTitle(player.location)}</h3><p>{actionLocked ? `${player.actionLabel || "目前的行動"}進行中，剩餘 ${actionSecondsLeft} 秒。等待期間仍可移動、換職、使用銀行、與 NPC 交談或前往賭場。` : actionDescription(player.location, dailyRent)}</p></div>
@@ -1327,7 +1345,7 @@ function GameHome() {
               {player.location === "hospital" && <><ActionCard icon="急" title="24 小時急診" meta={`NT$${formatMoney(Math.floor(2500 * (1 - effectiveHospitalDiscount)))} · 等待 20 秒 · 健康至少恢復至 70`} button="前往急診" onClick={() => void act("hospital", { kind: "emergency" })} featured disabled={actionBusy} /><ActionCard icon="診" title="一般門診" meta={`07:00～23:00 · NT$${formatMoney(Math.floor(600 * (1 - effectiveHospitalDiscount)))} · 等待 15 秒 · 健康 +25`} button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /><ActionCard icon="療" title="完整治療" meta={`07:00～23:00 · NT$${formatMoney(Math.floor(1500 * (1 - effectiveHospitalDiscount)))} · 等待 30 秒 · 健康至少恢復至 80`} button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} />{effectiveHospitalDiscount > 0 && <p className="hospital-discount-note">目前醫療費用折抵 {Math.round(effectiveHospitalDiscount * 100)}%（職業與城市效果取較高者）</p>}</>}
             </div>
           </div>
-          <footer className="world-footer"><span>只有上線時計入個人遊玩天數 · 城市時間全服同步</span><button onClick={() => void act("reset")} disabled={busy}>重新開始人生</button></footer>
+          <footer className="world-footer"><span>{player.mainStory === "last_chips" ? "隊伍有任何一人在線，挑戰日數才會前進" : "只有上線時計入個人遊玩天數 · 城市時間全服同步"}</span><button onClick={() => void act("reset")} disabled={busy || player.mainStory === "last_chips" && lastChips.room?.status === "active"}>{player.mainStory === "last_chips" ? "挑戰結束後重開" : "重新開始人生"}</button>{profile && player.mainStory !== "unselected" && player.mainStory !== "last_chips" && <button onClick={() => { if (window.confirm("這會清除目前人生進度，回到主線選擇。確定要繼續嗎？")) void act("reset", { story: "unselected" }); }} disabled={busy}>重開並選擇主線</button>}</footer>
         </section>
 
         <aside className="story-panel panel">
@@ -1356,7 +1374,7 @@ function GameHome() {
             {feed.slice(0, 6).map((item) => <li key={item.id} className={item.tone}><time>{item.time}</time><div><strong>{item.playerName ? `${item.playerName} · ` : ""}{item.title}</strong><p>{item.detail}</p></div></li>)}
           </ol>
           <div className={`city-memory-card ${cityMemory.state.tone}`}><span>城市記憶 · 三日週期</span><strong>{cityMemory.state.name}</strong><p>{cityMemory.state.description}</p><div><small>工作 {cityMemory.totals.work}</small><small>醫療 {cityMemory.totals.hospital}</small><small>居住 {cityMemory.totals.housing}</small><small>學習 {cityMemory.totals.study}</small><small>賭場 {cityMemory.totals.casino}</small><small>事件 {cityMemory.totals.event}</small></div></div>
-          <div className="next-goal"><span>當前《浪子回頭》任務進度</span><strong>{player.mainStory !== "prodigal_return" ? "尚未開始《浪子回頭》" : nextStoryChapter ? `第 ${nextStoryChapter.chapter} 章 · ${nextStoryChapter.title}` : "第 6 章完成 · 回家的路"}</strong><div><i style={{ width: `${player.mainStory === "prodigal_return" ? storyProgress : 0}%` }} /></div><small>{player.mainStory !== "prodigal_return" ? "選擇人生主線後開始記錄" : nextStoryChapter ? `目前貸款 NT$${formatMoney(player.loanBalance)} · 目標降至 NT$${formatMoney(nextStoryDebt)}（初始負債 ${Math.round(nextStoryChapter.remainingRatio * 100)}%）` : "貸款已全部清償 · 《浪子回頭》全章完成"}</small></div>
+          {player.mainStory !== "last_chips" && <div className="next-goal"><span>當前《浪子回頭》任務進度</span><strong>{player.mainStory !== "prodigal_return" ? "尚未開始《浪子回頭》" : nextStoryChapter ? `第 ${nextStoryChapter.chapter} 章 · ${nextStoryChapter.title}` : "第 6 章完成 · 回家的路"}</strong><div><i style={{ width: `${player.mainStory === "prodigal_return" ? storyProgress : 0}%` }} /></div><small>{player.mainStory !== "prodigal_return" ? "選擇人生主線後開始記錄" : nextStoryChapter ? `目前貸款 NT$${formatMoney(player.loanBalance)} · 目標降至 NT$${formatMoney(nextStoryDebt)}（初始負債 ${Math.round(nextStoryChapter.remainingRatio * 100)}%）` : "貸款已全部清償 · 《浪子回頭》全章完成"}</small></div>}
           </div>}
         </aside>
       </div>
@@ -1366,7 +1384,8 @@ function GameHome() {
         <button type="button" className={mobileView === "social" ? "active" : ""} aria-pressed={mobileView === "social"} onClick={() => setMobileView("social")}><MobileNavIcon name="social" /><span>多人世界</span>{online.length > 0 && <b aria-label={`${online.length} 位玩家在線`}>{online.length}</b>}</button>
       </nav>
       {profile && player.mainStory === "unselected" && <div className="story-select-overlay" role="dialog" aria-modal="true" aria-labelledby="story-select-title">
-        <section className="story-select-card"><header><span>CHOOSE YOUR LIFE STORY</span><h2 id="story-select-title">選擇人生主線</h2><p>主線選定後不能更換，並會決定你的初始條件。</p></header><article><div className="story-choice-title"><span>MAIN STORY 01</span><h3>《浪子回頭》</h3></div><div className="story-prologue">{PRODIGAL_RETURN_STORY.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div><div className="story-starting-stats"><div><span>初始金錢</span><strong>NT$37</strong></div><div className="debt"><span>初始負債</span><strong>NT$250,000</strong></div></div><button type="button" onClick={() => void act("choose_story", { story: "prodigal_return" })} disabled={busy}>{busy ? "正在開始人生……" : "選擇《浪子回頭》並開始"}<span>→</span></button></article></section>
+        <section className="story-select-card"><header><span>CHOOSE YOUR LIFE STORY</span><h2 id="story-select-title">{lastChips.room?.status === "lobby" ? "《最後的籌碼》準備室" : "選擇人生主線"}</h2><p>{lastChips.room?.status === "lobby" ? "1～4 位成員全數準備後，由房主開局；開局後成員固定。" : "選好人生主線後開始挑戰；《最後的籌碼》可用房間碼邀請 1～4 人。"}</p></header>
+          {lastChips.room?.status === "lobby" ? <article className="last-chips-lobby"><div className="story-choice-title"><span>ROOM CODE</span><h3>{lastChips.room.code}</h3></div><p>把房間碼分享給隊友。每個人準備好後才能開始。</p><ul>{lastChips.room.members.map((member) => <li key={member.id}><span>{member.displayName}{member.isMine ? "（你）" : ""}</span><b>{member.ready ? "已準備" : "未準備"}</b></li>)}</ul><div className="last-chips-actions"><button type="button" disabled={busy} onClick={() => void act("lastchips_ready", { ready: !lastChips.room?.members.find((member) => member.isMine)?.ready })}>{lastChips.room.members.find((member) => member.isMine)?.ready ? "取消準備" : "我準備好了"}</button>{lastChips.room.isHost && <button type="button" disabled={busy || lastChips.room.members.some((member) => !member.ready)} onClick={() => void act("lastchips_start")}>開始挑戰</button>}<button type="button" className="quiet" disabled={busy} onClick={() => void act("lastchips_leave")}>離開房間</button></div></article> : <div className="story-choice-grid"><article><div className="story-choice-title"><span>MAIN STORY 01</span><h3>《浪子回頭》</h3></div><p className="story-choice-summary">從賭場失去一切後，帶著 NT$37 和 NT$250,000 債務重新生活。這條主線靠工作與人生選擇還債。</p><details className="story-prologue"><summary>閱讀《浪子回頭》序章</summary>{PRODIGAL_RETURN_STORY.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</details><div className="story-starting-stats"><div><span>初始金錢</span><strong>NT$37</strong></div><div className="debt"><span>初始負債</span><strong>NT$250,000</strong></div></div><button type="button" onClick={() => void act("choose_story", { story: "prodigal_return" })} disabled={busy}>選擇《浪子回頭》並開始<span>→</span></button></article><article><div className="story-choice-title"><span>MAIN STORY 02 · 1～4 PLAYERS</span><h3>《最後的籌碼》</h3></div><div className="story-prologue"><p>欠款從 NT$250,000 開始。你們只有 NT$100,000 共用賭本，所有人都能自由動用，勝負會記在各自名下。</p><p>只能靠賭博還債。每個隊伍在線日計息 0.02%；每三日最低繳款 NT$500。兩期連續未繳或結算後無法再下注就失敗。</p></div><div className="story-starting-stats"><div><span>共用賭本</span><strong>NT$100,000</strong></div><div className="debt"><span>初始欠款</span><strong>NT$250,000</strong></div></div><button type="button" disabled={busy} onClick={() => void act("lastchips_create")}>建立房間<span>→</span></button><form className="last-chips-join" onSubmit={(event) => { event.preventDefault(); void act("lastchips_join", { code: lastChipsCode }); }}><label htmlFor="last-chips-code">加入隊友房間</label><input id="last-chips-code" value={lastChipsCode} onChange={(event) => setLastChipsCode(event.target.value.toUpperCase())} maxLength={6} placeholder="6 碼房間碼" aria-label="最後的籌碼房間碼" /><button type="submit" disabled={busy || lastChipsCode.trim().length !== 6}>加入</button></form>{lastChips.history.length > 0 && <small>保留戰績：{lastChips.history.length} 局，上一局{lastChips.history[0].status === "won" ? "通關" : "失敗"}</small>}</article></div>}</section>
       </div>}
       {profile && player.gameOver === "prodigal_insolvent" && <div className="story-select-overlay game-over-overlay" role="dialog" aria-modal="true" aria-labelledby="game-over-title">
         <section className="story-select-card game-over-card"><header><span>BAD ENDING</span><h2 id="game-over-title">《浪子回頭：無力償還》</h2><p>連續兩個遊戲日未繳足每日最低還款額</p></header><article><div className="story-prologue">{PRODIGAL_FAILURE_STORY.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div><button type="button" onClick={() => void act("reset")} disabled={busy}>{busy ? "正在重新開始……" : "重新開始《浪子回頭》"}<span>↻</span></button></article></section>
@@ -1510,6 +1529,24 @@ const BINGO_CARD_LINES = [
 function bingoProgress(card: number[], drawn: number[]) {
   const marked = (index: number) => card[index] === 0 || drawn.includes(card[index]);
   return Math.max(0, ...BINGO_CARD_LINES.map((line) => line.filter(marked).length));
+}
+
+function LastChipsPanel({ state, history, busy, payment, setPayment, onAction }: {
+  state: NonNullable<LastChipsState["room"]>; history: LastChipsState["history"]; busy: boolean;
+  payment: string; setPayment: (value: string) => void; onAction: (action: string, payload?: Record<string, unknown>) => void;
+}) {
+  const finished = state.status !== "active" && state.status !== "lobby";
+  const status = state.status === "won" ? "全隊通關" : state.status === "bankrupt" ? "破產失敗" : state.status === "missed" ? "連續兩期未繳失敗" : "挑戰進行中";
+  const amount = Math.floor(Number(payment));
+  return <section className="last-chips-panel" aria-label="最後的籌碼主線">
+    <div className="last-chips-heading"><span>THE LAST CHIPS · {state.code}</span><strong>《最後的籌碼》</strong><em>{status}</em></div>
+    <p className="last-chips-scene"><b>{state.chapter ? `第 ${state.chapter} 章` : "序章"} · {state.chapterTitle}</b>{state.chapterStory}</p>
+    <div className="last-chips-figures"><div><span>全隊可用賭本</span><strong>NT${formatMoney(state.bankroll)}</strong></div><div><span>剩餘欠款</span><strong>NT${formatMoney(state.debt)}</strong></div></div>
+    {state.status === "active" && <><p className="last-chips-deadline">隊伍第 {state.day} 日 · 每日利息 0.02% · 每三日最低 NT$500<br />本期已繳 NT${formatMoney(state.paymentMade)} · 連續未繳 {state.missedPeriods}/2 期</p><form className="last-chips-pay" onSubmit={(event) => { event.preventDefault(); onAction("lastchips_repay", { amount }); }}><label htmlFor="last-chips-payment">用共用賭本還款</label><div><input id="last-chips-payment" type="number" inputMode="numeric" min="1" max={Math.min(state.bankroll, state.debt)} value={payment} onChange={(event) => setPayment(event.target.value)} placeholder="輸入金額" /><button disabled={busy || !Number.isSafeInteger(amount) || amount < 1 || amount > state.bankroll || amount > state.debt}>確認還款</button></div></form></>}
+    <div className="last-chips-roster"><h3>隊友下注戰績</h3>{state.members.map((member) => <div key={member.id}><span><b>{member.displayName}{member.isMine ? "（你）" : ""}</b><small>{member.online ? "在線" : "離線，可回來"}</small></span><span>下注總額 NT${formatMoney(member.totalBet)}</span><strong className={member.net >= 0 ? "positive" : "negative"}>{member.net >= 0 ? "淨贏" : "淨輸"} NT${formatMoney(Math.abs(member.net))}</strong></div>)}</div>
+    {finished && <><p className="last-chips-result">{state.status === "won" ? "債務已清零。這一局的賭本與每位隊友的勝負永久留在戰績。" : state.status === "bankrupt" ? "所有進行中的下注已結算，賭本不足以再下注。" : "連續兩個繳款期沒有繳足最低款。"}</p><button className="last-chips-restart" disabled={busy} onClick={() => onAction("reset")}>重新挑戰 · 整局重來</button></>}
+    {history.length > 0 && <details><summary>歷次戰績（{history.length}）</summary>{history.map((run) => <p key={`${run.code}-${run.started_at}`}>{run.code} · {run.status === "won" ? "通關" : "失敗"} · 剩餘欠款 NT${formatMoney(run.debt)}</p>)}</details>}
+  </section>;
 }
 
 function BingoTable({ state, signedIn, busy, onAction }: { state: BingoState; signedIn: boolean; busy: boolean; onAction: (action: string, payload?: Record<string, unknown>) => void }) {

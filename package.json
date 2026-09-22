@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "test": "npm run build && node --test tests/github-pages-build.test.mjs tests/poker-npc-rules.test.mjs",
     "test:multiplayer": "node tests/multiplayer-api-smoke.mjs",
+    "test:last-chips": "node tests/last-chips-smoke.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },

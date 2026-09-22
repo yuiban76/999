@@ -72,6 +72,20 @@ type PlayerRow = {
   last_seen_at: number;
 };
 
+type LastChipsRoomRow = { id: string; code: string; host_user_id: string; status: "lobby" | "active" | "won" | "bankrupt" | "missed"; bankroll: number; debt: number; lowest_debt: number; elapsed_ms: number; processed_day: number; payment_made: number; missed_periods: number; chapter: number; wallet_sync: number; last_tick_at: number; started_at: number | null; finished_at: number | null; created_at: number };
+type LastChipsMemberRow = { room_id: string; user_id: string; display_name: string; ready: number; current: number; total_bet: number; net: number; joined_at: number };
+const LAST_CHIPS_STARTING_BANKROLL = 100_000;
+const LAST_CHIPS_STARTING_DEBT = 250_000;
+const LAST_CHIPS_MINIMUM = 500;
+const LAST_CHIPS_DAY_MS = 86_400_000;
+const LAST_CHIPS_CHAPTERS = [
+  { debt: 200_000, title: "第一張收據", story: "債主把第一張大額還款收據壓在牌桌邊。沒有人替你們出錢；那串數字是隊友一注一注贏來的。" },
+  { debt: 150_000, title: "同一本帳", story: "有人想把賭本全押，有人想先留住下一期的最低款。意見可以不同，但每次下注和每筆淨勝負都寫在同一本帳上。" },
+  { debt: 100_000, title: "桌上的空位", story: "一位隊友斷線了，空位仍留著。其餘的人繼續打牌；等那個人回來，欠款和戰績都沒有替任何人暫停。" },
+  { debt: 50_000, title: "最後一夜", story: "催款訊息又亮起，賭場照常開燈。你們已走到最後一段路，但一場失手仍可能讓共用賭本見底。" },
+  { debt: 0, title: "最後的籌碼", story: "最後一筆欠款清零。債主拿走收據，你們帶走這一局共同承擔的勝負，終於可以離開牌桌。" },
+];
+
 type CasinoRow = { user_id: string; player_name: string; player_cards: string; dealer_cards: string; bet: number; status: string; result: string; seat_no: number | null; reveal_at: number; life_version: number; updated_at: number; deal_token: string };
 type CasinoTableRow = { id: string; deck: string; round_token: string; action_token: string; updated_at: number };
 type PokerRow = { user_id: string; player_name: string; hole_cards: string; community_cards: string; bet: number; status: string; result: string; seat_no: number | null; reveal_at: number; street_bet: number; acted: number; life_version: number; round_token: string; action_token: string; updated_at: number };
@@ -698,6 +712,51 @@ async function ensureSchema(db: D1Database) {
       WHEN current_job IN ('顧問','家教') THEN '資深接案者'
       WHEN current_job='街頭藝人' THEN '自由工作顧問' END,
     job_category='freelance' WHERE current_job IN ('攝影師','翻譯','接案設計師','顧問','家教','街頭藝人')`).run();
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS last_chips_rooms (
+      id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, host_user_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'lobby', bankroll INTEGER NOT NULL DEFAULT 100000,
+      debt INTEGER NOT NULL DEFAULT 250000, lowest_debt INTEGER NOT NULL DEFAULT 250000,
+      elapsed_ms INTEGER NOT NULL DEFAULT 0, processed_day INTEGER NOT NULL DEFAULT 0,
+      payment_made INTEGER NOT NULL DEFAULT 0, missed_periods INTEGER NOT NULL DEFAULT 0,
+      chapter INTEGER NOT NULL DEFAULT 0, wallet_sync INTEGER NOT NULL DEFAULT 0,
+      last_tick_at INTEGER NOT NULL DEFAULT 0, started_at INTEGER, finished_at INTEGER,
+      created_at INTEGER NOT NULL)`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS last_chips_members (
+      room_id TEXT NOT NULL, user_id TEXT NOT NULL, display_name TEXT NOT NULL,
+      ready INTEGER NOT NULL DEFAULT 0, current INTEGER NOT NULL DEFAULT 1,
+      total_bet INTEGER NOT NULL DEFAULT 0, net INTEGER NOT NULL DEFAULT 0,
+      joined_at INTEGER NOT NULL, PRIMARY KEY(room_id,user_id))`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS last_chips_cash_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, room_id TEXT NOT NULL, user_id TEXT NOT NULL,
+      delta INTEGER NOT NULL, created_at INTEGER NOT NULL)`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_last_chips_host ON last_chips_rooms(host_user_id)"),
+    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_last_chips_current_user ON last_chips_members(user_id) WHERE current=1"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_last_chips_events_room ON last_chips_cash_events(room_id,id)"),
+    db.prepare(`CREATE TRIGGER IF NOT EXISTS last_chips_cash_guard BEFORE UPDATE OF cash ON players
+      WHEN NEW.cash < OLD.cash AND EXISTS (
+        SELECT 1 FROM last_chips_members m JOIN last_chips_rooms r ON r.id=m.room_id
+        WHERE m.user_id=NEW.user_id AND m.current=1 AND r.status='active' AND r.wallet_sync=0
+          AND r.bankroll < OLD.cash-NEW.cash)
+      BEGIN SELECT RAISE(IGNORE); END`),
+    db.prepare(`CREATE TRIGGER IF NOT EXISTS last_chips_cash_mirror AFTER UPDATE OF cash ON players
+      WHEN NEW.cash <> OLD.cash AND EXISTS (
+        SELECT 1 FROM last_chips_members m JOIN last_chips_rooms r ON r.id=m.room_id
+        WHERE m.user_id=NEW.user_id AND m.current=1 AND r.status='active' AND r.wallet_sync=0)
+      BEGIN
+        UPDATE last_chips_rooms SET bankroll=bankroll+NEW.cash-OLD.cash
+          WHERE id=(SELECT room_id FROM last_chips_members WHERE user_id=NEW.user_id AND current=1);
+        UPDATE last_chips_members SET total_bet=total_bet+MAX(0,OLD.cash-NEW.cash), net=net+NEW.cash-OLD.cash
+          WHERE user_id=NEW.user_id AND current=1;
+        INSERT INTO last_chips_cash_events(room_id,user_id,delta,created_at)
+          SELECT room_id,NEW.user_id,NEW.cash-OLD.cash,CAST(strftime('%s','now') AS INTEGER)*1000
+          FROM last_chips_members WHERE user_id=NEW.user_id AND current=1;
+        UPDATE players SET cash=(SELECT bankroll FROM last_chips_rooms WHERE id=(
+          SELECT room_id FROM last_chips_members WHERE user_id=NEW.user_id AND current=1))
+          WHERE user_id IN (SELECT user_id FROM last_chips_members WHERE room_id=(
+            SELECT room_id FROM last_chips_members WHERE user_id=NEW.user_id AND current=1) AND current=1);
+      END`),
+  ]);
   await db.prepare("PRAGMA optimize").run();
 }
 
@@ -775,6 +834,9 @@ async function upsertPlayer(db: D1Database, user: AuthUser, forceHeartbeat = fal
       else row = await db.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>() ?? row;
     }
   }
+  // This story has its own team clock and debt. Personal finance must never
+  // mint money into, or deduct money from, the shared gambling wallet.
+  if (row.main_story === "last_chips") return row;
   let loanContract = row.loan_balance > 0 ? await activeLoanContract(db, user.userId) : null;
   const today = Math.floor(row.elapsed_minutes / 1440) + 1;
   if (row.writer_day <= 0) {
@@ -1659,7 +1721,12 @@ async function bingoState(db: D1Database, userId: string) {
 
 async function bingoAction(request: Request, env: Env) {
   const user = await identity(request, env.DB); if (!user || !env.DB) return json({ message: "請先登入才能參加賓果。" }, 401);
-  await ensureSchemaOnce(env.DB); const player = await upsertPlayer(env.DB, user, true);
+  await ensureSchemaOnce(env.DB); let player = await upsertPlayer(env.DB, user, true);
+  if (player?.main_story === "last_chips") {
+    const room = await lastChipsTick(env.DB, user.userId);
+    if (room?.status !== "active") return json({ message: "《最後的籌碼》已結束，請重新挑戰。" }, 409);
+    player = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>() ?? player;
+  }
   if (!player || player.location !== "casino" || player.game_over) return json({ message: "請先前往賭場，並確認人生仍在進行。" }, 400);
   const body = await request.json() as { action?: string; entryFee?: number; cardIndex?: number; previewNumber?: number };
   if (!body.action || !["join", "leave", "start", "swap", "claim"].includes(body.action)) return json({ message: "未知的賓果行動。" }, 400);
@@ -1837,7 +1904,12 @@ async function dicePokerState(db: D1Database, userId: string) {
 
 async function dicePokerAction(request: Request, env: Env) {
   const user = await identity(request, env.DB); if (!user || !env.DB) return json({ message: "請先登入才能參加骰子撲克。" }, 401);
-  await ensureSchemaOnce(env.DB); const player = await upsertPlayer(env.DB, user, true);
+  await ensureSchemaOnce(env.DB); let player = await upsertPlayer(env.DB, user, true);
+  if (player?.main_story === "last_chips") {
+    const room = await lastChipsTick(env.DB, user.userId);
+    if (room?.status !== "active") return json({ message: "《最後的籌碼》已結束，請重新挑戰。" }, 409);
+    player = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>() ?? player;
+  }
   if (!player || player.location !== "casino" || player.game_over) return json({ message: "請先前往賭場，並確認人生仍在進行。" }, 400);
   const body = await request.json() as { action?: string; entryFee?: number; held?: number[] };
   if (!body.action || !["join", "leave", "start", "reroll", "stand"].includes(body.action)) return json({ message: "未知的骰子撲克行動。" }, 400);
@@ -2119,7 +2191,12 @@ async function tournamentState(db: D1Database, userId: string) {
 
 async function tournamentAction(request: Request, env: Env) {
   const user = await identity(request, env.DB); if (!user || !env.DB) return json({ message: "請先登入才能參加錦標賽。" }, 401);
-  await ensureSchemaOnce(env.DB); const player = await upsertPlayer(env.DB, user, true);
+  await ensureSchemaOnce(env.DB); let player = await upsertPlayer(env.DB, user, true);
+  if (player?.main_story === "last_chips") {
+    const room = await lastChipsTick(env.DB, user.userId);
+    if (room?.status !== "active") return json({ message: "《最後的籌碼》已結束，請重新挑戰。" }, 409);
+    player = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>() ?? player;
+  }
   if (!player || player.location !== "casino" || player.game_over) return json({ message: "請先前往賭場，並確認人生仍在進行。" }, 400);
   const body = await request.json() as { action?: string; game?: string; entryFee?: number; amount?: number };
   const gameplayActions = ["hit", "stand", "check", "call", "raise", "all_in", "fold"];
@@ -2434,7 +2511,12 @@ async function casinoAction(request: Request, env: Env) {
   const user = await identity(request, env.DB);
   if (!user || !env.DB) return json({ message: "請先登入才能加入多人牌桌。" }, 401);
   await ensureSchemaOnce(env.DB);
-  const player = await upsertPlayer(env.DB, user, true);
+  let player = await upsertPlayer(env.DB, user, true);
+  if (player?.main_story === "last_chips") {
+    const room = await lastChipsTick(env.DB, user.userId);
+    if (room?.status !== "active") return json({ message: "《最後的籌碼》已結束，請重新挑戰。" }, 409);
+    player = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>() ?? player;
+  }
   if (!player) return json({ message: "找不到玩家資料。" }, 404);
   if (player.game_over) return json({ message: "這段人生已經結束，請重新開始。" }, 409);
   if (player.location !== "casino") return json({ message: "請先前往幸運賭場。" }, 400);
@@ -3128,7 +3210,12 @@ async function pokerAction(request: Request, env: Env) {
   const user = await identity(request, env.DB);
   if (!user || !env.DB) return json({ message: "請先登入才能加入德州撲克牌桌。" }, 401);
   await ensureSchemaOnce(env.DB);
-  const player = await upsertPlayer(env.DB, user, true);
+  let player = await upsertPlayer(env.DB, user, true);
+  if (player?.main_story === "last_chips") {
+    const room = await lastChipsTick(env.DB, user.userId);
+    if (room?.status !== "active") return json({ message: "《最後的籌碼》已結束，請重新挑戰。" }, 409);
+    player = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>() ?? player;
+  }
   if (player?.game_over) return json({ message: "這段人生已經結束，請重新開始。" }, 409);
   if (!player || player.location !== "casino") return json({ message: "請先前往幸運賭場。" }, 400);
   let body: { action?: string; bet?: number; seatNo?: number; amount?: number; npcCount?: number; bigBlind?: number; move?: string };
@@ -3437,12 +3524,224 @@ async function getAvatar(userId: string, env: Env) {
   });
 }
 
+async function lastChipsRoomFor(db: D1Database, userId: string) {
+  return db.prepare(`SELECT r.* FROM last_chips_rooms r JOIN last_chips_members m ON m.room_id=r.id
+    WHERE m.user_id=? ORDER BY m.current DESC, r.created_at DESC, m.joined_at DESC LIMIT 1`).bind(userId).first<LastChipsRoomRow>();
+}
+
+async function lastChipsSyncWallet(db: D1Database, roomId: string) {
+  // SQLite processes a multi-player UPDATE row by row. A poker blind update
+  // can overwrite a mirrored row later in the same statement, so repair from
+  // the authoritative room balance before any subsequent wager or snapshot.
+  const mismatch = await db.prepare(`SELECT 1 AS mismatch FROM last_chips_members m
+    JOIN players p ON p.user_id=m.user_id JOIN last_chips_rooms r ON r.id=m.room_id
+    WHERE m.room_id=? AND m.current=1 AND r.status='active' AND p.cash<>r.bankroll LIMIT 1`)
+    .bind(roomId).first<{ mismatch: number }>();
+  if (!mismatch) return;
+  await db.batch([
+    db.prepare("UPDATE last_chips_rooms SET wallet_sync=1 WHERE id=? AND status='active'").bind(roomId),
+    db.prepare(`UPDATE players SET cash=(SELECT bankroll FROM last_chips_rooms WHERE id=?)
+      WHERE user_id IN (SELECT user_id FROM last_chips_members WHERE room_id=? AND current=1)`)
+      .bind(roomId, roomId),
+    db.prepare("UPDATE last_chips_rooms SET wallet_sync=0 WHERE id=?").bind(roomId),
+  ]);
+}
+
+async function lastChipsPendingBets(db: D1Database, roomId: string) {
+  const pending = await db.prepare(`SELECT 1 AS pending FROM last_chips_members m WHERE m.room_id=? AND (
+    EXISTS (SELECT 1 FROM casino_hands h WHERE h.user_id=m.user_id AND h.bet>0 AND h.status IN ('waiting','dealing','playing','stood','drawing','settling'))
+    OR EXISTS (SELECT 1 FROM poker_hands h WHERE h.user_id=m.user_id AND h.bet>0 AND h.status IN ('playing','all_in','folded','settling'))
+    OR EXISTS (SELECT 1 FROM poker_npc_sessions s WHERE s.host_user_id=m.user_id AND s.status='playing')
+    OR EXISTS (SELECT 1 FROM casino_bingo_entries e JOIN casino_bingo_state s ON s.round_no=e.round_no WHERE e.user_id=m.user_id AND s.status<>'completed')
+    OR EXISTS (SELECT 1 FROM casino_dice_entries e JOIN casino_dice_state s ON s.round_no=e.round_no WHERE e.user_id=m.user_id AND s.status<>'completed')
+    OR EXISTS (SELECT 1 FROM casino_tournament_entries e JOIN casino_tournament_state s ON s.round_no=e.tournament_no WHERE e.user_id=m.user_id AND s.status<>'completed')
+  ) LIMIT 1`).bind(roomId).first<{ pending: number }>();
+  return Boolean(pending);
+}
+
+async function lastChipsFinish(db: D1Database, room: LastChipsRoomRow, status: "won" | "bankrupt" | "missed") {
+  const finished = await db.prepare("UPDATE last_chips_rooms SET status=?, finished_at=? WHERE id=? AND status='active' RETURNING id")
+    .bind(status, Date.now(), room.id).first<{ id: string }>();
+  if (finished) await db.prepare("UPDATE last_chips_members SET current=0 WHERE room_id=?").bind(room.id).run();
+}
+
+async function lastChipsTick(db: D1Database, userId: string) {
+  let room = await lastChipsRoomFor(db, userId);
+  if (!room || room.status !== "active") return room;
+  await lastChipsSyncWallet(db, room.id);
+  if (room.debt <= 0 || room.missed_periods >= 2) {
+    if (!await lastChipsPendingBets(db, room.id)) await lastChipsFinish(db, room, room.debt <= 0 ? "won" : "missed");
+    return await lastChipsRoomFor(db, userId);
+  }
+  const now = Date.now();
+  await db.prepare(`UPDATE last_chips_rooms SET
+    elapsed_ms=elapsed_ms+CASE WHEN last_tick_at>=? AND last_tick_at<=? THEN MAX(0,?-last_tick_at) ELSE 0 END,
+    last_tick_at=? WHERE id=? AND status='active' AND last_tick_at=?
+    AND EXISTS (SELECT 1 FROM last_chips_members m JOIN players p ON p.user_id=m.user_id
+      WHERE m.room_id=? AND m.current=1 AND p.last_seen_at>=?)`)
+    .bind(now - ONLINE_HEARTBEAT_GRACE_MS, now, now, now, room.id, room.last_tick_at, room.id, now - ONLINE_HEARTBEAT_GRACE_MS).run();
+  room = await lastChipsRoomFor(db, userId);
+  if (!room || room.status !== "active") return room;
+  for (let attempts = 0; attempts < 5 && room.processed_day < Math.floor(room.elapsed_ms / LAST_CHIPS_DAY_MS); attempts += 1) {
+    const nextDay = room.processed_day + 1;
+    const debtWithInterest = room.debt + Math.max(1, Math.ceil(room.debt * 2 / 10_000));
+    const periodEnd = nextDay % 3 === 0;
+    const debt = debtWithInterest;
+    const missedPeriods = periodEnd ? (room.payment_made < Math.min(LAST_CHIPS_MINIMUM, debt) ? room.missed_periods + 1 : 0) : room.missed_periods;
+    const lowestDebt = Math.min(room.lowest_debt, debt);
+    const chapter = LAST_CHIPS_CHAPTERS.reduce((value, item, index) => lowestDebt <= item.debt ? index + 1 : value, room.chapter);
+    const result = await db.prepare(`UPDATE last_chips_rooms SET processed_day=?, debt=?, lowest_debt=?,
+      payment_made=?, missed_periods=?, chapter=? WHERE id=? AND status='active' AND processed_day=?
+      AND bankroll=? AND debt=? RETURNING id`).bind(nextDay, debt, lowestDebt,
+      periodEnd ? 0 : room.payment_made, missedPeriods, chapter, room.id, room.processed_day, room.bankroll, room.debt).first<{ id: string }>();
+    room = await lastChipsRoomFor(db, userId);
+    if (!room || room.status !== "active") return room;
+    if (!result) continue;
+    if (room.debt <= 0 && !await lastChipsPendingBets(db, room.id)) { await lastChipsFinish(db, room, "won"); break; }
+    if (room.missed_periods >= 2 && !await lastChipsPendingBets(db, room.id)) { await lastChipsFinish(db, room, "missed"); break; }
+  }
+  room = await lastChipsRoomFor(db, userId);
+  if (room?.status === "active" && !await lastChipsPendingBets(db, room.id)) {
+    if (room.debt <= 0) await lastChipsFinish(db, room, "won");
+    else if (room.missed_periods >= 2) await lastChipsFinish(db, room, "missed");
+    else if (room.bankroll < 1) await lastChipsFinish(db, room, "bankrupt");
+    room = await lastChipsRoomFor(db, userId);
+  }
+  return room;
+}
+
+async function lastChipsState(db: D1Database, userId: string) {
+  const room = await lastChipsTick(db, userId);
+  const history = await db.prepare(`SELECT r.code, r.status, r.bankroll, r.debt, r.started_at, r.finished_at
+    FROM last_chips_rooms r JOIN last_chips_members m ON m.room_id=r.id
+    WHERE m.user_id=? AND r.status IN ('won','bankrupt','missed') ORDER BY r.finished_at DESC LIMIT 8`)
+    .bind(userId).all<Pick<LastChipsRoomRow, "code" | "status" | "bankroll" | "debt" | "started_at" | "finished_at">>();
+  if (!room) return { room: null, history: history.results };
+  const [members, events] = await Promise.all([
+    db.prepare(`SELECT m.*, p.last_seen_at FROM last_chips_members m LEFT JOIN players p ON p.user_id=m.user_id
+      WHERE m.room_id=? ORDER BY m.joined_at`).bind(room.id).all<LastChipsMemberRow & { last_seen_at: number | null }>(),
+    db.prepare(`SELECT e.user_id, m.display_name, e.delta, e.created_at FROM last_chips_cash_events e
+      JOIN last_chips_members m ON m.room_id=e.room_id AND m.user_id=e.user_id
+      WHERE e.room_id=? ORDER BY e.id DESC LIMIT 12`).bind(room.id).all<{ user_id: string; display_name: string; delta: number; created_at: number }>(),
+  ]);
+  return { room: {
+    code: room.code, status: room.status, isHost: room.host_user_id === userId,
+    bankroll: room.bankroll, debt: room.debt, day: room.processed_day + 1,
+    dayProgress: room.elapsed_ms % LAST_CHIPS_DAY_MS, paymentMade: room.payment_made,
+    missedPeriods: room.missed_periods, chapter: room.chapter,
+    chapterTitle: room.chapter ? LAST_CHIPS_CHAPTERS[room.chapter - 1].title : "賭局開始",
+    chapterStory: room.chapter ? LAST_CHIPS_CHAPTERS[room.chapter - 1].story : "桌上放著 NT$250,000 的欠款帳本，口袋裡只剩全隊共用的 NT$100,000 賭本。你們約定，誰下注都能動用全部資金，也都要留下名字。",
+    members: members.results.map((member) => ({ id: member.user_id, displayName: member.display_name,
+      ready: Boolean(member.ready), online: Boolean(member.last_seen_at && member.last_seen_at >= Date.now() - ONLINE_HEARTBEAT_GRACE_MS),
+      totalBet: member.total_bet, net: member.net, isMine: member.user_id === userId })),
+    events: events.results.map((event) => ({ userId: event.user_id, displayName: event.display_name, delta: event.delta, at: event.created_at })),
+  }, history: history.results };
+}
+
+async function lastChipsAction(request: Request, env: Env) {
+  const user = await identity(request, env.DB);
+  if (!user || !env.DB) return json({ message: "請先登入，才能加入《最後的籌碼》。" }, 401);
+  await ensureSchemaOnce(env.DB);
+  const player = await upsertPlayer(env.DB, user, true);
+  if (!player) return json({ message: "找不到玩家資料。" }, 404);
+  let body: { action?: string; code?: string; ready?: boolean; amount?: number };
+  try { body = await request.json(); } catch { return json({ message: "房間資料格式錯誤。" }, 400); }
+  const current = await lastChipsTick(env.DB, user.userId);
+  const activeCurrent = current && (current.status === "lobby" || current.status === "active");
+  let message = "主線房間已更新。";
+  if (body.action === "create") {
+    if (activeCurrent || player.main_story !== "unselected") return json({ message: "請先結束目前主線，或以新的人生選擇《最後的籌碼》。" }, 409);
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const random = crypto.getRandomValues(new Uint8Array(6));
+    const code = Array.from(random, (value) => alphabet[value % alphabet.length]).join("");
+    const id = crypto.randomUUID(); const now = Date.now();
+    try { await env.DB.batch([
+      env.DB.prepare("INSERT INTO last_chips_rooms(id,code,host_user_id,created_at) VALUES(?,?,?,?)").bind(id, code, user.userId, now),
+      env.DB.prepare("INSERT INTO last_chips_members(room_id,user_id,display_name,joined_at) VALUES(?,?,?,?)").bind(id, user.userId, user.displayName.slice(0,40), now),
+    ]); } catch { return json({ message: "房間碼剛好重複，請再試一次。" }, 409); }
+    message = `《最後的籌碼》房間 ${code} 已建立，分享房間碼邀請隊友。`;
+  } else if (body.action === "join") {
+    if (activeCurrent || player.main_story !== "unselected") return json({ message: "你已在主線房間中，或已選擇其他人生主線。" }, 409);
+    const code = String(body.code || "").trim().toUpperCase();
+    if (!/^[A-HJ-NP-Z2-9]{6}$/.test(code)) return json({ message: "請輸入 6 碼房間碼。" }, 400);
+    const room = await env.DB.prepare("SELECT * FROM last_chips_rooms WHERE code=? AND status='lobby'").bind(code).first<LastChipsRoomRow>();
+    if (!room) return json({ message: "找不到等待中的房間；開局後成員不能再加入。" }, 404);
+    try {
+      const joined = await env.DB.prepare(`INSERT INTO last_chips_members(room_id,user_id,display_name,joined_at)
+        SELECT ?,?,?,? WHERE (SELECT COUNT(*) FROM last_chips_members WHERE room_id=? AND current=1)<4
+        AND EXISTS(SELECT 1 FROM last_chips_rooms WHERE id=? AND status='lobby') RETURNING user_id`)
+        .bind(room.id, user.userId, user.displayName.slice(0,40), Date.now(), room.id, room.id).first<{ user_id: string }>();
+      if (!joined) return json({ message: "房間已滿或已經開局。" }, 409);
+    } catch { return json({ message: "你已在另一個房間中。" }, 409); }
+    message = `已加入房間 ${code}；準備好後請按「準備」。`;
+  } else if (body.action === "ready") {
+    if (!current || current.status !== "lobby") return json({ message: "目前沒有等待中的房間。" }, 409);
+    await env.DB.prepare("UPDATE last_chips_members SET ready=? WHERE room_id=? AND user_id=? AND current=1")
+      .bind(body.ready === false ? 0 : 1, current.id, user.userId).run();
+    message = body.ready === false ? "已取消準備。" : "已準備，等待所有隊友準備好。";
+  } else if (body.action === "leave") {
+    if (!current || current.status !== "lobby") return json({ message: "開局後成員固定，不能離開；斷線後可直接回來。" }, 409);
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM last_chips_members WHERE room_id=? AND user_id=? AND current=1 AND EXISTS(SELECT 1 FROM last_chips_rooms WHERE id=? AND status='lobby')")
+        .bind(current.id, user.userId, current.id),
+      env.DB.prepare(`UPDATE last_chips_rooms SET host_user_id=COALESCE((SELECT user_id FROM last_chips_members WHERE room_id=? ORDER BY joined_at LIMIT 1),'')
+        WHERE id=? AND status='lobby' AND host_user_id=?`).bind(current.id, current.id, user.userId),
+      env.DB.prepare("DELETE FROM last_chips_rooms WHERE id=? AND status='lobby' AND NOT EXISTS(SELECT 1 FROM last_chips_members WHERE room_id=?)").bind(current.id, current.id),
+    ]);
+    message = "已離開房間。";
+  } else if (body.action === "start") {
+    if (!current || current.status !== "lobby" || current.host_user_id !== user.userId) return json({ message: "只有房主能開始等待中的房間。" }, 409);
+    const members = await env.DB.prepare("SELECT * FROM last_chips_members WHERE room_id=? AND current=1 ORDER BY joined_at").bind(current.id).all<LastChipsMemberRow>();
+    if (members.results.length < 1 || members.results.length > 4 || members.results.some((member) => !member.ready)) return json({ message: "需有 1～4 位成員，且所有人都準備好。" }, 409);
+    const now = Date.now();
+    const started = await env.DB.batch([
+      ...members.results.map((member) => env.DB!.prepare(`UPDATE players SET main_story='last_chips', cash=?, bank_balance=0, loan_balance=0,
+        game_over='', location='casino', current_job='unemployed', job_category='unfixed', updated_at=MAX(updated_at+1,?)
+        WHERE user_id=? AND main_story='unselected' AND game_over='' AND reset_game_over='' RETURNING user_id`)
+        .bind(LAST_CHIPS_STARTING_BANKROLL, now, member.user_id)),
+      env.DB.prepare(`UPDATE last_chips_rooms SET status='active', started_at=?, last_tick_at=? WHERE id=? AND status='lobby'
+        AND NOT EXISTS(SELECT 1 FROM last_chips_members m JOIN players p ON p.user_id=m.user_id
+          WHERE m.room_id=? AND m.current=1 AND (m.ready=0 OR p.main_story<>'last_chips')) RETURNING id`)
+        .bind(now, now, current.id, current.id),
+    ]);
+    if (members.results.some((_, index) => (started[index]?.results?.length ?? 0) !== 1) || (started[started.length-1]?.results?.length ?? 0) !== 1)
+      return json({ message: "有隊友狀態剛變更，請重新整理後再開局。" }, 409);
+    message = `《最後的籌碼》開始：全隊共用 NT$${LAST_CHIPS_STARTING_BANKROLL.toLocaleString()} 賭本，欠款 NT$${LAST_CHIPS_STARTING_DEBT.toLocaleString()}。`;
+  } else if (body.action === "repay") {
+    if (!current || current.status !== "active") return json({ message: "主線尚未開始或已經結束。" }, 409);
+    if (current.missed_periods >= 2) return json({ message: "已連續兩期未繳最低款，請等待桌上下注結算。" }, 409);
+    const amount = Math.floor(Number(body.amount));
+    if (!Number.isSafeInteger(amount) || amount < 1 || amount > current.debt || amount > current.bankroll) return json({ message: "還款須為不超過賭本與欠款的正整數。" }, 400);
+    if (amount === current.debt && await lastChipsPendingBets(env.DB, current.id)) return json({ message: "請先等桌上下注全部結算，再清償最後一筆欠款。" }, 409);
+    const debt = current.debt - amount;
+    const chapter = LAST_CHIPS_CHAPTERS.reduce((value, item, index) => debt <= item.debt ? index + 1 : value, current.chapter);
+    const paid = await env.DB.batch([
+      env.DB.prepare("UPDATE last_chips_rooms SET wallet_sync=1 WHERE id=? AND status='active' AND wallet_sync=0").bind(current.id),
+      env.DB.prepare(`UPDATE last_chips_rooms SET bankroll=bankroll-?, debt=debt-?, lowest_debt=MIN(lowest_debt,?),
+        payment_made=payment_made+?, chapter=? WHERE id=? AND status='active' AND bankroll>=? AND debt>=?
+        AND wallet_sync=1 AND bankroll=? AND debt=? RETURNING id`).bind(amount, amount, debt, amount, chapter, current.id, amount, amount, current.bankroll, current.debt),
+      env.DB.prepare(`UPDATE players SET cash=(SELECT bankroll FROM last_chips_rooms WHERE id=?)
+        WHERE user_id IN (SELECT user_id FROM last_chips_members WHERE room_id=? AND current=1)`)
+        .bind(current.id, current.id),
+      env.DB.prepare("UPDATE last_chips_rooms SET wallet_sync=0 WHERE id=?").bind(current.id),
+    ]);
+    if ((paid[1]?.results?.length ?? 0) !== 1) return json({ message: "賭本或欠款已變動，請重新整理後再還款。" }, 409);
+    if (debt === 0) await lastChipsFinish(env.DB, current, "won");
+    message = debt === 0 ? "欠款已清零，《最後的籌碼》全隊通關！" : `全隊還款 NT$${amount.toLocaleString()}，欠款剩 NT$${debt.toLocaleString()}。`;
+  } else return json({ message: "未知的主線行動。" }, 400);
+  const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
+  const progress = saved ? await ensureProgress(env.DB, saved) : null;
+  return json({ message, player: saved ? serializePlayer(saved, progress) : null, lastChips: await lastChipsState(env.DB, user.userId) });
+}
+
 async function bootstrap(request: Request, env: Env) {
   const user = await identity(request, env.DB);
   if (!user || !env.DB) return json({ serverNow: Date.now(), authenticated: false, profile: null, player: guestPlayer(), room: { id: "lobby-01", name: "城市大廳 01" }, online: [], feed: [], casino: { capacity: 5, activeCount: 0, seats: [], hand: null }, poker: { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 }, pokerNpc: emptyPokerNpcState(), bingo: { status: "lobby", players: [], drawn: [], preview: [], winnerIds: [] }, dicePoker: { status: "lobby", players: [] }, tournament: { status: "lobby", players: [] }, medicalRequests: [], loanRequests: [], begRequests: [], street: { items: [], scavengesUsed: 0, scavengesMax: 4, begIncome: 0, begCap: 500 }, aidBoxes: { cycleDay: 1, dailyCap: 2000, boxes: [] }, coop: { cycleDay: 1, status: "open", reward: 600, talentExp: 8, eligibleRole: "", contributed: false, roles: [] }, reputation: { factions: [] }, commissions: { cycleDay: 1, commissions: [] }, mystery: { found: 0, total: 7, whispers: [] }, contracts: { contracts: [] }, lifeLedger: { entries: [] }, lifeRhythm: { cycleDays: LIFE_PLAN_CYCLE_DAYS, completionTalentExp: LIFE_PLAN_COMPLETION_TALENT_EXP, partialTalentExp: LIFE_PLAN_PARTIAL_TALENT_EXP, active: null, effect: null, history: [], storyReflection: "" }, npcs: { residents: [], dailyLimit: 1, note: "登入後即可認識城市居民。" }, bookStore: { books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK } });
   await ensureSchemaOnce(env.DB);
-  const row = await upsertPlayer(env.DB, user);
+  let row = await upsertPlayer(env.DB, user);
   if (!row) return json({ message: "無法載入玩家資料" }, 500);
+  const lastChips = await lastChipsState(env.DB, user.userId);
+  row = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>() ?? row;
   const rhythm = await lifePlanState(env.DB, row);
   const progress = await ensureProgress(env.DB, row);
   const world = await multiplayer(env.DB);
@@ -3467,7 +3766,7 @@ async function bootstrap(request: Request, env: Env) {
     row.location === "bookstore" ? bookStore(env.DB, user.userId) : Promise.resolve({ books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK }),
     reputationState(env.DB, row), commissionState(env.DB, row), mysteryState(env.DB, user.userId), contractState(env.DB, row), lifeLedgerState(env.DB, user.userId), npcState(env.DB, row),
   ]);
-  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress, loanContract), room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, pokerNpc, bingo, dicePoker, tournament, cityMemory: memory, transferRequests, medicalRequests, loanRequests, begRequests, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, lifeRhythm: rhythm, npcs, bookStore: bookStoreState });
+  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress, loanContract), lastChips, room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, pokerNpc, bingo, dicePoker, tournament, cityMemory: memory, transferRequests, medicalRequests, loanRequests, begRequests, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, lifeRhythm: rhythm, npcs, bookStore: bookStoreState });
 }
 
 async function takeAction(request: Request, env: Env) {
@@ -3485,6 +3784,21 @@ async function takeAction(request: Request, env: Env) {
   try { body = await request.json(); } catch { return json({ message: "行動資料格式錯誤。" }, 400); }
   if ((current.game_over || current.reset_game_over) && body.action !== "reset") return json({ message: current.reset_game_over ? "人生資料正在重置，請稍候再試。" : "這段人生已經結束，請重新開始。" }, 409);
   if (current.main_story === "unselected" && body.action !== "choose_story") return json({ message: "請先選擇人生主線。" }, 409);
+  if (current.main_story === "unselected" && body.action === "choose_story" && (await lastChipsRoomFor(env.DB, user.userId))?.status === "lobby") return json({ message: "你已在《最後的籌碼》準備室，請先離開房間。" }, 409);
+  if (current.main_story === "last_chips") {
+    const challenge = await lastChipsRoomFor(env.DB, user.userId);
+    if (body.action === "reset") {
+      if (challenge?.status === "active" || challenge?.status === "lobby") return json({ message: "主線進行中不能單獨重開；失敗或通關後可整局重來。" }, 409);
+    } else if (challenge?.status !== "active") {
+      return json({ message: "《最後的籌碼》已結束，請重新挑戰。" }, 409);
+    } else if (body.action !== "move" && body.action !== "scratch") {
+      return json({ message: "《最後的籌碼》只能靠賭博賺錢；請到賭場下注或到購物街買刮刮樂。" }, 409);
+    } else if (body.action === "move" && !["casino", "shopping"].includes(body.location || "")) {
+      return json({ message: "這條主線只有賭場與刮刮樂能改變賭本。" }, 409);
+    } else if (body.action === "scratch" && (challenge.debt <= 0 || challenge.missed_periods >= 2)) {
+      return json({ message: "請等待桌上下注結算，這一局已不能增加新下注。" }, 409);
+    }
+  }
   if (current.prison_until > current.elapsed_minutes && body.action !== "reset") return json({ message: `你目前因「${current.prison_crime || "違法行為"}」在監獄服刑，還需在線遊玩 ${Math.ceil((current.prison_until - current.elapsed_minutes) / 60)} 小時。` }, 409);
   if (!["move", "choose_story", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy", "beg_response", "inventory_use", "street_share_food", "aid_box_donate", "coop_contribute", "story_ack", "contract_create", "contract_accept", "contract_decline", "contract_deposit", "npc_interact", "npc_favor", "life_plan_start"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
   const next = { ...current };
@@ -3954,7 +4268,7 @@ async function takeAction(request: Request, env: Env) {
       if (!body.targetId || body.targetId === user.userId) return json({ message: "請選擇其他玩家。" }, 400);
       const target = await env.DB.prepare("SELECT user_id, display_name, cash, last_seen_at, location, main_story, game_over, reset_game_over, life_version, updated_at FROM players WHERE user_id=?")
         .bind(body.targetId).first<{ user_id: string; display_name: string; cash: number; last_seen_at: number; location: LocationId; main_story: string; game_over: string; reset_game_over: string; life_version: number; updated_at: number }>();
-      if (!target || target.last_seen_at < Date.now() - ONLINE_HEARTBEAT_GRACE_MS || target.location === "prison" || target.main_story === "unselected" || target.game_over || target.reset_game_over) return json({ message: "這位玩家目前不在線上或無法成為目標。" }, 409);
+      if (!target || target.last_seen_at < Date.now() - ONLINE_HEARTBEAT_GRACE_MS || target.location === "prison" || ["unselected", "last_chips"].includes(target.main_story) || target.game_over || target.reset_game_over) return json({ message: "這位玩家目前不在線上或無法成為目標。" }, 409);
       const personalDay = Math.floor(next.elapsed_minutes / 1440) + 1;
       if (next.hack_day !== personalDay) { next.hack_day = personalDay; next.hack_uses = 0; }
       if (next.hack_uses >= HACK_DAILY_LIMIT) return json({ message: `今天最多只能嘗試 ${HACK_DAILY_LIMIT} 次駭客竊取。` }, 409);
@@ -4753,6 +5067,7 @@ async function takeAction(request: Request, env: Env) {
       message = `${care.name}完成，支付 NT$${care.price}，健康恢復至 ${next.health}${previousIllness ? `，${previousIllness}已痊癒` : ""}。`; break;
     }
     case "reset": {
+      const resetToSelection = body.story === "unselected" || next.main_story === "last_chips";
       const resetNow = Date.now();
       if (next.reset_game_over && next.updated_at > resetNow - 30_000) return json({ message: "人生資料正在重置，請稍候再試。" }, 409);
       const previousGameOver = next.reset_game_over || (next.game_over === "__resetting__" ? "" : next.game_over);
@@ -4824,7 +5139,7 @@ async function takeAction(request: Request, env: Env) {
         env.DB.prepare(`UPDATE casino_tournament_state SET host_user_id=COALESCE((SELECT user_id FROM casino_tournament_entries WHERE tournament_no=casino_tournament_state.round_no ORDER BY rowid LIMIT 1), ''), updated_at=? WHERE id='tournament-01' AND status='lobby' AND ${resetGate}`).bind(resetNow, user.userId, expectedLifeVersion, actionToken),
         env.DB.prepare(`UPDATE player_progress SET talent_exp=0, talents='[]', story_chapter=0, story_seen_chapter=0, last_event_day=0, pending_event='', updated_at=? WHERE user_id=? AND ${resetGate}`).bind(resetNow, user.userId, user.userId, expectedLifeVersion, actionToken),
       ];
-      Object.assign(next, { cash: next.main_story === "prodigal_return" ? 37 : 10000, bank_balance: 0, loan_balance: next.main_story === "prodigal_return" ? 250_000 : 0, finance_day: 1, daily_minimum_payment: next.main_story === "prodigal_return" ? 750 : 0, daily_payment_made: 0, missed_payment_days: 0, writer_fans: 0, writer_day: 1, writer_writes: 0, owns_restaurant: 0, prison_until: 0, prison_crime: "", territory_location: "", territory_day: 0, territory_payout_day: 0, territory_visits: 0, territory_income: 0, territory_pending: 0, hack_day: 0, hack_uses: 0, street_day: 0, street_scavenges: 0, street_beg_income: 0, game_over: "", reset_game_over: "", elapsed_remainder_ms: 0, energy: 100, health: 100, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, home_comfort: 0, home_day: 0, home_cook_uses: 0, home_chore_done: 0, action_available_at: 0, action_label: "", elapsed_minutes: 0, location: "realtor" });
+      Object.assign(next, { cash: next.main_story === "prodigal_return" && !resetToSelection ? 37 : 10000, bank_balance: 0, loan_balance: next.main_story === "prodigal_return" && !resetToSelection ? 250_000 : 0, finance_day: 1, daily_minimum_payment: next.main_story === "prodigal_return" && !resetToSelection ? 750 : 0, daily_payment_made: 0, missed_payment_days: 0, writer_fans: 0, writer_day: 1, writer_writes: 0, owns_restaurant: 0, prison_until: 0, prison_crime: "", territory_location: "", territory_day: 0, territory_payout_day: 0, territory_visits: 0, territory_income: 0, territory_pending: 0, hack_day: 0, hack_uses: 0, street_day: 0, street_scavenges: 0, street_beg_income: 0, game_over: "", reset_game_over: "", elapsed_remainder_ms: 0, energy: 100, health: 100, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, home_comfort: 0, home_day: 0, home_cook_uses: 0, home_chore_done: 0, action_available_at: 0, action_label: "", elapsed_minutes: 0, location: "realtor", main_story: resetToSelection ? "unselected" : next.main_story });
       progress = { ...progress, talent_exp: 0, talents: "[]", story_chapter: 0, story_seen_chapter: 0, last_event_day: 0, pending_event: "" }; talents = new Set();
       title = "重新開始人生"; message = "新的人生已開始，所有進度回到起點。"; tone = "neutral"; break;
     }
@@ -4885,7 +5200,7 @@ async function takeAction(request: Request, env: Env) {
   // Every normal action must preserve the current database values; only a
   // reset intentionally clears them.
   const preserveTerritoryState = body.action === "reset" ? 0 : 1;
-  const playerStatement = env.DB.prepare(`UPDATE players SET cash=?, bank_balance=?, loan_balance=?, finance_day=?, daily_minimum_payment=?, daily_payment_made=?, missed_payment_days=?, writer_fans=?, writer_day=?, writer_writes=?, owns_restaurant=?, prison_until=?, prison_crime=?,
+  const playerStatement = env.DB.prepare(`UPDATE players SET cash=CASE WHEN main_story='last_chips' AND ?=0 THEN cash ELSE ? END, bank_balance=?, loan_balance=?, finance_day=?, daily_minimum_payment=?, daily_payment_made=?, missed_payment_days=?, writer_fans=?, writer_day=?, writer_writes=?, owns_restaurant=?, prison_until=?, prison_crime=?,
     territory_location=CASE WHEN ?=1 THEN territory_location ELSE ? END,
     territory_day=CASE WHEN ?=1 THEN territory_day ELSE ? END,
     territory_payout_day=CASE WHEN ?=1 THEN territory_payout_day ELSE ? END,
@@ -4894,14 +5209,15 @@ async function takeAction(request: Request, env: Env) {
     territory_pending=CASE WHEN ?=1 THEN territory_pending ELSE ? END,
     hack_day=?, hack_uses=?, street_day=?, street_scavenges=?, street_beg_income=?, game_over=?, main_story=?, energy=?, health=?, hunger=?, intelligence_exp=?, programming_exp=?, fitness_exp=?, work_exp=?, charisma_exp=?, current_job=?, job_category=?, job_exp=?, illness=?, owns_home=?, rental_name=?, rented_until=?, home_comfort=?, home_day=?, home_cook_uses=?, home_chore_done=?, action_available_at=?, action_label=?, elapsed_minutes=?, elapsed_remainder_ms=?, location=?, updated_at=?, last_seen_at=?, reset_game_over=?, mutation_token=?
     WHERE user_id=? AND life_version=? AND updated_at=? AND reset_game_over=?
+      AND (main_story<>'last_chips' OR ?=0 OR cash=?)
       AND (?=0 OR EXISTS (SELECT 1 FROM player_loan_contracts WHERE id=? AND status='active' AND outstanding_balance=? AND revision=?))
       AND (?=0 OR EXISTS (SELECT 1 FROM players target WHERE target.user_id=? AND target.life_version=? AND target.mutation_token=?))
     RETURNING user_id`)
-    .bind(next.cash, next.bank_balance, next.loan_balance, next.finance_day, next.daily_minimum_payment, next.daily_payment_made, next.missed_payment_days, next.writer_fans, next.writer_day, next.writer_writes, next.owns_restaurant, next.prison_until, next.prison_crime,
+    .bind(body.action === "scratch" || body.action === "reset" ? 1 : 0, next.cash, next.bank_balance, next.loan_balance, next.finance_day, next.daily_minimum_payment, next.daily_payment_made, next.missed_payment_days, next.writer_fans, next.writer_day, next.writer_writes, next.owns_restaurant, next.prison_until, next.prison_crime,
       preserveTerritoryState, next.territory_location, preserveTerritoryState, next.territory_day, preserveTerritoryState, next.territory_payout_day,
       preserveTerritoryState, next.territory_visits, preserveTerritoryState, next.territory_income, preserveTerritoryState, next.territory_pending,
       next.hack_day, next.hack_uses, next.street_day, next.street_scavenges, next.street_beg_income, next.game_over, next.main_story, next.energy, next.health, next.hunger, next.intelligence_exp, next.programming_exp, next.fitness_exp, next.work_exp, next.charisma_exp, next.current_job, next.job_category, next.job_exp, next.illness, next.owns_home, next.rental_name, next.rented_until, next.home_comfort, next.home_day, next.home_cook_uses, next.home_chore_done, next.action_available_at, next.action_label, next.elapsed_minutes, next.elapsed_remainder_ms, next.location, now, now, next.reset_game_over, actionToken,
-      user.userId, expectedLifeVersion, expectedRevision, expectedResetMarker,
+      user.userId, expectedLifeVersion, expectedRevision, expectedResetMarker, body.action === "scratch" ? 1 : 0, current.cash,
       pendingLoanContractUpdate ? 1 : 0, pendingLoanContractUpdate?.id ?? "", pendingLoanContractUpdate?.previousBalance ?? 0, pendingLoanContractUpdate?.previousRevision ?? 0,
       pendingHack ? 1 : 0, pendingHack?.targetId ?? "", pendingHack?.targetLifeVersion ?? 0, actionToken);
   const statements: D1PreparedStatement[] = [];
@@ -5017,7 +5333,7 @@ async function takeAction(request: Request, env: Env) {
     const chapter = STORY_CHAPTERS[progress.story_chapter - 1];
     if (chapter) message += ` 主線章節解鎖——${chapter.chapter}. ${chapter.title}：${chapter.story}（天賦經驗 +${chapter.reward}）`;
   }
-  const eligibleEvent = !["move", "choose_story", "reset", "talent", "city_event", "npc_interact"].includes(body.action || "");
+  const eligibleEvent = saved!.main_story !== "last_chips" && !["move", "choose_story", "reset", "talent", "city_event", "npc_interact"].includes(body.action || "");
   const personalDay = Math.floor(saved!.elapsed_minutes / 1440) + 1;
   if (eligibleEvent && !progress.pending_event && progress.last_event_day < personalDay) {
     const chance = talents.has("connections") ? .28 : .20;
@@ -5044,7 +5360,12 @@ async function takeAction(request: Request, env: Env) {
   const casinoSnapshot = body.action === "move" && saved!.location === "casino"
     ? await Promise.all([casinoState(env.DB, user.userId), pokerState(env.DB, user.userId), pokerNpcState(env.DB, user.userId), bingoState(env.DB, user.userId), dicePokerState(env.DB, user.userId), tournamentState(env.DB, user.userId)])
     : null;
-  return json({ player: serializePlayer(saved!, progress, loanContract), message, scratch, loanRequests, begRequests, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, lifeRhythm: rhythm, bookStore: bookStoreState, npcs, cityMemory: await cityMemory(env.DB), ...world,
+  if (body.action === "scratch" && current.main_story === "last_chips") {
+    const delta = next.cash - current.cash;
+    await env.DB.prepare(`UPDATE last_chips_members SET total_bet=total_bet+? WHERE user_id=? AND current=1`)
+      .bind(100 - Math.max(0, -delta), user.userId).run();
+  }
+  return json({ player: serializePlayer(saved!, progress, loanContract), message, scratch, lastChips: await lastChipsState(env.DB, user.userId), loanRequests, begRequests, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, lifeRhythm: rhythm, bookStore: bookStoreState, npcs, cityMemory: await cityMemory(env.DB), ...world,
     ...(casinoSnapshot ? { casino: casinoSnapshot[0], poker: casinoSnapshot[1], pokerNpc: casinoSnapshot[2], bingo: casinoSnapshot[3], dicePoker: casinoSnapshot[4], tournament: casinoSnapshot[5] } : {}) });
 }
 
@@ -5061,6 +5382,7 @@ export default {
     else if (url.pathname.startsWith("/api/avatar/") && request.method === "GET") response = await getAvatar(url.pathname.slice("/api/avatar/".length), env);
     else if (url.pathname === "/api/game" && request.method === "GET") response = await bootstrap(request, env);
     else if (url.pathname === "/api/game/action" && request.method === "POST") response = await takeAction(request, env);
+    else if (url.pathname === "/api/last-chips/action" && request.method === "POST") response = await lastChipsAction(request, env);
     else if (url.pathname === "/api/casino/action" && request.method === "POST") response = await casinoAction(request, env);
     else if (url.pathname === "/api/poker/action" && request.method === "POST") response = await pokerAction(request, env);
     else if (url.pathname === "/api/bingo/action" && request.method === "POST") response = await bingoAction(request, env);

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { blob, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const accounts = sqliteTable("accounts", {
@@ -127,6 +128,37 @@ export const casinoTableState = sqliteTable("casino_table_state", {
   actionToken: text("action_token").notNull().default(""),
   updatedAt: integer("updated_at").notNull(),
 });
+
+export const lastChipsRooms = sqliteTable("last_chips_rooms", {
+  id: text("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  hostUserId: text("host_user_id").notNull(),
+  status: text("status").notNull().default("lobby"),
+  bankroll: integer("bankroll").notNull().default(100000),
+  debt: integer("debt").notNull().default(250000),
+  lowestDebt: integer("lowest_debt").notNull().default(250000),
+  elapsedMs: integer("elapsed_ms").notNull().default(0),
+  processedDay: integer("processed_day").notNull().default(0),
+  paymentMade: integer("payment_made").notNull().default(0),
+  missedPeriods: integer("missed_periods").notNull().default(0),
+  chapter: integer("chapter").notNull().default(0),
+  walletSync: integer("wallet_sync").notNull().default(0),
+  lastTickAt: integer("last_tick_at").notNull().default(0),
+  startedAt: integer("started_at"),
+  finishedAt: integer("finished_at"),
+  createdAt: integer("created_at").notNull(),
+}, (table) => [index("idx_last_chips_host").on(table.hostUserId)]);
+
+export const lastChipsMembers = sqliteTable("last_chips_members", {
+  roomId: text("room_id").notNull(),
+  userId: text("user_id").notNull(),
+  displayName: text("display_name").notNull(),
+  ready: integer("ready").notNull().default(0),
+  current: integer("current").notNull().default(1),
+  totalBet: integer("total_bet").notNull().default(0),
+  net: integer("net").notNull().default(0),
+  joinedAt: integer("joined_at").notNull(),
+}, (table) => [primaryKey({ columns: [table.roomId, table.userId] }), uniqueIndex("idx_last_chips_current_user").on(table.userId).where(sql`current = 1`)]);
 
 export const pokerHands = sqliteTable("poker_hands", {
   userId: text("user_id").primaryKey(),

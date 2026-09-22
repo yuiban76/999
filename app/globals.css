@@ -230,6 +230,53 @@ button { color: inherit; }
 .job-tag { padding: 3px 8px; border: 1px solid #9d998c; border-radius: 20px; font-size: 10px; color: #5e625b; }
 .story-tag { display: block; width: fit-content; margin-top: 7px; color: var(--orange); font-size: 9px; font-weight: 800; }
 
+.story-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.story-choice-grid > article { min-width: 0; padding: 24px 22px 26px; }
+.story-choice-grid > article + article { border-left: 1px solid #bfc7c4; }
+.story-choice-grid .story-prologue { columns: initial; margin: 14px 0; }
+.story-choice-grid .story-prologue summary { color: #156bad; cursor: pointer; font-size: 11px; font-weight: 800; }
+.story-choice-grid .story-prologue p { font-size: 11px; line-height: 1.65; }
+.story-choice-summary { margin: 18px 0 0; font-size: 12px; line-height: 1.7; }
+.last-chips-join { display: flex; align-items: center; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.last-chips-join label { width: 100%; font-size: 11px; font-weight: 800; }
+.last-chips-join input, .last-chips-pay input { min-width: 0; flex: 1; padding: 10px; border: 1px solid #7a8984; border-radius: 4px; background: #fff; color: #17221f; font: inherit; }
+.last-chips-join button, .last-chips-actions button, .last-chips-pay button, .last-chips-restart { padding: 10px 14px; border: 0; border-radius: 4px; background: #f79d34; color: #1b2420; cursor: pointer; font: inherit; font-weight: 800; }
+.last-chips-join button:disabled, .last-chips-actions button:disabled, .last-chips-pay button:disabled, .last-chips-restart:disabled { cursor: not-allowed; opacity: .5; }
+.last-chips-lobby > p { font-size: 12px; }
+.last-chips-lobby ul { list-style: none; padding: 0; margin: 16px 0; }
+.last-chips-lobby li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #ccd5d0; }
+.last-chips-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.last-chips-actions .quiet { background: #dbe3df; }
+.last-chips-panel { margin: 14px 0; padding: 16px; border: 1px solid #915d28; border-radius: 12px; background: #1b2523; color: #f8f4e9; box-shadow: 0 4px 14px #0002; }
+.last-chips-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+.last-chips-heading span { width: 100%; color: #f5ac58; font: 9px Consolas, monospace; letter-spacing: .1em; }
+.last-chips-heading strong { font: 700 20px Georgia, serif; }
+.last-chips-heading em { margin-left: auto; color: #ffd28c; font-size: 11px; font-style: normal; }
+.last-chips-scene { display: grid; gap: 5px; margin: 15px 0; color: #d4dfd8; font-size: 11px; line-height: 1.55; }
+.last-chips-scene b { color: #fff; font-size: 13px; }
+.last-chips-figures { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.last-chips-figures > div { padding: 10px; border-radius: 6px; background: #33423c; }
+.last-chips-figures span, .last-chips-figures strong { display: block; }
+.last-chips-figures span { color: #b9c8bf; font-size: 10px; }
+.last-chips-figures strong { margin-top: 4px; color: #fff1c9; font-size: 17px; }
+.last-chips-deadline { color: #e9d8bb; font-size: 10px; line-height: 1.6; }
+.last-chips-pay { margin: 14px 0; }
+.last-chips-pay label { display: block; margin-bottom: 6px; font-size: 11px; font-weight: 800; }
+.last-chips-pay > div { display: flex; gap: 6px; }
+.last-chips-roster, .last-chips-ledger { margin-top: 16px; }
+.last-chips-roster h3, .last-chips-ledger h3 { margin: 0 0 8px; color: #fff; font-size: 12px; }
+.last-chips-roster > div { display: grid; grid-template-columns: 1fr; gap: 5px; align-items: center; padding: 8px 0; border-top: 1px solid #47564e; font-size: 10px; }
+.last-chips-roster > div > span:first-child { display: grid; gap: 2px; }
+.last-chips-roster small { color: #bac7be; }
+.last-chips-roster .positive, .last-chips-ledger .positive { color: #a6e5b2; }
+.last-chips-roster .negative, .last-chips-ledger .negative { color: #ffaaa0; }
+.last-chips-ledger p { display: flex; justify-content: space-between; gap: 8px; margin: 0; padding: 5px 0; border-top: 1px solid #47564e; font-size: 10px; }
+.last-chips-result { margin: 14px 0; color: #f6d29b; font-size: 11px; }
+.last-chips-restart { width: 100%; }
+.last-chips-panel details { margin-top: 12px; color: #cdd9d0; font-size: 10px; }
+.last-chips-panel details p { margin: 7px 0; }
+@media (max-width: 720px) { .story-choice-grid { grid-template-columns: 1fr; } .story-choice-grid > article + article { border-left: 0; border-top: 1px solid #bfc7c4; } }
+
 .cash-card { padding: 16px; border: 1px solid var(--ink); background: var(--moss-dark); color: white; box-shadow: 5px 5px 0 #bdc7b7; }
 .cash-card > span { font-size: 10px; letter-spacing: .12em; color: #bfcbbf; }
 .cash-card strong { display: block; margin: 6px 0; font: 700 30px/1 Consolas, monospace; letter-spacing: -.07em; }
