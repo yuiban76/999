@@ -3474,3 +3474,14 @@ button:disabled {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* NPC seats wrap instead of hiding opponents beyond a horizontal scrollbar. */
+.poker-npc-table .poker-npc-seats { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); overflow:visible; }
+.poker-npc-table .poker-npc-seats article { min-width:0; }
+.poker-npc-table .current-turn { outline:3px solid #f1c86a; outline-offset:-3px; }
+.poker-npc-table .casino-message { color:#e5def2; }
+.npc-history { padding:16px; color:#f4f0fb; border-top:1px solid #76658d; }
+.npc-history summary { cursor:pointer; min-height:32px; }
+.npc-history ol { max-height:240px; overflow:auto; padding-left:24px; font-size:14px; line-height:1.7; }
+.poker-npc-table .poker-npc-start > div small,
+.poker-npc-table .poker-npc-start > div b { color:#f4f0fb; }

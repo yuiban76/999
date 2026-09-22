@@ -77,8 +77,8 @@ type CasinoTableRow = { id: string; deck: string; round_token: string; action_to
 type PokerRow = { user_id: string; player_name: string; hole_cards: string; community_cards: string; bet: number; status: string; result: string; seat_no: number | null; reveal_at: number; street_bet: number; acted: number; life_version: number; round_token: string; action_token: string; updated_at: number };
 type PokerTableRow = { id: string; deck: string; community_cards: string; street: string; current_bet: number; turn_seat: number; pot: number; status: string; round_token: string; action_token: string; updated_at: number };
 type PokerNpcSessionRow = { id: string; host_user_id: string; host_life_version: number; npc_count: number; big_blind: number; buy_in: number; fee_rate_bp: number; state_json: string; status: string; next_action_at: number; last_result: string; last_payout: number; last_fee: number; action_token: string; updated_at: number; created_at: number };
-type PokerNpcSeat = { id: string; displayName: string; seatNo: number; isNpc: boolean; style: "tight" | "balanced" | "aggressive"; cards: string[]; bet: number; streetBet: number; stack: number; status: "playing" | "all_in" | "folded" | "settled"; acted: boolean; result: string };
-type PokerNpcGame = { deck: string[]; communityCards: string[]; street: "preflop" | "flop" | "turn" | "river"; currentBet: number; turnSeat: number; pot: number; roundToken: string; seats: PokerNpcSeat[] };
+type PokerNpcSeat = { id: string; displayName: string; seatNo: number; isNpc: boolean; style: "tight" | "balanced" | "aggressive"; cards: string[]; bet: number; streetBet: number; stack: number; status: "playing" | "all_in" | "folded" | "settled"; acted: boolean; result: string; actedAtBet?: number; folded?: boolean };
+type PokerNpcGame = { deck: string[]; communityCards: string[]; street: "preflop" | "flop" | "turn" | "river"; currentBet: number; turnSeat: number; pot: number; roundToken: string; seats: PokerNpcSeat[]; dealerSeat?: number; minRaise?: number; history?: string[] };
 type TournamentRoundRow = { tournament_no: number; round_no: number; game: "blackjack" | "poker"; status: string; deck: string; dealer_cards: string; community_cards: string; street: string; current_bet: number; turn_seat: number; pot: number; next_action_at: number; action_token: string; updated_at: number };
 type TournamentHandRow = { tournament_no: number; round_no: number; user_id: string; player_name: string; seat_no: number; player_cards: string; hole_cards: string; bet: number; street_bet: number; stack: number; status: string; acted: number; result: string; life_version: number; action_token: string; updated_at: number };
 type TournamentStateRow = { round_no: number; current_round: number; game: "blackjack" | "poker"; status: string; host_user_id: string; entry_fee: number; round_limit: number; next_round_at: number; latest_result: string };
@@ -2866,6 +2866,14 @@ function pokerNpcNextSeat(game: PokerNpcGame, after: number) {
 
 function pokerNpcActive(game: PokerNpcGame) { return game.seats.filter((seat) => seat.status === "playing" || seat.status === "all_in"); }
 
+function pokerNpcCanRaise(game: PokerNpcGame, seat: PokerNpcSeat, bigBlind: number) {
+  return !seat.acted || game.currentBet - (seat.actedAtBet ?? seat.streetBet) >= (game.minRaise ?? bigBlind);
+}
+
+function pokerNpcFee(gross: number, buyIn: number, rate: number) {
+  return Math.ceil(Math.max(0, gross - buyIn) * rate / 10_000);
+}
+
 function pokerNpcRoundDone(game: PokerNpcGame) {
   const actors = game.seats.filter((seat) => seat.status === "playing");
   return actors.length === 0 || actors.every((seat) => seat.acted && seat.streetBet === game.currentBet);
@@ -2874,7 +2882,10 @@ function pokerNpcRoundDone(game: PokerNpcGame) {
 function pokerNpcApplyAction(game: PokerNpcGame, seatNo: number, action: string, requestedAmount: number, bigBlind: number) {
   const seat = game.seats.find((item) => item.seatNo === seatNo);
   if (!seat || seat.status !== "playing") return { ok: false, message: "目前不是你的行動回合。" };
+  if (!["fold", "check", "call", "raise", "all_in"].includes(action)) return { ok: false, message: "未知的牌桌動作。" };
   const callAmount = Math.max(0, game.currentBet - seat.streetBet);
+  const minRaise = game.minRaise ?? bigBlind;
+  if ((action === "raise" || (action === "all_in" && seat.stack > callAmount)) && !pokerNpcCanRaise(game, seat, bigBlind)) return { ok: false, message: "不足額全押未重新開放加注，只能跟注或棄牌。" };
   if (action === "check" && callAmount > 0) return { ok: false, message: "目前有人下注，不能過牌。" };
   if (action === "call" && callAmount === 0) return { ok: false, message: "目前沒有需要跟注的金額。" };
   let added = 0;
@@ -2891,10 +2902,10 @@ function pokerNpcApplyAction(game: PokerNpcGame, seatNo: number, action: string,
     seat.acted = true;
   } else {
     if (action === "raise") {
-      if (!Number.isSafeInteger(requestedAmount) || requestedAmount < bigBlind) return { ok: false, message: `加注至少為 NT$${bigBlind}。` };
+      if (!Number.isSafeInteger(requestedAmount) || requestedAmount < minRaise) return { ok: false, message: `加注至少為 NT$${minRaise}。` };
       raiseBy = requestedAmount;
     }
-    added = action === "check" ? 0 : callAmount + raiseBy;
+    added = action === "check" ? 0 : action === "call" ? Math.min(callAmount, seat.stack) : callAmount + raiseBy;
     if (added > seat.stack) return { ok: false, message: "籌碼不足以完成這個動作。" };
     seat.stack -= added;
     seat.status = seat.stack === 0 ? "all_in" : "playing";
@@ -2905,8 +2916,16 @@ function pokerNpcApplyAction(game: PokerNpcGame, seatNo: number, action: string,
   game.pot += added;
   if (raiseBy > 0) {
     game.currentBet += raiseBy;
-    game.seats.forEach((other) => { if (other.seatNo !== seatNo && other.status === "playing") other.acted = false; });
+    if (raiseBy >= minRaise) {
+      game.minRaise = raiseBy;
+      game.seats.forEach((other) => { if (other.seatNo !== seatNo && other.status === "playing") other.acted = false; });
+    }
   }
+  seat.actedAtBet = game.currentBet;
+  const label = action === "fold" ? "棄牌" : action === "check" ? "過牌" : action === "all_in" ? `全押 $${added}` : action === "raise" ? `投入 $${added}，加到 $${seat.streetBet}` : `跟注 $${added}`;
+  seat.result = label;
+  const streetName = { preflop: "翻牌前", flop: "翻牌圈", turn: "轉牌圈", river: "河牌圈" }[game.street];
+  game.history = [...(game.history ?? []), `${streetName} · ${seat.displayName}：${label}`].slice(-100);
   game.turnSeat = pokerNpcNextSeat(game, seatNo);
   return { ok: true, added, callAmount, raiseBy, message: action === "fold" ? "你已棄牌。" : action === "check" ? "你選擇過牌。" : action === "all_in" ? `你已全押 NT$${added}。` : action === "raise" ? `你跟注並加注 NT$${raiseBy}。` : `你跟注 NT$${callAmount}。` };
 }
@@ -2919,6 +2938,8 @@ function pokerNpcChooseAction(game: PokerNpcGame, seat: PokerNpcSeat, bigBlind: 
   const noise = crypto.getRandomValues(new Uint32Array(1))[0] / 4_294_967_296;
   const bluff = seat.style === "aggressive" && noise < 0.12;
   const threshold = seat.style === "tight" ? 0.56 : seat.style === "aggressive" ? 0.36 : 0.45;
+  if (!pokerNpcCanRaise(game, seat, bigBlind)) return { action: callAmount ? (strength >= potOdds ? "call" : "fold") : "check", amount: 0 };
+  bigBlind = game.minRaise ?? bigBlind;
   if (callAmount > 0 && pressure > 0.55 && strength < threshold && !bluff) return { action: "fold", amount: 0 };
   if (seat.stack > 0 && seat.stack <= callAmount + bigBlind && strength >= threshold) return { action: "all_in", amount: 0 };
   if (seat.stack > callAmount + bigBlind && (strength > threshold + 0.2 || (bluff && callAmount === 0))) {
@@ -2926,7 +2947,7 @@ function pokerNpcChooseAction(game: PokerNpcGame, seat: PokerNpcSeat, bigBlind: 
     if (raise < bigBlind) return { action: "all_in", amount: 0 };
     return { action: "raise", amount: raise };
   }
-  if (callAmount === 0) return { action: strength > threshold || bluff ? "raise" : "check", amount: strength > threshold || bluff ? Math.min(seat.stack, bigBlind) : 0 };
+  if (callAmount === 0) return { action: strength > threshold || bluff ? (seat.stack < bigBlind ? "all_in" : "raise") : "check", amount: strength > threshold || bluff ? Math.min(seat.stack, bigBlind) : 0 };
   if (strength + (seat.style === "aggressive" ? 0.05 : 0) >= Math.max(0.25, potOdds * 0.85)) return { action: "call", amount: 0 };
   return { action: "fold", amount: 0 };
 }
@@ -2962,17 +2983,20 @@ async function settlePokerNpc(db: D1Database, session: PokerNpcSessionRow, game:
   const human = game.seats.find((seat) => !seat.isNpc);
   const humanPot = human ? payouts.get(human.id) ?? 0 : 0;
   const humanGross = (human?.stack ?? 0) + humanPot;
-  const fee = Math.min(humanGross, Math.ceil(humanGross * claimed.fee_rate_bp / 10_000));
+  const fee = pokerNpcFee(humanGross, claimed.buy_in, claimed.fee_rate_bp);
   const walletPayout = Math.max(0, humanGross - fee);
   game.seats.forEach((seat) => {
     const payout = payouts.get(seat.id) ?? 0;
     const wasFolded = seat.status === "folded";
+    seat.folded = wasFolded;
+    seat.stack += payout;
     seat.status = "settled";
     seat.acted = true;
-    seat.result = payout > 0 ? `${evaluate(seat).name || "牌局"}獲得 NT$${payout}。` : wasFolded ? "本局已棄牌。" : "本局未贏得獎池。";
+    seat.result = wasFolded ? "本局已棄牌。" : `${community.length === 5 ? evaluate(seat).name : "其他玩家棄牌"} · ${payout > 0 ? "贏得獎池" : "未贏得獎池"}`;
   });
-  const humanWasFolded = human?.status === "folded";
-  const humanResult = humanWasFolded ? "本局已棄牌。" : walletPayout > 0 ? `結算獲得 NT$${walletPayout}（桌費 NT$${fee}）。` : `本局未贏得獎池，桌費 NT$${fee}。`;
+  const net = walletPayout - claimed.buy_in;
+  const humanResult = `${human?.folded ? "已棄牌 · " : ""}${net > 0 ? `本局淨贏 NT$${net}` : net < 0 ? `本局淨輸 NT$${-net}` : "本局收支持平 NT$0"}（已扣桌費 NT$${fee}）。`;
+  if (human) human.stack = walletPayout;
   const updated = Math.max(now, claimed.updated_at + 1);
   const statements: D1PreparedStatement[] = [db.prepare(`UPDATE players SET cash=cash+?, updated_at=MAX(updated_at+1, ?), mutation_token=?
     WHERE user_id=? AND life_version=? AND reset_game_over='' AND game_over<>'__resetting__'`).bind(walletPayout, updated, token, session.host_user_id, session.host_life_version),
@@ -2983,7 +3007,7 @@ async function settlePokerNpc(db: D1Database, session: PokerNpcSessionRow, game:
 
 async function advancePokerNpc(db: D1Database, initial: PokerNpcSessionRow) {
   let session = initial;
-  for (let loop = 0; loop < 12 && session.status === "playing"; loop += 1) {
+  for (let loop = 0; loop < 100 && session.status === "playing"; loop += 1) {
     const game = parsePokerNpcGame(session.state_json);
     if (!game) break;
     const active = pokerNpcActive(game);
@@ -2991,8 +3015,8 @@ async function advancePokerNpc(db: D1Database, initial: PokerNpcSessionRow) {
     if (pokerNpcRoundDone(game)) {
       const deck = [...game.deck]; const community = [...game.communityCards]; const nextStreet = game.street === "preflop" ? "flop" : game.street === "flop" ? "turn" : "river"; const count = nextStreet === "flop" ? 3 : 1;
       for (let index = 0; index < count; index += 1) if (deck.length) community.push(deck.pop()!);
-      game.deck = deck; game.communityCards = community; game.street = nextStreet; game.currentBet = 0; game.turnSeat = game.seats.filter((seat) => seat.status === "playing").sort((a, b) => a.seatNo - b.seatNo)[0]?.seatNo ?? 0;
-      game.seats.forEach((seat) => { seat.streetBet = 0; seat.acted = seat.status === "all_in"; });
+      game.deck = deck; game.communityCards = community; game.street = nextStreet; game.currentBet = 0; game.minRaise = session.big_blind; game.turnSeat = pokerNpcNextSeat(game, game.dealerSeat ?? game.seats.length);
+      game.seats.forEach((seat) => { seat.streetBet = 0; seat.actedAtBet = undefined; seat.acted = seat.status === "all_in"; });
       const next = game.seats.find((seat) => seat.seatNo === game.turnSeat);
       const updated = Math.max(Date.now(), session.updated_at + 1);
       const changed = await db.prepare("UPDATE poker_npc_sessions SET state_json=?, next_action_at=?, updated_at=? WHERE id=? AND status='playing' AND updated_at=? RETURNING *")
@@ -3001,11 +3025,9 @@ async function advancePokerNpc(db: D1Database, initial: PokerNpcSessionRow) {
     }
     const current = game.seats.find((seat) => seat.seatNo === game.turnSeat);
     if (!current) break;
-    if (session.next_action_at > Date.now()) break;
+    if (session.next_action_at > Date.now() && game.seats.some((seat) => !seat.isNpc && seat.status === "playing")) break;
     if (!current.isNpc) {
-      if (session.next_action_at && session.next_action_at <= Date.now() - POKER_NPC_HUMAN_TIMEOUT_MS) {
-        pokerNpcApplyAction(game, current.seatNo, "fold", 0, session.big_blind);
-      } else break;
+      pokerNpcApplyAction(game, current.seatNo, "fold", 0, session.big_blind);
     } else {
       const decision = pokerNpcChooseAction(game, current, session.big_blind);
       pokerNpcApplyAction(game, current.seatNo, decision.action, decision.amount, session.big_blind);
@@ -3029,7 +3051,7 @@ async function pokerNpcState(db: D1Database, userId: string) {
   const playing = effectiveSession.status === "playing";
   const seats = game.seats.map((seat) => ({ id: seat.id, displayName: seat.displayName, seatNo: seat.seatNo, isNpc: seat.isNpc, style: seat.isNpc ? seat.style : undefined, status: seat.status, bet: seat.bet, streetBet: seat.streetBet, stack: seat.stack, cards: seat.isNpc && playing ? ["🂠", "🂠"] : seat.cards, result: seat.result, isMine: !seat.isNpc }));
   const human = game.seats.find((seat) => !seat.isNpc);
-  return { mode: "npc", capacity: 5, status: effectiveSession.status === "playing" ? "playing" : "idle", phase: effectiveSession.status === "playing" ? "playing" : "idle", playerCount: game.seats.length, npcCount: effectiveSession.npc_count, bigBlind: effectiveSession.big_blind, buyIn: effectiveSession.buy_in, feeRateBp: effectiveSession.fee_rate_bp, serverNow: Date.now(), communityCards: game.communityCards, pot: game.pot, street: game.street, currentBet: game.currentBet, turnSeat: game.turnSeat, nextActionAt: effectiveSession.next_action_at, seats, hand: human ? { cards: human.cards, bet: human.bet, streetBet: human.streetBet, seatNo: human.seatNo, status: human.status, stack: human.stack, result: human.result, isTurn: playing && human.status === "playing" && human.seatNo === game.turnSeat } : null, lastResult: effectiveSession.last_result, lastPayout: effectiveSession.last_payout, lastFee: effectiveSession.last_fee };
+  return { mode: "npc", capacity: 5, status: effectiveSession.status === "playing" ? "playing" : "idle", phase: effectiveSession.status === "playing" ? "playing" : "idle", playerCount: game.seats.length, npcCount: effectiveSession.npc_count, bigBlind: effectiveSession.big_blind, buyIn: effectiveSession.buy_in, feeRateBp: effectiveSession.fee_rate_bp, serverNow: Date.now(), dealerSeat: game.dealerSeat ?? game.seats.length, minRaise: game.minRaise ?? effectiveSession.big_blind, canRaise: human ? pokerNpcCanRaise(game, human, effectiveSession.big_blind) : false, history: game.history ?? [], communityCards: game.communityCards, pot: game.pot, street: game.street, currentBet: game.currentBet, turnSeat: game.turnSeat, nextActionAt: effectiveSession.next_action_at, seats, hand: human ? { cards: human.cards, bet: human.bet, streetBet: human.streetBet, seatNo: human.seatNo, status: human.status, stack: human.stack, result: human.result, isTurn: playing && human.status === "playing" && human.seatNo === game.turnSeat } : null, lastResult: effectiveSession.last_result, lastPayout: effectiveSession.last_payout, lastFee: effectiveSession.last_fee };
 }
 
 async function startPokerNpc(db: D1Database, player: PlayerRow, user: AuthUser, npcCount: number, bigBlind: number) {
@@ -3042,17 +3064,21 @@ async function startPokerNpc(db: D1Database, player: PlayerRow, user: AuthUser, 
   if (sharedPoker) return { error: "你目前已加入多人德州牌桌，請先完成或離開多人牌桌。" };
   const id = `npc-${user.userId}`; const existing = await pokerNpcSession(db, user.userId);
   if (existing?.status === "playing" || existing?.status === "settling") return { error: "你已在 NPC 牌局中，請先完成這局。" };
+  const previous = existing ? parsePokerNpcGame(existing.state_json) : null;
+  const dealerSeat = previous ? ((previous.dealerSeat ?? previous.seats.length) % (count + 1)) + 1 : count + 1;
+  const smallSeat = dealerSeat % (count + 1) + 1;
+  const bigSeat = smallSeat % (count + 1) + 1;
   const deck = shuffledDeck(); const seats: PokerNpcSeat[] = [];
   for (let index = 0; index < count + 1; index += 1) {
-    const isNpc = index > 0; const seatNo = index + 1; const forced = seatNo === 1 ? Math.floor(blind / 2) : seatNo === 2 ? blind : 0;
+    const isNpc = index > 0; const seatNo = index + 1; const forced = seatNo === smallSeat ? Math.floor(blind / 2) : seatNo === bigSeat ? blind : 0;
     seats.push({ id: isNpc ? `npc-${index}` : user.userId, displayName: isNpc ? ["林慎之", "周穩健", "阿凱", "小葉"][index - 1] : user.displayName, seatNo, isNpc, style: isNpc ? POKER_NPC_STYLES[index - 1] : "balanced", cards: [deck.pop()!, deck.pop()!], bet: forced, streetBet: forced, stack: buyIn - forced, status: buyIn === forced ? "all_in" : "playing", acted: buyIn === forced, result: "" });
   }
-  const roundToken = crypto.randomUUID(); const now = Date.now(); const state: PokerNpcGame = { deck, communityCards: [], street: "preflop", currentBet: blind, turnSeat: seats[2]?.seatNo ?? seats[0].seatNo, pot: Math.floor(blind / 2) + blind, roundToken, seats };
+  const roundToken = crypto.randomUUID(); const now = Date.now(); const state: PokerNpcGame = { deck, communityCards: [], street: "preflop", currentBet: blind, turnSeat: bigSeat % seats.length + 1, pot: Math.floor(blind / 2) + blind, roundToken, seats, dealerSeat, minRaise: blind, history: [`${seats[smallSeat - 1].displayName}：小盲 $${Math.floor(blind / 2)}`, `${seats[bigSeat - 1].displayName}：大盲 $${blind}`] };
   const actionAt = pokerNpcNextActionAt(state.seats.find((seat) => seat.seatNo === state.turnSeat), now);
   const token = crypto.randomUUID(); const revision = now + 1;
   const result = await db.batch([
-    db.prepare("UPDATE players SET cash=cash-?, updated_at=MAX(updated_at+1, ?), mutation_token=? WHERE user_id=? AND life_version=? AND cash>=? AND reset_game_over='' AND game_over='' RETURNING user_id")
-      .bind(buyIn, revision, token, user.userId, player.life_version, buyIn),
+    db.prepare("UPDATE players SET cash=cash-?, updated_at=MAX(updated_at+1, ?), mutation_token=? WHERE user_id=? AND life_version=? AND cash>=? AND reset_game_over='' AND game_over='' AND NOT EXISTS (SELECT 1 FROM poker_npc_sessions WHERE id=? AND status<>'idle') RETURNING user_id")
+      .bind(buyIn, revision, token, user.userId, player.life_version, buyIn, id),
     db.prepare(`INSERT INTO poker_npc_sessions (id,host_user_id,host_life_version,npc_count,big_blind,buy_in,fee_rate_bp,state_json,status,next_action_at,last_result,last_payout,last_fee,action_token,updated_at,created_at)
       SELECT ?,?,?,?,?,? ,? ,?,'playing',?,'',0,0,?, ?, ? WHERE EXISTS (SELECT 1 FROM players WHERE user_id=? AND life_version=? AND mutation_token=?)
       ON CONFLICT(id) DO UPDATE SET host_life_version=excluded.host_life_version,npc_count=excluded.npc_count,big_blind=excluded.big_blind,buy_in=excluded.buy_in,fee_rate_bp=excluded.fee_rate_bp,state_json=excluded.state_json,status='playing',next_action_at=excluded.next_action_at,last_result='',last_payout=0,last_fee=0,action_token=excluded.action_token,updated_at=excluded.updated_at

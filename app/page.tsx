@@ -188,6 +188,10 @@ type PokerState = {
 };
 
 type PokerNpcState = {
+  dealerSeat?: number;
+  minRaise?: number;
+  canRaise?: boolean;
+  history?: string[];
   mode?: "npc";
   capacity: number;
   status: "idle" | "playing" | "settling";
@@ -1723,25 +1727,34 @@ function PokerNpcTable({ state, signedIn, busy, cash, onAction }: { state: Poker
   const playing = state.status === "playing";
   useEffect(() => {
     if (!playing) return;
-    const timer = window.setInterval(() => setNow(currentWallClockMs()), 1_000);
-    return () => window.clearInterval(timer);
-  }, [playing]);
-  const countdown = state.nextActionAt ? Math.max(0, Math.ceil((state.nextActionAt - now) / 1_000)) : 0;
+    const receivedAt = currentWallClockMs();
+    const update = () => setNow((state.serverNow ?? receivedAt) + currentWallClockMs() - receivedAt);
+    const initial = window.setTimeout(update, 0);
+    const timer = window.setInterval(update, 1_000);
+    return () => { window.clearTimeout(initial); window.clearInterval(timer); };
+  }, [playing, state.nextActionAt, state.serverNow]);
+  const countdown = state.nextActionAt ? Math.max(0, Math.ceil((state.nextActionAt - Math.max(now, state.serverNow ?? now)) / 1_000)) : 0;
   const blind = Math.max(10, Number(bigBlind) || 0);
   const buyIn = blind * 30;
   const callAmount = Math.max(0, (state.currentBet ?? 0) - (state.hand?.streetBet ?? 0));
+  const minimumRaise = state.minRaise ?? state.bigBlind;
+  const raiseAmount = Math.max(minimumRaise, Number(raiseBy) || minimumRaise);
+  const smallSeat = (state.dealerSeat ?? state.seats.length) % Math.max(1, state.seats.length) + 1;
+  const bigSeat = smallSeat % Math.max(1, state.seats.length) + 1;
   const streetLabel = ({ preflop: "翻牌前", flop: "翻牌圈", turn: "轉牌圈", river: "河牌圈" } as Record<string, string>)[state.street ?? ""] ?? "等待開局";
   return <section className="casino-table poker-npc-table">
-    <header><div><span>SOLO CASH TABLE · NPC</span><h4>單人金錢德州撲克</h4></div><strong>{playing ? `${streetLabel} · ${state.turnSeat === 1 ? "輪到你" : `輪到 ${state.turnSeat} 號`} · ${countdown} 秒` : "中高水準 NPC · 獨立牌桌"}</strong></header>
+    <header><div><span>SOLO CASH TABLE · NPC</span><h4>單人金錢德州撲克</h4></div><strong>{playing ? `${streetLabel} · ${state.turnSeat === 1 ? "輪到你" : `輪到 ${state.turnSeat} 號`} · ${countdown} 秒` : "三種打法 · 單人牌桌"}</strong></header>
     {!signedIn ? <p className="casino-message">登入後即可使用單人 NPC 金錢牌桌。</p> : !playing ? <div className="poker-npc-lobby">
-      <div className="poker-npc-rules"><strong>一個人也能玩</strong><span>每局 2～4 名 NPC · 固定買入為大盲 × 30 · 結算收取 3% 桌費</span><small>NPC 只依自己的底牌與公共牌判斷，不會偷看你的牌；可以過牌、跟注、加注、棄牌或全押。</small></div>
-      <div className="poker-npc-start"><label>NPC 人數<select value={npcCount} onChange={(event) => setNpcCount(event.target.value)}><option value="2">2 名（3 人桌）</option><option value="3">3 名（4 人桌）</option><option value="4">4 名（5 人桌）</option></select></label><label>大盲金額<input type="number" min="10" max="100000" step="10" value={bigBlind} onChange={(event) => setBigBlind(event.target.value)} /></label><div><span>固定買入 <b>NT${formatMoney(buyIn)}</b></span><small>目前現金 NT${formatMoney(cash)} · 桌費 3%</small></div><button className="npc-start-button" onClick={() => onAction("npc_start", { npcCount: Number(npcCount), bigBlind: blind })} disabled={busy || !blind || cash < buyIn}>開啟 NPC 金錢桌</button></div>
-      {state.lastResult && <p className="casino-result">上局結果：{state.lastResult}{state.lastFee ? ` 已扣桌費 NT$${formatMoney(state.lastFee)}。` : ""}</p>}
-    </div> : <>
-      <div className="casino-seats poker-npc-seats">{state.seats.map((seat) => <article className={`${seat.isMine ? "mine" : ""} ${seat.status}`} key={seat.id}><span>{seat.seatNo}</span><strong>{seat.isMine ? `${seat.displayName}（你）` : seat.displayName}</strong><small>{seat.status === "folded" ? "已棄牌" : seat.status === "all_in" ? `全押 · 籌碼 NT$${formatMoney(seat.stack)}` : `籌碼 NT$${formatMoney(seat.stack)} · 累計 NT$${formatMoney(seat.bet)}`}</small>{seat.cards.length > 0 && <CardRow cards={seat.cards} />}{seat.result && <em>{seat.result}</em>}</article>)}</div>
-      <div className="poker-board"><div className="poker-community"><span>{streetLabel} · 獎池 NT$${formatMoney(state.pot)} · 本圈最高 NT$${formatMoney(state.currentBet ?? 0)}</span>{state.communityCards.length ? <CardRow cards={state.communityCards} /> : <p>翻牌前下注中，公共牌尚未發出</p>}</div></div>
-      <div className="poker-npc-actions">{state.hand?.isTurn ? <div className="casino-controls"><button onClick={() => onAction("npc_action", { move: callAmount ? "call" : "check" })} disabled={busy}>{callAmount ? `跟注 NT$${formatMoney(callAmount)}` : "過牌"}</button><input aria-label="NPC 桌加注金額" type="number" min={Math.max(10, state.bigBlind)} step="10" value={raiseBy} onChange={(event) => setRaiseBy(event.target.value)} /><button onClick={() => onAction("npc_action", { move: "raise", amount: Number(raiseBy) })} disabled={busy || Number(raiseBy) < state.bigBlind}>加注</button><button className="all-in" onClick={() => onAction("npc_action", { move: "all_in" })} disabled={busy || (state.hand?.stack ?? 0) <= 0}>全押 NT${formatMoney(state.hand?.stack ?? 0)}</button><button className="leave" onClick={() => onAction("npc_action", { move: "fold" })} disabled={busy}>棄牌</button></div> : <p className="casino-message">{state.hand?.status === "folded" ? "你已棄牌，等待本局結算。" : `等待 ${state.turnSeat} 號 NPC 行動${countdown ? `（${countdown} 秒）` : ""}。`}</p>}</div>
-      <footer>買入資金會先從現金保留；結算時返還剩餘籌碼與獎池，並扣除 3% 桌費 · NPC 約 3 秒思考 · 單人桌不影響多人牌桌</footer>
+      <div className="poker-npc-rules"><strong>一個人也能玩</strong><span>每局 2～4 名 NPC · 固定買入為大盲 × 30 · 僅本局正淨利收取 3% 桌費</span><small>NPC 只依自己的底牌與公共牌判斷，不會偷看你的牌；可以過牌、跟注、加注、棄牌或全押。</small></div>
+      <div className="poker-npc-start"><label>NPC 人數<select value={npcCount} onChange={(event) => setNpcCount(event.target.value)}><option value="2">2 名（3 人桌）</option><option value="3">3 名（4 人桌）</option><option value="4">4 名（5 人桌）</option></select></label><label>大盲金額<input type="number" min="10" max="100000" step="10" value={bigBlind} onChange={(event) => setBigBlind(event.target.value)} /></label><div><span>固定買入 <b>NT${formatMoney(buyIn)}</b></span><small>目前現金 NT${formatMoney(cash)} · 桌費 3%</small></div><button className="npc-start-button" onClick={() => onAction("npc_start", { npcCount: Number(npcCount), bigBlind: blind })} disabled={busy || !blind || cash < buyIn}>{state.lastResult ? "下一局" : "開啟 NPC 金錢桌"}</button></div>
+      {state.lastResult && <p className="casino-result">上局結果：{state.lastResult}</p>}
+    </div> : null}
+    {signedIn && state.seats.length > 0 && <>
+      <div className="casino-seats poker-npc-seats">{state.seats.map((seat) => <article className={`${seat.isMine ? "mine" : ""} ${seat.status} ${playing && seat.seatNo === state.turnSeat ? "current-turn" : ""}`} key={seat.id}><span>{seat.seatNo} · {seat.seatNo === state.dealerSeat ? "莊位" : seat.seatNo === smallSeat ? "小盲" : seat.seatNo === bigSeat ? "大盲" : "席位"}</span><strong>{seat.isMine ? `${seat.displayName}（你）` : seat.displayName}</strong><small>{seat.status === "folded" ? "已棄牌" : seat.status === "all_in" ? `全押 · 籌碼 NT$${formatMoney(seat.stack)}` : `籌碼 NT$${formatMoney(seat.stack)} · 累計 NT$${formatMoney(seat.bet)}`}</small>{seat.cards.length > 0 && <CardRow cards={seat.cards} />}{seat.result && <em>{seat.result}</em>}</article>)}</div>
+      <div className="poker-board"><div className="poker-community"><span>{streetLabel} · 獎池 NT${formatMoney(state.pot)} · 本圈最高 NT${formatMoney(state.currentBet ?? 0)}</span>{state.communityCards.length ? <CardRow cards={state.communityCards} /> : <p>翻牌前下注中，公共牌尚未發出</p>}</div></div>
+      {playing && <div className="poker-npc-actions">{state.hand?.isTurn ? <div className="casino-controls"><button onClick={() => onAction("npc_action", { move: callAmount ? "call" : "check" })} disabled={busy}>{callAmount ? `跟注 NT$${formatMoney(Math.min(callAmount, state.hand?.stack ?? 0))}` : "過牌"}</button><input aria-label="NPC 桌加注金額" type="number" min={minimumRaise} step="10" value={raiseAmount} onChange={(event) => setRaiseBy(event.target.value)} /><button onClick={() => onAction("npc_action", { move: "raise", amount: raiseAmount })} disabled={busy || state.canRaise === false || callAmount + raiseAmount > (state.hand?.stack ?? 0)}>加到 NT${formatMoney((state.currentBet ?? 0) + raiseAmount)}（投入 NT${formatMoney(callAmount + raiseAmount)}）</button><button className="all-in" onClick={() => onAction("npc_action", { move: "all_in" })} disabled={busy || (state.hand?.stack ?? 0) <= 0 || (state.canRaise === false && (state.hand?.stack ?? 0) > callAmount)}>全押 NT${formatMoney(state.hand?.stack ?? 0)}</button><button className="leave" onClick={() => onAction("npc_action", { move: "fold" })} disabled={busy}>棄牌</button></div> : <p className="casino-message">{state.hand?.status === "folded" ? "你已棄牌，等待本局結算。" : `等待 ${state.turnSeat} 號 NPC 行動${countdown ? `（${countdown} 秒）` : ""}。`}</p>}</div>}
+      <details className="npc-history" open={!playing}><summary>本局行動紀錄</summary><ol>{(state.history ?? []).map((entry, index) => <li key={index}>{entry}</li>)}</ol></details>
+      <footer>買入資金會先從現金保留；結算僅對正淨利收取 3% 桌費；輸錢、和局不收費 · NPC 約 3 秒思考 · 棄牌或全押後快速結算</footer>
     </>}
   </section>;
 }
