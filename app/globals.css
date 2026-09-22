@@ -888,7 +888,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
 .story-tab-panel > *,
 .story-tab-panel .coop-card,
 .story-tab-panel .innovation-card,
-.story-tab-panel .city-memory-card,
 .story-tab-panel .next-goal {
   margin-top: 0;
   margin-bottom: 0;
@@ -911,7 +910,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid #ff8050; outline-offs
 .records-panel .innovation-card,
 .records-panel .feed-heading,
 .records-panel .feed-list,
-.records-panel .city-memory-card,
 .records-panel .next-goal {
   grid-column: 1;
   grid-row: auto;
@@ -2038,27 +2036,18 @@ a:focus-visible,
 input:focus-visible { outline: 3px solid rgba(0, 113, 227, .38); outline-offset: 2px; }
 
 .story-progress-card,
-.talent-summary,
-.city-memory-card { padding: 15px; border: 1px solid #dedee3; border-radius: 15px; background: #fff; }
+.talent-summary { padding: 15px; border: 1px solid #dedee3; border-radius: 15px; background: #fff; }
 .story-progress-card { margin-top: 12px; }
 .story-progress-card > span,
-.talent-summary > span,
-.city-memory-card > span { display: block; color: #6e6e73; font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.talent-summary > span { display: block; color: #6e6e73; font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .story-progress-card > strong,
-.talent-summary > strong,
-.city-memory-card > strong { display: block; margin-top: 6px; color: #1d1d1f; font-size: 15px; }
+.talent-summary > strong { display: block; margin-top: 6px; color: #1d1d1f; font-size: 15px; }
 .story-progress-card > div { height: 5px; margin: 11px 0 8px; overflow: hidden; border-radius: 999px; background: #e8e8ed; }
 .story-progress-card > div i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #0071e3, #34c759); }
 .story-progress-card small,
 .talent-summary small { display: block; margin-top: 7px; color: #6e6e73; line-height: 1.45; }
 .talent-summary { width: 100%; margin-top: 10px; text-align: left; cursor: pointer; }
 .talent-summary:hover { border-color: #86bff6; background: #f3f8ff; }
-.city-memory-card { grid-column: 1 / -1; }
-.city-memory-card p { margin: 7px 0 12px; color: #6e6e73; line-height: 1.5; }
-.city-memory-card > div { display: flex; flex-wrap: wrap; gap: 6px; }
-.city-memory-card > div small { padding: 5px 8px; border-radius: 999px; background: #f1f1f4; }
-.city-memory-card.good { border-color: #a8dfb4; background: #f2fbf4; }
-.city-memory-card.warn { border-color: #f1c7a0; background: #fff7ef; }
 
 .talent-board { position: relative; width: min(920px, 100%); max-height: min(88vh, 820px); padding: 28px; overflow-y: auto; border-radius: 22px; background: #fff; box-shadow: 0 24px 80px rgba(0,0,0,.22); }
 .talent-board > h2 { margin: 5px 0 6px; font-size: 30px; }
@@ -2654,8 +2643,7 @@ a:focus-visible {
 .career-card,
 .innovation-card,
 .coop-card,
-.next-goal,
-.city-memory-card {
+.next-goal {
   border: 1px solid var(--city-line);
   border-radius: 16px;
   background: rgba(255, 255, 255, .78);
@@ -2946,16 +2934,6 @@ button:disabled {
 
 .next-goal > div i {
   background: var(--city-amber);
-}
-
-.city-memory-card {
-  background: var(--city-ink-soft);
-  color: #fff;
-}
-
-.city-memory-card p,
-.city-memory-card small {
-  color: #cad6dc;
 }
 
 .auth-overlay,

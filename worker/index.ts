@@ -97,7 +97,6 @@ type TournamentRoundRow = { tournament_no: number; round_no: number; game: "blac
 type TournamentHandRow = { tournament_no: number; round_no: number; user_id: string; player_name: string; seat_no: number; player_cards: string; hole_cards: string; bet: number; street_bet: number; stack: number; status: string; acted: number; result: string; life_version: number; action_token: string; updated_at: number };
 type TournamentStateRow = { round_no: number; current_round: number; game: "blackjack" | "poker"; status: string; host_user_id: string; entry_fee: number; round_limit: number; next_round_at: number; latest_result: string };
 type ProgressRow = { user_id: string; talent_exp: number; talents: string; story_chapter: number; story_seen_chapter: number; last_event_day: number; pending_event: string; updated_at: number };
-type MemoryRow = { cycle_day: number; work_count: number; hospital_count: number; housing_count: number; casino_count: number; study_count: number; event_count: number };
 type TransferRequestRow = { id: string; sender_id: string; sender_name: string; recipient_id: string; kind: "gift" | "scam"; amount: number; sender_life_version: number; recipient_life_version: number; status: string; outcome: string; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
 type MedicalTreatmentRequestRow = { id: string; patient_id: string; patient_name: string; provider_id: string; provider_name: string; provider_job: string; health_gain: number; amount: number; patient_life_version: number; provider_life_version: number; status: string; outcome: string; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
 type LoanRequestRow = { id: string; borrower_id: string; borrower_name: string; provider_id: string; provider_name: string; provider_job: string; amount: number; interest_rate_bp: number; spread_bp: number; borrower_life_version: number; provider_life_version: number; status: string; outcome: string; resolution_token: string; created_at: number; expires_at: number; resolved_at: number | null };
@@ -414,13 +413,6 @@ async function ensureSchema(db: D1Database) {
       relation_cost INTEGER NOT NULL, action_token TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL,
       PRIMARY KEY (user_id, life_version, play_day)
     )`),
-    db.prepare(`CREATE TABLE IF NOT EXISTS city_memory_contributions (
-      user_id TEXT NOT NULL, cycle_day INTEGER NOT NULL,
-      work_count INTEGER NOT NULL DEFAULT 0, hospital_count INTEGER NOT NULL DEFAULT 0,
-      housing_count INTEGER NOT NULL DEFAULT 0, casino_count INTEGER NOT NULL DEFAULT 0,
-      study_count INTEGER NOT NULL DEFAULT 0, event_count INTEGER NOT NULL DEFAULT 0,
-      PRIMARY KEY (user_id, cycle_day)
-    )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS mystery_clues (
       user_id TEXT NOT NULL, clue_key TEXT NOT NULL, found_at INTEGER NOT NULL,
       PRIMARY KEY (user_id, clue_key)
@@ -585,7 +577,6 @@ async function ensureSchema(db: D1Database) {
     db.prepare("CREATE INDEX IF NOT EXISTS idx_poker_status_updated ON poker_hands(status, updated_at)"),
     db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_poker_seat ON poker_hands(seat_no)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_poker_npc_host_status ON poker_npc_sessions(host_user_id, status, updated_at)"),
-    db.prepare("CREATE INDEX IF NOT EXISTS idx_city_memory_cycle ON city_memory_contributions(cycle_day)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_mystery_clues_key ON mystery_clues(clue_key)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_reputation_user_points ON player_reputation(user_id, points)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_commission_claim_day ON city_commission_claims(cycle_day, commission_id)"),
@@ -967,34 +958,6 @@ async function ensureProgress(db: D1Database, player: PlayerRow) {
     progress = { ...progress, story_chapter: chapter, talent_exp: Math.min(1099, progress.talent_exp + reward), updated_at: now };
   }
   return progress;
-}
-
-function memoryCycleDay() {
-  const day = Math.floor(worldMinutes() / 1440) + 1;
-  return day - ((day - 1) % 3);
-}
-
-async function recordCityMemory(db: D1Database, userId: string, metric: "work" | "hospital" | "housing" | "casino" | "study" | "event") {
-  const cycle = memoryCycleDay();
-  const column = `${metric}_count`;
-  await db.prepare(`INSERT INTO city_memory_contributions (user_id, cycle_day, ${column}) VALUES (?, ?, 1)
-    ON CONFLICT(user_id, cycle_day) DO UPDATE SET ${column}=MIN(5, ${column}+1)`)
-    .bind(userId, cycle).run();
-}
-
-async function cityMemory(db: D1Database) {
-  const cycleDay = memoryCycleDay();
-  const row = await db.prepare(`SELECT ? AS cycle_day,
-    COALESCE(SUM(work_count),0) AS work_count, COALESCE(SUM(hospital_count),0) AS hospital_count,
-    COALESCE(SUM(housing_count),0) AS housing_count, COALESCE(SUM(casino_count),0) AS casino_count,
-    COALESCE(SUM(study_count),0) AS study_count, COALESCE(SUM(event_count),0) AS event_count
-    FROM city_memory_contributions WHERE cycle_day=?`).bind(cycleDay, cycleDay).first<MemoryRow>();
-  const memory = row ?? { cycle_day: cycleDay, work_count: 0, hospital_count: 0, housing_count: 0, casino_count: 0, study_count: 0, event_count: 0 };
-  const state = memory.work_count >= 20 ? { name: "就業熱潮", description: "全城工作收入暫時提高 5%。", tone: "good" }
-    : memory.hospital_count >= 10 ? { name: "健康警報", description: "市立醫院費用暫時降低 20%。", tone: "warn" }
-      : memory.housing_count >= 15 ? { name: "租屋熱潮", description: "城市正在關注快速增加的居住需求。", tone: "neutral" }
-        : { name: "平靜日常", description: "城市正在記住每位居民今天做出的選擇。", tone: "neutral" };
-  return { cycleDay, days: 3, state, totals: { work: memory.work_count, hospital: memory.hospital_count, housing: memory.housing_count, casino: memory.casino_count, study: memory.study_count, event: memory.event_count } };
 }
 
 async function maybeFindMysteryClue(db: D1Database, userId: string, location: LocationId) {
@@ -2631,9 +2594,8 @@ async function casinoAction(request: Request, env: Env) {
     }
   }
   const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
-  if (body.action === "deal") await recordCityMemory(env.DB, user.userId, "casino");
   const progress = await ensureProgress(env.DB, saved!);
-  return json({ player: serializePlayer(saved!, progress), casino: await casinoState(env.DB, user.userId), message, cityMemory: await cityMemory(env.DB) });
+  return json({ player: serializePlayer(saved!, progress), casino: await casinoState(env.DB, user.userId), message });
 }
 
 const POKER_ACTIVE_STATUSES = "('seated','ready','playing','all_in','folded','settling')";
@@ -3203,7 +3165,7 @@ async function pokerNpcAction(request: Request, env: Env, user: AuthUser, player
   }
   const saved = await env.DB!.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
   const progress = await ensureProgress(env.DB!, saved!);
-  return json({ player: serializePlayer(saved!, progress), pokerNpc: await pokerNpcState(env.DB!, user.userId), poker: await pokerState(env.DB!, user.userId), message, cityMemory: await cityMemory(env.DB!) });
+  return json({ player: serializePlayer(saved!, progress), pokerNpc: await pokerNpcState(env.DB!, user.userId), poker: await pokerState(env.DB!, user.userId), message });
 }
 
 async function pokerAction(request: Request, env: Env) {
@@ -3394,9 +3356,8 @@ async function pokerAction(request: Request, env: Env) {
     message = "已離開德州撲克牌桌。";
   } else return json({ message: "未知的德州撲克牌桌行動。" }, 400);
   const saved = await env.DB.prepare("SELECT * FROM players WHERE user_id=?").bind(user.userId).first<PlayerRow>();
-  if (["bet", "call", "raise", "all_in"].includes(body.action || "")) await recordCityMemory(env.DB, user.userId, "casino");
   const progress = await ensureProgress(env.DB, saved!);
-  return json({ player: serializePlayer(saved!, progress), poker: await pokerState(env.DB, user.userId), pokerNpc: await pokerNpcState(env.DB, user.userId), message, cityMemory: await cityMemory(env.DB) });
+  return json({ player: serializePlayer(saved!, progress), poker: await pokerState(env.DB, user.userId), pokerNpc: await pokerNpcState(env.DB, user.userId), message });
 }
 
 async function auth(request: Request, env: Env, mode: "register" | "login") {
@@ -3747,11 +3708,10 @@ async function bootstrap(request: Request, env: Env) {
   const world = await multiplayer(env.DB);
   const emptyCasino = { capacity: 5, activeCount: 0, seats: [], hand: null };
   const emptyPoker = { capacity: 5, activeCount: 0, seats: [], hand: null, communityCards: [], pot: 0 };
-  const [casino, poker, pokerNpc, memory, transferRequests, medicalRequests, loanRequests, begRequests, street, aidBoxes, coop, bingo, dicePoker, tournament, loanContract, bookStoreState, reputation, commissions, mystery, contracts, ledger, npcs] = await Promise.all([
+  const [casino, poker, pokerNpc, transferRequests, medicalRequests, loanRequests, begRequests, street, aidBoxes, coop, bingo, dicePoker, tournament, loanContract, bookStoreState, reputation, commissions, mystery, contracts, ledger, npcs] = await Promise.all([
     row.location === "casino" ? casinoState(env.DB, user.userId) : Promise.resolve(emptyCasino),
     row.location === "casino" ? pokerState(env.DB, user.userId) : Promise.resolve(emptyPoker),
     row.location === "casino" ? pokerNpcState(env.DB, user.userId) : Promise.resolve(emptyPokerNpcState()),
-    cityMemory(env.DB),
     pendingTransferRequests(env.DB, user.userId),
     pendingMedicalRequests(env.DB, user.userId),
     pendingLoanRequests(env.DB, user.userId),
@@ -3766,7 +3726,7 @@ async function bootstrap(request: Request, env: Env) {
     row.location === "bookstore" ? bookStore(env.DB, user.userId) : Promise.resolve({ books: [], maxActiveBooks: WRITER_MAX_ACTIVE_BOOKS, maxPurchasesPerBook: WRITER_MAX_PURCHASES_PER_BOOK }),
     reputationState(env.DB, row), commissionState(env.DB, row), mysteryState(env.DB, user.userId), contractState(env.DB, row), lifeLedgerState(env.DB, user.userId), npcState(env.DB, row),
   ]);
-  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress, loanContract), lastChips, room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, pokerNpc, bingo, dicePoker, tournament, cityMemory: memory, transferRequests, medicalRequests, loanRequests, begRequests, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, lifeRhythm: rhythm, npcs, bookStore: bookStoreState });
+  return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress, loanContract), lastChips, room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, pokerNpc, bingo, dicePoker, tournament, transferRequests, medicalRequests, loanRequests, begRequests, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, lifeRhythm: rhythm, npcs, bookStore: bookStoreState });
 }
 
 async function takeAction(request: Request, env: Env) {
@@ -3803,7 +3763,6 @@ async function takeAction(request: Request, env: Env) {
   if (!["move", "choose_story", "reset", "city_event", "bank", "job", "restaurant", "transfer_request", "transfer_response", "medical_request", "medical_response", "loan_request", "loan_response", "book_publish", "book_toggle", "book_buy", "beg_response", "inventory_use", "street_share_food", "aid_box_donate", "coop_contribute", "story_ack", "contract_create", "contract_accept", "contract_decline", "contract_deposit", "npc_interact", "npc_favor", "life_plan_start"].includes(body.action || "") && current.action_available_at > Date.now()) return json({ message: actionWaitMessage(current) }, 409);
   const next = { ...current };
   const sharedMinutes = worldMinutes();
-  const memoryBefore = await cityMemory(env.DB);
   const storedJob = jobInfo(next.current_job);
   if (!storedJob || storedJob.categoryId !== next.job_category) { next.current_job = "unemployed"; next.job_category = "unfixed"; next.job_exp = 0; }
   let title = "完成行動";
@@ -3910,7 +3869,6 @@ async function takeAction(request: Request, env: Env) {
       const detail = `${npc.name}提供「${favor.title}」：${trusted ? favor.trustedDescription : favor.baseDescription}；關係 -${relationCost}。`;
       await Promise.all([
         recordTransferEvent(env.DB, user.userId, current.display_name, "城市人情網", detail, "good"),
-        recordCityMemory(env.DB, user.userId, "event"),
         addLifePlanMarker(env.DB, current, "npc", npc.id),
       ]);
       return refreshedGameResponse(env.DB, user, `${detail} 今天已使用一次人情協助，下一個玩家日可再次選擇。`);
@@ -4936,7 +4894,7 @@ async function takeAction(request: Request, env: Env) {
       const energyCost = Math.ceil(hours * 5 * (talents.has("endurance") ? .85 : 1));
       if (next.energy < energyCost) return json({ message: "體力不足，先回家休息吧。" }, 400);
       const previousCareer = careerForCategory(next.job_category, next.job_exp, next.current_job, abilitiesFor(next));
-      const incomeMultiplier = 1 + (talents.has("workaholic_1") ? .05 : 0) + (talents.has("workaholic_2") ? .05 : 0) + (memoryBefore.state.name === "就業熱潮" ? .05 : 0);
+      const incomeMultiplier = 1 + (talents.has("workaholic_1") ? .05 : 0) + (talents.has("workaholic_2") ? .05 : 0);
       const income = restaurantOwner ? 0 : Math.floor(hours * previousCareer.hourlyPay * incomeMultiplier);
       if (next.job_category === "crime") {
         illegalJob = previousCareer.title;
@@ -5049,8 +5007,7 @@ async function takeAction(request: Request, env: Env) {
       if (next.location !== "hospital") return json({ message: "請先前往市立醫院。" }, 400);
       if (body.kind !== "emergency" && !isHospitalRegularOpen(sharedMinutes)) return json({ message: "一般門診與完整治療時間為 07:00～23:00；急診 24 小時開放。" }, 400);
       const careerDiscount = medicalHospitalDiscountFor(next.current_job);
-      const memoryDiscount = memoryBefore.state.name === "健康警報" ? .2 : 0;
-      const careDiscount = 1 - Math.max(careerDiscount, memoryDiscount);
+      const careDiscount = 1 - careerDiscount;
       const energyMax = talents.has("strong_body") ? 120 : 100;
       const care = body.kind === "clinic"
         ? { name: "一般門診", price: Math.floor(600 * careDiscount), minutes: 15, health: Math.min(100, next.health + 25), energy: Math.min(energyMax, next.energy + 10) }
@@ -5318,8 +5275,6 @@ async function takeAction(request: Request, env: Env) {
     const territoryVisit = await recordTerritoryVisit(env.DB, user.userId, saved!.life_version, pendingTerritoryVisit.location, pendingTerritoryVisit.cycleDay, pendingTerritoryVisit.worldMinute);
     if (territoryVisit) message += " 進入紀錄已留下，但你沒有被扣除任何費用。";
   }
-  const metric = ["work", "writer_write"].includes(body.action || "") ? "work" : body.action === "hospital" ? "hospital" : body.action === "housing" ? "housing" : body.action === "study" ? "study" : ["city_event", "npc_interact"].includes(body.action || "") ? "event" : null;
-  if (metric) await recordCityMemory(env.DB, user.userId, metric);
   const careerPoints = lifePlanCareerPoints(body.action || "", Number(body.hours ?? 0));
   if (careerPoints) await addLifePlanCareerProgress(env.DB, saved!, careerPoints);
   if (body.action === "bank" && body.kind === "repay") await addLifePlanDebtProgress(env.DB, saved!, Number(body.amount ?? 0));
@@ -5365,7 +5320,7 @@ async function takeAction(request: Request, env: Env) {
     await env.DB.prepare(`UPDATE last_chips_members SET total_bet=total_bet+? WHERE user_id=? AND current=1`)
       .bind(100 - Math.max(0, -delta), user.userId).run();
   }
-  return json({ player: serializePlayer(saved!, progress, loanContract), message, scratch, lastChips: await lastChipsState(env.DB, user.userId), loanRequests, begRequests, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, lifeRhythm: rhythm, bookStore: bookStoreState, npcs, cityMemory: await cityMemory(env.DB), ...world,
+  return json({ player: serializePlayer(saved!, progress, loanContract), message, scratch, lastChips: await lastChipsState(env.DB, user.userId), loanRequests, begRequests, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, lifeRhythm: rhythm, bookStore: bookStoreState, npcs, ...world,
     ...(casinoSnapshot ? { casino: casinoSnapshot[0], poker: casinoSnapshot[1], pokerNpc: casinoSnapshot[2], bingo: casinoSnapshot[3], dicePoker: casinoSnapshot[4], tournament: casinoSnapshot[5] } : {}) });
 }
 

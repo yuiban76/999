@@ -313,7 +313,6 @@ type Bootstrap = {
   bingo?: BingoState;
   dicePoker?: DicePokerState;
   tournament?: TournamentState;
-  cityMemory?: CityMemory;
   transferRequests?: TransferRequest[];
   medicalRequests?: MedicalRequest[];
   loanRequests?: LoanRequest[];
@@ -332,14 +331,6 @@ type Bootstrap = {
   lastChips?: LastChipsState;
 };
 
-type CityMemory = {
-  cycleDay: number;
-  days: number;
-  state: { name: string; description: string; tone: string };
-  totals: { work: number; hospital: number; housing: number; casino: number; study: number; event: number };
-};
-
-const EMPTY_CITY_MEMORY: CityMemory = { cycleDay: 1, days: 3, state: { name: "平靜日常", description: "城市正在記住每位居民今天做出的選擇。", tone: "neutral" }, totals: { work: 0, hospital: 0, housing: 0, casino: 0, study: 0, event: 0 } };
 const EMPTY_LIFE_RHYTHM: LifeRhythmState = { cycleDays: LIFE_PLAN_CYCLE_DAYS, completionTalentExp: 6, partialTalentExp: 2, active: null, effect: null, history: [], storyReflection: "" };
 
 const INITIAL_PLAYER: Player = {
@@ -828,7 +819,6 @@ function GameHome() {
   const [territoryOpen, setTerritoryOpen] = useState(false);
   const [territorySelection, setTerritorySelection] = useState<LocationId>("business");
   const [talentOpen, setTalentOpen] = useState(false);
-  const [cityMemory, setCityMemory] = useState<CityMemory>(EMPTY_CITY_MEMORY);
   const [scratchResult, setScratchResult] = useState<{ price: number; prize: number } | null>(null);
   const [enlargedPlayer, setEnlargedPlayer] = useState<OnlinePlayer | null>(null);
   const [transferRequests, setTransferRequests] = useState<TransferRequest[]>([]);
@@ -845,6 +835,7 @@ function GameHome() {
   const [lifeLedger, setLifeLedger] = useState<LifeLedgerState>({ entries: [] });
   const [lifeRhythm, setLifeRhythm] = useState<LifeRhythmState>(EMPTY_LIFE_RHYTHM);
   const [lifeGuideOpen, setLifeGuideOpen] = useState(false);
+  const closeLifeGuide = useCallback(() => setLifeGuideOpen(false), []);
   const [npcs, setNpcs] = useState<NpcState>({ residents: [], dailyLimit: 1, favorUsedToday: false, note: "登入後即可認識城市居民。" });
   const [npcDialogId, setNpcDialogId] = useState<string | null>(null);
   const closeNpcDialog = useCallback(() => setNpcDialogId(null), []);
@@ -921,8 +912,7 @@ function GameHome() {
   const schoolOpen = isLocationOpen("school", sharedMinutes);
   const hospitalRegularOpen = isHospitalRegularOpen(sharedMinutes);
   const medicalHospitalDiscount = medicalHospitalDiscountFor(player.currentJob);
-  const cityHospitalDiscount = cityMemory.state.name === "健康警報" ? 0.2 : 0;
-  const effectiveHospitalDiscount = Math.max(medicalHospitalDiscount, cityHospitalDiscount);
+  const effectiveHospitalDiscount = medicalHospitalDiscount;
   const dailyRent = player.talents.includes("rent_master") ? 315 : 350;
   const mealDiscount = player.talents.includes("frugal") ? 0.9 : 1;
   const mealPrice = (basePrice: number) => Math.floor(basePrice * mealDiscount);
@@ -964,7 +954,6 @@ function GameHome() {
       if (data.dicePoker) setDicePoker(data.dicePoker);
       if (data.tournament) setTournament(data.tournament);
       if (data.bookStore) setBookStore(data.bookStore);
-      if (data.cityMemory) setCityMemory(data.cityMemory);
       setTransferRequests(data.transferRequests ?? []);
       setMedicalRequests(data.medicalRequests ?? []);
       setLoanRequests(data.loanRequests ?? []);
@@ -1060,7 +1049,7 @@ function GameHome() {
         headers: apiHeaders(true),
         body: JSON.stringify({ action: action.startsWith("lastchips_") ? action.slice(10) : action.startsWith("casino_") ? action.slice(7) : action.startsWith("poker_") ? action.slice(6) : action.startsWith("bingo_") ? action.slice(6) : action.startsWith("dice_") ? action.slice(5) : action.startsWith("tournament_") ? action.slice(11) : action, ...payload }),
       });
-      const data = await response.json() as { serverNow?: number; player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; pokerNpc?: PokerNpcState; bingo?: BingoState; dicePoker?: DicePokerState; tournament?: TournamentState; bookStore?: BookStoreState; cityMemory?: CityMemory; transferRequests?: TransferRequest[]; medicalRequests?: MedicalRequest[]; loanRequests?: LoanRequest[]; begRequests?: BegRequest[]; street?: StreetState; aidBoxes?: AidBoxState; coop?: CoopState; reputation?: ReputationState; commissions?: CommissionState; mystery?: MysteryState; contracts?: LifeContractState; lifeLedger?: LifeLedgerState; lifeRhythm?: LifeRhythmState; npcs?: NpcState; lastChips?: LastChipsState; scratch?: { price: number; prize: number } | null; message?: string };
+      const data = await response.json() as { serverNow?: number; player?: Player; online?: OnlinePlayer[]; feed?: FeedItem[]; casino?: CasinoState; poker?: PokerState; pokerNpc?: PokerNpcState; bingo?: BingoState; dicePoker?: DicePokerState; tournament?: TournamentState; bookStore?: BookStoreState; transferRequests?: TransferRequest[]; medicalRequests?: MedicalRequest[]; loanRequests?: LoanRequest[]; begRequests?: BegRequest[]; street?: StreetState; aidBoxes?: AidBoxState; coop?: CoopState; reputation?: ReputationState; commissions?: CommissionState; mystery?: MysteryState; contracts?: LifeContractState; lifeLedger?: LifeLedgerState; lifeRhythm?: LifeRhythmState; npcs?: NpcState; lastChips?: LastChipsState; scratch?: { price: number; prize: number } | null; message?: string };
       if (typeof data.serverNow === "number") setServerTimeOffsetMs(data.serverNow - currentWallClockMs());
       if (!response.ok || !data.player) throw new Error(data.message || "行動失敗");
       syncPlayer(data.player, action === "reset");
@@ -1074,7 +1063,6 @@ function GameHome() {
       if (data.dicePoker) setDicePoker(data.dicePoker);
       if (data.tournament) setTournament(data.tournament);
       if (data.bookStore) setBookStore(data.bookStore);
-      if (data.cityMemory) setCityMemory(data.cityMemory);
       if (data.transferRequests) setTransferRequests(data.transferRequests);
       if (data.medicalRequests) setMedicalRequests(data.medicalRequests);
       if (data.loanRequests) setLoanRequests(data.loanRequests);
@@ -1342,7 +1330,7 @@ function GameHome() {
                   {casinoGame === "blackjack" ? <CasinoTable state={casino} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`casino_${action}`, payload)} /> : casinoGame === "poker" ? <><PokerTable state={poker} signedIn={Boolean(profile)} busy={busy} maxBet={player.cash} onAction={(action, payload) => void act(`poker_${action}`, payload)} /><PokerNpcTable state={pokerNpc} signedIn={Boolean(profile)} busy={busy} cash={player.cash} onAction={(action, payload) => void act(`poker_${action}`, payload)} /></> : casinoGame === "bingo" ? <BingoTable state={bingo} signedIn={Boolean(profile)} busy={busy} onAction={(action, payload) => void act(`bingo_${action}`, payload)} /> : casinoGame === "dice" ? <DicePokerTable state={dicePoker} signedIn={Boolean(profile)} busy={busy} onAction={(action, payload) => void act(`dice_${action}`, payload)} /> : <TournamentTable state={tournament} signedIn={Boolean(profile)} busy={busy} onAction={(action, payload) => void act(`tournament_${action}`, payload)} />}
                 </div>}
               {player.location === "school" && ACADEMIES.map((academy, index) => <ActionCard key={academy.id} icon={academy.icon} title={academy.name} meta={`NT$500 · 現實等待 1 分鐘 · ${formatRequirements(academy.gains)}`} button="報名上課" onClick={() => void act("study", { academy: academy.id })} featured={index === 0} disabled={actionBusy || !schoolOpen} disabledLabel={!schoolOpen ? "已關門" : undefined} />)}
-              {player.location === "hospital" && <><ActionCard icon="急" title="24 小時急診" meta={`NT$${formatMoney(Math.floor(2500 * (1 - effectiveHospitalDiscount)))} · 等待 20 秒 · 健康至少恢復至 70`} button="前往急診" onClick={() => void act("hospital", { kind: "emergency" })} featured disabled={actionBusy} /><ActionCard icon="診" title="一般門診" meta={`07:00～23:00 · NT$${formatMoney(Math.floor(600 * (1 - effectiveHospitalDiscount)))} · 等待 15 秒 · 健康 +25`} button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /><ActionCard icon="療" title="完整治療" meta={`07:00～23:00 · NT$${formatMoney(Math.floor(1500 * (1 - effectiveHospitalDiscount)))} · 等待 30 秒 · 健康至少恢復至 80`} button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} />{effectiveHospitalDiscount > 0 && <p className="hospital-discount-note">目前醫療費用折抵 {Math.round(effectiveHospitalDiscount * 100)}%（職業與城市效果取較高者）</p>}</>}
+              {player.location === "hospital" && <><ActionCard icon="急" title="24 小時急診" meta={`NT$${formatMoney(Math.floor(2500 * (1 - effectiveHospitalDiscount)))} · 等待 20 秒 · 健康至少恢復至 70`} button="前往急診" onClick={() => void act("hospital", { kind: "emergency" })} featured disabled={actionBusy} /><ActionCard icon="診" title="一般門診" meta={`07:00～23:00 · NT$${formatMoney(Math.floor(600 * (1 - effectiveHospitalDiscount)))} · 等待 15 秒 · 健康 +25`} button="掛號看診" onClick={() => void act("hospital", { kind: "clinic" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} /><ActionCard icon="療" title="完整治療" meta={`07:00～23:00 · NT$${formatMoney(Math.floor(1500 * (1 - effectiveHospitalDiscount)))} · 等待 30 秒 · 健康至少恢復至 80`} button="接受治療" onClick={() => void act("hospital", { kind: "treatment" })} disabled={actionBusy || !hospitalRegularOpen} disabledLabel={!hospitalRegularOpen ? "已關門，請使用急診" : undefined} />{effectiveHospitalDiscount > 0 && <p className="hospital-discount-note">目前醫療費用折抵 {Math.round(effectiveHospitalDiscount * 100)}%（職業效果）</p>}</>}
             </div>
           </div>
           <footer className="world-footer"><span>{player.mainStory === "last_chips" ? "隊伍有任何一人在線，挑戰日數才會前進" : "只有上線時計入個人遊玩天數 · 城市時間全服同步"}</span><button onClick={() => void act("reset")} disabled={busy || player.mainStory === "last_chips" && lastChips.room?.status === "active"}>{player.mainStory === "last_chips" ? "挑戰結束後重開" : "重新開始人生"}</button>{profile && player.mainStory !== "unselected" && player.mainStory !== "last_chips" && <button onClick={() => { if (window.confirm("這會清除目前人生進度，回到主線選擇。確定要繼續嗎？")) void act("reset", { story: "unselected" }); }} disabled={busy}>重開並選擇主線</button>}</footer>
@@ -1373,7 +1361,6 @@ function GameHome() {
           <ol className="feed-list">
             {feed.slice(0, 6).map((item) => <li key={item.id} className={item.tone}><time>{item.time}</time><div><strong>{item.playerName ? `${item.playerName} · ` : ""}{item.title}</strong><p>{item.detail}</p></div></li>)}
           </ol>
-          <div className={`city-memory-card ${cityMemory.state.tone}`}><span>城市記憶 · 三日週期</span><strong>{cityMemory.state.name}</strong><p>{cityMemory.state.description}</p><div><small>工作 {cityMemory.totals.work}</small><small>醫療 {cityMemory.totals.hospital}</small><small>居住 {cityMemory.totals.housing}</small><small>學習 {cityMemory.totals.study}</small><small>賭場 {cityMemory.totals.casino}</small><small>事件 {cityMemory.totals.event}</small></div></div>
           {player.mainStory !== "last_chips" && <div className="next-goal"><span>當前《浪子回頭》任務進度</span><strong>{player.mainStory !== "prodigal_return" ? "尚未開始《浪子回頭》" : nextStoryChapter ? `第 ${nextStoryChapter.chapter} 章 · ${nextStoryChapter.title}` : "第 6 章完成 · 回家的路"}</strong><div><i style={{ width: `${player.mainStory === "prodigal_return" ? storyProgress : 0}%` }} /></div><small>{player.mainStory !== "prodigal_return" ? "選擇人生主線後開始記錄" : nextStoryChapter ? `目前貸款 NT$${formatMoney(player.loanBalance)} · 目標降至 NT$${formatMoney(nextStoryDebt)}（初始負債 ${Math.round(nextStoryChapter.remainingRatio * 100)}%）` : "貸款已全部清償 · 《浪子回頭》全章完成"}</small></div>}
           </div>}
         </aside>
@@ -1391,7 +1378,7 @@ function GameHome() {
         <section className="story-select-card game-over-card"><header><span>BAD ENDING</span><h2 id="game-over-title">《浪子回頭：無力償還》</h2><p>連續兩個遊戲日未繳足每日最低還款額</p></header><article><div className="story-prologue">{PRODIGAL_FAILURE_STORY.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div><button type="button" onClick={() => void act("reset")} disabled={busy}>{busy ? "正在重新開始……" : "重新開始《浪子回頭》"}<span>↻</span></button></article></section>
       </div>}
       {profile && unlockedStoryChapter && <div className="auth-overlay city-event-overlay" role="dialog" aria-modal="true" aria-labelledby="story-chapter-title"><section className="city-event-card story-chapter-card"><span>PRODIGAL RETURN · CHAPTER {unlockedStoryChapter.chapter}</span><h2 id="story-chapter-title">{unlockedStoryChapter.title}</h2>{unlockedStoryChapter.chapter === 6 ? PRODIGAL_SUCCESS_STORY.map((paragraph, index) => <p key={index}>{paragraph}</p>) : <p>{unlockedStoryChapter.story}</p>}{lifeRhythm.storyReflection && <p className="story-life-reflection">這一段路上，{lifeRhythm.storyReflection}</p>}<button disabled={busy} onClick={() => void act("story_ack")}>收進人生紀錄</button></section></div>}
-      {lifeGuideOpen && <LifeRhythmGuide onClose={() => setLifeGuideOpen(false)} />}
+      {lifeGuideOpen && <LifeRhythmGuide onClose={closeLifeGuide} />}
       {talentOpen && <div className="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="talent-title" onMouseDown={(event) => { if (event.currentTarget === event.target) setTalentOpen(false); }}><section className="talent-board"><button className="auth-close" type="button" aria-label="關閉天賦樹" onClick={() => setTalentOpen(false)}>×</button><span className="panel-kicker">LIFE TALENTS</span><h2 id="talent-title">天賦樹</h2><p>等級 {player.talentLevel} · 可用 {player.talentPoints} 點 · 每 100 經驗獲得 1 點。天賦不會改變賭場或刮刮樂機率。</p><div className="talent-branches">{["職涯", "生存", "財務", "機會"].map((branch) => <section key={branch}><h3>{branch}</h3>{TALENTS.filter((talent) => talent.branch === branch).map((talent) => { const owned = player.talents.includes(talent.id); const locked = talent.requires.some((required) => !player.talents.includes(required)); return <button className={owned ? "owned" : ""} key={talent.id} disabled={busy || owned || locked || player.talentPoints < 1} onClick={() => void act("talent", { talent: talent.id })}><strong>{talent.name}</strong><small>{talent.description}</small><em>{owned ? "已解鎖" : locked ? "需要前置天賦" : "使用 1 點"}</em></button>; })}</section>)}</div><button className="talent-reset" disabled={busy || !player.talents.length || player.cash < 2_000} onClick={() => void act("talent", { kind: "reset" })}>支付 NT$2,000 重置天賦</button></section></div>}
       {profile && pendingCityEvent && <div className="auth-overlay city-event-overlay" role="dialog" aria-modal="true" aria-labelledby="city-event-title"><section className="city-event-card"><span>THE CITY FOUND YOU</span><h2 id="city-event-title">{pendingCityEvent.title}</h2><p>{pendingCityEvent.text}</p><div>{pendingCityEvent.choices.map((choice) => { const unavailable = "requires" in choice && choice.requires && !player.talents.includes(choice.requires); return <button key={choice.id} disabled={busy || Boolean(unavailable)} onClick={() => void act("city_event", { choice: choice.id })}>{choice.label}{unavailable ? <small>需要談判能力</small> : null}</button>; })}</div></section></div>}
       {selectedNpc && <NpcDialogue resident={selectedNpc} busy={busy} onClose={closeNpcDialog} onChoose={(choiceId) => void act("npc_interact", { npcId: selectedNpc.id, eventId: selectedNpc.event?.id, choice: choiceId })} onFavor={() => void act("npc_favor", { npcId: selectedNpc.id })} />}

@@ -414,7 +414,7 @@ test("literary career provides daily writing, fan promotion, and bookstore publi
   assert.match(schema, /writerBookPurchases = sqliteTable\("writer_book_purchases"/);
 });
 
-test("story, talents, city memory, events, and hidden mystery are wired", async () => {
+test("story, talents, events, and hidden mystery are wired without city memory", async () => {
   const worker = await readFile(new URL("worker/index.ts", root), "utf8");
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   const progression = await readFile(new URL("shared/progression.ts", root), "utf8");
@@ -429,7 +429,8 @@ test("story, talents, city memory, events, and hidden mystery are wired", async 
   assert.match(worker, /Math\.random\(\) >= \.08/);
   assert.doesNotMatch(page, /共同謎團進度|謎團任務/);
   assert.match(page, /天賦樹/);
-  assert.match(page, /城市記憶/);
+  assert.doesNotMatch(page, /城市記憶|cityMemory|CityMemory/);
+  assert.doesNotMatch(worker, /cityMemory|city_memory_contributions|recordCityMemory|memoryCycleDay/);
   assert.match(migration, /CREATE TABLE `player_progress`/);
   assert.match(migration, /CREATE TABLE `city_memory_contributions`/);
   assert.match(migration, /CREATE TABLE `mystery_clues`/);
