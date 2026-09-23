@@ -230,12 +230,6 @@ button { color: inherit; }
 .job-tag { padding: 3px 8px; border: 1px solid #9d998c; border-radius: 20px; font-size: 10px; color: #5e625b; }
 .story-tag { display: block; width: fit-content; margin-top: 7px; color: var(--orange); font-size: 9px; font-weight: 800; }
 
-.story-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.story-choice-grid > article { min-width: 0; padding: 24px 22px 26px; }
-.story-choice-grid > article + article { border-left: 1px solid #bfc7c4; }
-.story-choice-grid .story-prologue { columns: initial; margin: 14px 0; }
-.story-choice-grid .story-prologue summary { color: #156bad; cursor: pointer; font-size: 11px; font-weight: 800; }
-.story-choice-grid .story-prologue p { font-size: 11px; line-height: 1.65; }
 .story-choice-summary { margin: 18px 0 0; font-size: 12px; line-height: 1.7; }
 .last-chips-join { display: flex; align-items: center; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
 .last-chips-join label { width: 100%; font-size: 11px; font-weight: 800; }
@@ -275,8 +269,6 @@ button { color: inherit; }
 .last-chips-restart { width: 100%; }
 .last-chips-panel details { margin-top: 12px; color: #cdd9d0; font-size: 10px; }
 .last-chips-panel details p { margin: 7px 0; }
-@media (max-width: 720px) { .story-choice-grid { grid-template-columns: 1fr; } .story-choice-grid > article + article { border-left: 0; border-top: 1px solid #bfc7c4; } }
-
 .cash-card { padding: 16px; border: 1px solid var(--ink); background: var(--moss-dark); color: white; box-shadow: 5px 5px 0 #bdc7b7; }
 .cash-card > span { font-size: 10px; letter-spacing: .12em; color: #bfcbbf; }
 .cash-card strong { display: block; margin: 6px 0; font: 700 30px/1 Consolas, monospace; letter-spacing: -.07em; }
@@ -3510,3 +3502,85 @@ button:disabled {
 .npc-history ol { max-height:240px; overflow:auto; padding-left:24px; font-size:14px; line-height:1.7; }
 .poker-npc-table .poker-npc-start > div small,
 .poker-npc-table .poker-npc-start > div b { color:#f4f0fb; }
+
+/* Main stories are chosen in a full-width reading panel, one at a time. */
+.story-select-overlay:has(.story-select-picker) { z-index: 5100; }
+.story-select-card.story-select-picker {
+  --story-paper: #fff;
+  --story-ink: #183348;
+  --story-muted: #5d7180;
+  --story-line: #dbe5eb;
+  --story-choice: #f4f8fb;
+  width: min(700px, 100%);
+  overflow-y: auto;
+}
+.story-choice-shell { padding: 20px 28px 28px; background: var(--story-paper); color: var(--story-ink); }
+.story-choice-switch { display: grid; gap: 8px; }
+.story-choice-switch button {
+  display: flex;
+  width: 100%;
+  min-height: 66px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 16px;
+  border: 1px solid var(--story-line);
+  border-left: 4px solid transparent;
+  border-radius: 12px;
+  background: var(--story-choice);
+  color: var(--story-ink);
+  cursor: pointer;
+  text-align: left;
+}
+.story-choice-switch button.selected { border-color: #3185bd; border-left-color: #efad52; background: #eaf5fb; }
+.story-choice-switch-copy { display: grid; gap: 3px; }
+.story-choice-switch-copy small { color: var(--story-muted); font-size: 10px; font-weight: 700; letter-spacing: .03em; }
+.story-choice-switch-copy strong { font-size: 17px; letter-spacing: .04em; }
+.story-choice-switch-status { flex: 0 0 auto; color: #096aa3; font-size: 11px; font-weight: 800; }
+.story-choice-switch-status span { margin-left: 5px; }
+.story-choice-switch button:focus-visible,
+.story-choice-detail button:focus-visible,
+.story-choice-detail input:focus-visible,
+.story-choice-detail summary:focus-visible { outline: 3px solid #edaa4d; outline-offset: 2px; }
+.story-choice-detail { margin-top: 18px; padding: 22px 4px 0; border-top: 1px solid var(--story-line); }
+.story-choice-detail .story-choice-title { align-items: center; }
+.story-choice-detail .story-choice-title span { color: #b56f27; }
+.story-choice-detail .story-choice-title h3 { color: var(--story-ink); }
+.story-choice-detail .story-prologue { min-height: 0; margin: 16px 0; padding: 0; columns: 1; overflow: visible; }
+.story-choice-detail .story-prologue p { color: var(--story-ink); font-size: 12px; line-height: 1.7; }
+.story-choice-detail .story-prologue summary { color: #096aa3; cursor: pointer; font-size: 12px; font-weight: 800; }
+.story-choice-detail .story-prologue[open] p:first-of-type { margin-top: 14px; }
+.story-choice-detail .story-choice-summary { color: var(--story-ink); }
+.story-choice-detail .story-starting-stats { margin: 14px 0 16px; }
+.story-choice-detail .story-starting-stats > div { border-color: var(--story-line); background: var(--story-choice); }
+.story-choice-detail .story-starting-stats span { color: var(--story-muted); }
+.story-choice-detail > button { width: 100%; }
+.story-choice-detail .last-chips-join { margin-top: 16px; }
+.story-choice-detail > small { display: block; margin-top: 12px; color: var(--story-muted); }
+
+@media (max-width: 600px) {
+  .story-select-overlay:has(.story-select-picker) { padding: 0; }
+  .story-select-card.story-select-picker { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
+  .story-choice-shell { flex: 1 1 auto; min-height: 0; padding: 14px 16px max(22px, env(safe-area-inset-bottom)); overflow-y: auto; }
+  .story-choice-switch button { min-height: 58px; padding: 8px 12px; }
+  .story-choice-detail { margin-top: 14px; padding-top: 16px; }
+  .story-choice-detail .story-choice-title h3 { font-size: 21px; }
+  .story-choice-detail .story-prologue { flex: none; overflow: visible; }
+  .story-choice-detail .story-starting-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .story-choice-detail .story-starting-stats strong { font-size: 16px; }
+  .story-choice-detail .last-chips-join input { font-size: 16px; }
+}
+
+@media (prefers-color-scheme: dark) {
+  .story-select-card.story-select-picker {
+    --story-paper: #1b2932;
+    --story-ink: #eef5f8;
+    --story-muted: #a7bfcb;
+    --story-line: #3a5260;
+    --story-choice: #233742;
+  }
+  .story-choice-switch button.selected { border-color: #408aaf; border-left-color: #efad52; background: #284658; }
+  .story-choice-switch-status,
+  .story-choice-detail .story-prologue summary { color: #9ed8f9; }
+  .story-choice-detail .story-choice-title span { color: #f4b968; }
+}
