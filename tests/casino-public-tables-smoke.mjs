@@ -7,6 +7,7 @@ import path from "node:path";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const origin = process.env.TEST_API_ORIGIN || "http://127.0.0.1:8788";
 const wrangler = path.join(root, "node_modules", "wrangler", "bin", "wrangler.js");
+const persistTo = process.env.TEST_D1_PERSIST_TO;
 const log = (message) => process.stdout.write(`✔ ${message}\n`);
 
 async function request(pathname, { token, body, expected = 200 } = {}) {
@@ -20,7 +21,7 @@ async function request(pathname, { token, body, expected = 200 } = {}) {
   return value;
 }
 
-const seed = (sql) => execFileSync(process.execPath, [wrangler, "d1", "execute", "life-online-db", "--local", "--command", sql], { cwd: root, stdio: "ignore" });
+const seed = (sql) => execFileSync(process.execPath, [wrangler, "d1", "execute", "life-online-db", "--local", ...(persistTo ? ["--persist-to", path.resolve(root, persistTo)] : []), "--command", sql], { cwd: root, stdio: "ignore" });
 function deterministicBaccaratShoe(winner) {
   const suits = ["♠", "♥", "♦", "♣"];
   const ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
@@ -128,6 +129,9 @@ await Promise.all([
   baccarat(b, { action: "bet", tableId: baccaratId, side: "banker", amount: 100 }),
 ]);
 const during = await Promise.all([baccarat(a, { action: "view", tableId: baccaratId }), baccarat(b, { action: "view", tableId: baccaratId })]);
+const live = await request(`/api/casino/live?game=baccarat&tableId=${baccaratId}`, { token: a.token });
+assert.equal(live.baccarat.tableId, baccaratId);
+assert.equal(live.cash, during[0].player.cash);
 assert.equal(during[0].baccarat.roundNo, during[1].baccarat.roundNo);
 assert.equal(during[0].baccarat.players.filter((player) => player.amount === 100).length, 2);
 assert.ok(during[0].baccarat.shoeRemaining >= 400 && during[0].baccarat.shoeRemaining <= 416);
@@ -136,6 +140,8 @@ assert.equal(before[0].player.cash - (await request("/api/game", { token: a.toke
 assert.equal(before[1].player.cash - (await request("/api/game", { token: b.token })).player.cash, 100);
 
 expireBaccaratRound(baccaratId, "banker");
+const lobbySettlement = await request("/api/game", { token: c.token });
+assert.equal(lobbySettlement.casinoTables.find((table) => table.id === baccaratId).status, "result");
 const settled = await baccarat(a, { action: "view", tableId: baccaratId });
 assert.equal(settled.baccarat.status, "result");
 assert.equal(settled.baccarat.playerCards.length >= 2, true);

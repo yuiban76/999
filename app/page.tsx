@@ -1027,12 +1027,14 @@ function GameHome() {
     return () => window.clearInterval(timer);
   }, [profile]);
 
-  const fastRefresh = (casino.phase !== undefined && casino.phase !== "idle")
-    || (poker.phase !== undefined && poker.phase !== "idle")
-    || pokerNpc.status !== "idle"
-    || bingo.status === "drawing"
-    || tournament.status === "playing"
-    || (player.location === "casino" && baccarat.joined && ["betting", "settling", "result"].includes(baccarat.status));
+  const fastRefresh = player.location === "casino" && (
+    (casinoGame === "blackjack" && casino.phase !== undefined && casino.phase !== "idle")
+    || (casinoGame === "poker" && (pokerMode === "npc" ? pokerNpc.status === "playing" : poker.phase === "playing"))
+    || (casinoGame === "baccarat" && baccarat.joined && ["betting", "settling", "result"].includes(baccarat.status))
+    || (casinoGame === "bingo" && bingo.status === "drawing")
+    || (casinoGame === "dice" && dicePoker.status === "playing")
+    || (casinoGame === "tournament" && tournament.status === "playing")
+  );
   useEffect(() => {
     if (!profile) return;
     const refreshWhileActive = () => {
@@ -1040,13 +1042,46 @@ function GameHome() {
       pollInFlightRef.current = true;
       void loadWorld(true).finally(() => { pollInFlightRef.current = false; });
     };
-    const timer = window.setInterval(refreshWhileActive, fastRefresh ? 1_500 : 10_000);
+    const timer = window.setInterval(refreshWhileActive, 20_000);
     document.addEventListener("visibilitychange", refreshWhileActive);
     return () => {
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", refreshWhileActive);
     };
-  }, [profile, fastRefresh, loadWorld]);
+  }, [profile, loadWorld]);
+
+  useEffect(() => {
+    if (!profile || !fastRefresh || busy) return;
+    let active = true;
+    let inFlight = false;
+    let controller: AbortController | null = null;
+    const refreshCurrentTable = async () => {
+      if (document.visibilityState !== "visible" || inFlight || pollInFlightRef.current) return;
+      inFlight = true;
+      controller = new AbortController();
+      const params = new URLSearchParams({ game: casinoGame, pokerMode,
+        tableId: casinoGame === "baccarat" ? selectedBaccaratTableRef.current : selectedPokerTableRef.current });
+      try {
+        const response = await fetch(`${API_ORIGIN}/api/casino/live?${params}`, { headers: apiHeaders(), signal: controller.signal });
+        if (!response.ok || !active) return;
+        const data = await response.json() as { resync?: boolean; cash?: number; bankroll?: number; casino?: CasinoState; poker?: PokerState; baccarat?: BaccaratState; pokerNpc?: PokerNpcState; bingo?: BingoState; dicePoker?: DicePokerState; tournament?: TournamentState };
+        if (!active) return;
+        if (data.resync) { void loadWorld(true); return; }
+        if (Number.isSafeInteger(data.cash)) setPlayer((current) => current.cash === data.cash ? current : { ...current, cash: data.cash! });
+        if (Number.isSafeInteger(data.bankroll)) setLastChips((current) => current.room ? { ...current, room: { ...current.room, bankroll: data.bankroll! } } : current);
+        if (data.casino) setCasino(data.casino);
+        if (data.poker) setPoker(data.poker);
+        if (data.baccarat) setBaccarat(data.baccarat);
+        if (data.pokerNpc) setPokerNpc(data.pokerNpc);
+        if (data.bingo) setBingo(data.bingo);
+        if (data.dicePoker) setDicePoker(data.dicePoker);
+        if (data.tournament) setTournament(data.tournament);
+      } catch { /* The next full sync can recover a missed live update. */ }
+      finally { inFlight = false; controller = null; }
+    };
+    const timer = window.setInterval(() => { void refreshCurrentTable(); }, 3_000);
+    return () => { active = false; controller?.abort(); window.clearInterval(timer); };
+  }, [profile, fastRefresh, busy, casinoGame, pokerMode, loadWorld]);
 
   useEffect(() => {
     if (!enlargedPlayer) return;

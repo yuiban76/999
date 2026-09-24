@@ -797,7 +797,23 @@ async function ensureSchema(db: D1Database) {
 let schemaReady: Promise<void> | null = null;
 async function ensureSchemaOnce(db: D1Database) {
   if (!schemaReady) {
-    schemaReady = ensureSchema(db).catch((error) => {
+    schemaReady = (async () => {
+      // A Worker isolate is short-lived. Replaying every CREATE, ALTER, index
+      // rebuild and PRAGMA on each cold start can exceed the free CPU budget.
+      // Keep these sentinels in sync with the final schema migrations below.
+      const schema = await db.prepare(`SELECT
+        EXISTS(SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_events_user_created') AS event_index,
+        EXISTS(SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='last_chips_cash_mirror') AS wallet_trigger,
+        EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='casino_baccarat_members') AS baccarat_members`).first<{ event_index: number; wallet_trigger: number; baccarat_members: number }>();
+      if (schema?.event_index && schema.wallet_trigger && schema.baccarat_members) return;
+      if (schema?.wallet_trigger && schema.baccarat_members) {
+        // Existing databases from before the event index only need this one
+        // cheap migration; new databases still need the full schema.
+        await db.prepare("CREATE INDEX IF NOT EXISTS idx_events_user_created ON game_events(user_id, created_at)").run();
+        return;
+      }
+      await ensureSchema(db);
+    })().catch((error) => {
       schemaReady = null;
       throw error;
     });
@@ -2956,7 +2972,15 @@ const PUBLIC_BACCARAT_TIERS = { low: { label: "入門桌", minBet: 100, maxBet: 
 
 async function publicCasinoTablesState(db: D1Database, userId: string) {
   const tables = await db.prepare("SELECT * FROM casino_public_tables ORDER BY game, created_at, id").all<PublicCasinoTableRow>();
-  await Promise.all(tables.results.filter((table) => table.game === "baccarat").map((table) => advanceBaccaratTable(db, table.id)));
+  // Lobby reads must not advance every baccarat shoe. Only recover rounds
+  // whose deadline passed and still hold money awaiting settlement.
+  const now = Date.now();
+  const dueBets = await db.prepare(`SELECT s.table_id FROM casino_baccarat_state s
+    WHERE ((s.status='betting' AND s.betting_ends_at<=?) OR (s.status='settling' AND s.updated_at<=?))
+      AND EXISTS (SELECT 1 FROM casino_baccarat_bets b
+        WHERE b.table_id=s.table_id AND b.round_no=s.round_no AND b.status='pending')`)
+    .bind(now, now - BACCARAT_RECOVERY_MS).all<{ table_id: string }>();
+  await Promise.all(dueBets.results.map((table) => advanceBaccaratTable(db, table.table_id)));
   const activeSince = Date.now() - ONLINE_HEARTBEAT_GRACE_MS;
   const [pokerCounts, baccaratCounts, baccaratStatus, myPoker, myBaccarat] = await Promise.all([
     db.prepare(`SELECT table_id, COUNT(*) AS count, MAX(CASE WHEN status IN ('playing','all_in','folded','settling') THEN 1 ELSE 0 END) AS playing,
@@ -4111,6 +4135,33 @@ async function bootstrap(request: Request, env: Env) {
     row.location === "casino" ? baccaratState(env.DB, user.userId, activeBaccaratTableId) : Promise.resolve({ tableId: activeBaccaratTableId, status: "betting", roundNo: 1, bettingEndsAt: 0, playerCards: [], bankerCards: [], players: [] }),
   ]);
   return json({ authenticated: true, profile: profileFor(user), player: serializePlayer(row, progress, loanContract), lastChips, room: { id: "lobby-01", name: "城市大廳 01" }, ...world, casino, poker, casinoTables, baccarat, pokerNpc, bingo, dicePoker, tournament, transferRequests, medicalRequests, loanRequests, begRequests, street, aidBoxes, coop, reputation, commissions, mystery, contracts, lifeLedger: ledger, lifeRhythm: rhythm, npcs, bookStore: bookStoreState });
+}
+
+async function casinoLiveSnapshot(request: Request, env: Env) {
+  const user = await identity(request, env.DB);
+  if (!user || !env.DB) return json({ message: "請先登入才能觀看即時牌局。" }, 401);
+  const { searchParams } = new URL(request.url);
+  const game = searchParams.get("game");
+  const tableId = searchParams.get("tableId") ?? "";
+  if (!game || !["blackjack", "poker", "baccarat", "bingo", "dice", "tournament"].includes(game)
+    || (tableId && !/^[a-z0-9-]{1,80}$/.test(tableId))) return json({ message: "牌桌資料格式錯誤。" }, 400);
+  await ensureSchemaOnce(env.DB);
+  // Live viewers still need a heartbeat, otherwise baccarat can treat a
+  // connected player as absent when a full-world refresh is delayed.
+  const row = await upsertPlayer(env.DB, user);
+  if (!row || row.location !== "casino") return json({ resync: true });
+  let state: Record<string, unknown>;
+  if (game === "blackjack") state = { casino: await casinoState(env.DB, user.userId) };
+  else if (game === "poker" && searchParams.get("pokerMode") === "npc") state = { pokerNpc: await pokerNpcState(env.DB, user.userId) };
+  else if (game === "poker") state = { poker: await pokerState(env.DB, user.userId, tableId || "table-01") };
+  else if (game === "baccarat") state = { baccarat: await baccaratState(env.DB, user.userId, tableId || "baccarat-01") };
+  else if (game === "bingo") state = { bingo: await bingoState(env.DB, user.userId) };
+  else if (game === "dice") state = { dicePoker: await dicePokerState(env.DB, user.userId) };
+  else state = { tournament: await tournamentState(env.DB, user.userId) };
+  const wallet = await env.DB.prepare("SELECT cash FROM players WHERE user_id=?").bind(user.userId).first<{ cash: number }>();
+  const room = row.main_story === "last_chips" ? await lastChipsRoomFor(env.DB, user.userId) : null;
+  return json({ ...state, cash: room?.status === "active" ? room.bankroll : wallet?.cash ?? row.cash,
+    ...(room?.status === "active" ? { bankroll: room.bankroll } : {}) });
 }
 
 async function takeAction(request: Request, env: Env) {
@@ -5723,6 +5774,7 @@ export default {
     else if (url.pathname === "/api/profile/name" && request.method === "POST") response = await updateDisplayName(request, env);
     else if (url.pathname.startsWith("/api/avatar/") && request.method === "GET") response = await getAvatar(url.pathname.slice("/api/avatar/".length), env);
     else if (url.pathname === "/api/game" && request.method === "GET") response = await bootstrap(request, env);
+    else if (url.pathname === "/api/casino/live" && request.method === "GET") response = await casinoLiveSnapshot(request, env);
     else if (url.pathname === "/api/game/action" && request.method === "POST") response = await takeAction(request, env);
     else if (url.pathname === "/api/last-chips/action" && request.method === "POST") response = await lastChipsAction(request, env);
     else if (url.pathname === "/api/casino/action" && request.method === "POST") response = await casinoAction(request, env);

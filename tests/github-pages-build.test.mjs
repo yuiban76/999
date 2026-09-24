@@ -55,12 +55,18 @@ test("idle clients do not create unnecessary Cloudflare reads and writes", async
   assert.doesNotMatch(worker, /\bscheduled\s*\(|\balarm\s*\(/);
   assert.doesNotMatch(wrangler, /"crons"|"triggers"/);
   assert.match(worker, /ensureSchemaOnce/);
+  assert.match(worker, /if \(schema\?\.event_index && schema\.wallet_trigger && schema\.baccarat_members\) return/);
+  assert.match(worker, /dueBets\.results\.map\(\(table\) => advanceBaccaratTable/);
   assert.match(worker, /\(\?=1 OR \?-last_seen_at>=\?\)/);
   assert.match(worker, /row\.location === "casino" \? casinoState/);
   assert.match(worker, /needsIdleExpiry \|\| needsRoundReveal \|\| needsRoundExpiry/);
   assert.match(page, /if \(!profile\) return/);
   assert.match(page, /document\.visibilityState === "visible"/);
-  assert.match(page, /setInterval\(refreshWhileActive, 10_000\)/);
+  assert.match(page, /fastRefresh = player\.location === "casino"/);
+  assert.match(page, /setInterval\(refreshWhileActive, 20_000\)/);
+  assert.match(page, /setInterval\(\(\) => \{ void refreshCurrentTable\(\); \}, 3_000\)/);
+  assert.match(page, /\/api\/casino\/live\?/);
+  assert.match(worker, /url\.pathname === "\/api\/casino\/live"/);
 });
 
 test("longer opening hours are consistent in rules, interface, and worker responses", async () => {
