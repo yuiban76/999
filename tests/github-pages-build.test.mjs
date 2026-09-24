@@ -179,7 +179,7 @@ test("administrative actions are instant and gameplay waits stay shortened", asy
   assert.match(page, /期間可移動、換職、使用銀行、與 NPC 交談、處理玩家請求，或前往賭場遊玩/);
   assert.match(page, /BankPanel player=\{player\} busy=\{busy \|\| !bankOpen\}/);
   assert.match(page, /<CasinoTable state=\{casino\} signedIn=\{Boolean\(profile\)\} busy=\{busy\}/);
-  assert.match(page, /<PokerTable state=\{poker\} signedIn=\{Boolean\(profile\)\} busy=\{busy\}/);
+  assert.match(page, /<PokerTable key=\{poker\.tableId \?\? "table-01"\} state=\{poker\} signedIn=\{Boolean\(profile\)\} busy=\{busy\}/);
   assert.doesNotMatch(worker, /body\.action !== "leave" && player\.action_available_at > Date\.now\(\)/);
 });
 

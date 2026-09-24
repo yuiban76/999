@@ -3585,8 +3585,96 @@ button:disabled {
   .story-choice-detail .story-choice-title span { color: #f4b968; }
 }
 
+.casino-public-hall { margin: 0 0 18px; padding: 20px; border: 1px solid #dfe4ee; border-radius: 19px; background: #fff; box-shadow: 0 12px 34px rgba(17,35,66,.08); color: #14233a; }
+.casino-public-hall > header { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:16px; }
+.casino-public-hall > header > div > span { color:#58708f; font:800 10px/1.2 Consolas,monospace; letter-spacing:.13em; }
+.casino-public-hall h3 { margin:5px 0 4px; font-size:21px; letter-spacing:-.03em; }
+.casino-public-hall > header p { margin:0; color:#66758a; font-size:12px; line-height:1.5; }
+.casino-public-hall > header > button { flex:0 0 auto; min-height:40px; padding:0 15px; border:1px solid #d2d9e5; border-radius:999px; background:#f5f7fa; color:#243750; font-size:12px; font-weight:800; }
+.casino-public-hall > header > button.active { border-color:#174da1; background:#eaf2ff; color:#174da1; }
+.casino-public-create { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:12px; margin-bottom:15px; padding:13px; border:1px solid #e4e9f0; border-radius:14px; background:#f7f9fc; }
+.casino-public-create label { display:grid; gap:6px; color:#58677c; font-size:11px; font-weight:800; }
+.casino-public-create select { width:100%; min-height:42px; padding:0 12px; border:1px solid #d7deea; border-radius:10px; background:#fff; color:#192b43; font-size:13px; font-weight:700; }
+.casino-public-create > button,.casino-public-table-grid article > button { min-height:42px; padding:0 15px; border:0; border-radius:11px; background:#1456b8; color:#fff; font-size:12px; font-weight:800; cursor:pointer; }
+.casino-public-create > button:hover,.casino-public-table-grid article > button:hover { background:#0d469b; }
+.casino-public-create button:disabled,.casino-public-table-grid button:disabled { opacity:.5; cursor:not-allowed; }
+.casino-public-table-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:11px; }
+.casino-public-table-grid article { min-width:0; padding:14px; border:1px solid #e0e5ed; border-radius:15px; background:linear-gradient(150deg,#fff,#f8faff); transition:border-color .16s,transform .16s,box-shadow .16s; }
+.casino-public-table-grid article.selected { border-color:#5484ce; box-shadow:0 0 0 3px rgba(49,111,202,.11); }
+.casino-public-table-grid article.mine { background:linear-gradient(145deg,#f4f8ff,#edf4ff); }
+.public-table-card-heading { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.public-table-card-heading > span { padding:5px 8px; border-radius:999px; background:#eff2f6; color:#5e6c80; font-size:10px; font-weight:800; }
+.public-table-card-heading > span.live { background:#e5f6ec; color:#1c7440; }
+.public-table-card-heading > b { color:#1456b8; font-size:9px; }
+.casino-public-table-grid h4 { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:12px 0 5px; font-size:16px; }
+.casino-public-table-grid h4 small { color:#738198; font:700 10px Consolas,monospace; }
+.casino-public-table-grid article > p { margin:0 0 12px; color:#435570; font-size:12px; font-weight:800; }
+.public-table-capacity { display:flex; justify-content:space-between; gap:8px; margin-bottom:12px; color:#69788d; font-size:10px; }
+.public-table-capacity strong { color:#293b54; }
+.casino-public-table-grid article > button { width:100%; min-height:40px; }
+.casino-public-empty { margin:0; padding:20px 12px; border:1px dashed #ccd5e2; border-radius:13px; color:#65748a; text-align:center; font-size:12px; }
+.baccarat-table { background:#115a43; box-shadow:5px 5px 0 #0b3a2c; }
+.baccarat-table > header { background:#0a4735; }
+.baccarat-table > header strong { color:#ffdf88; }
+.baccarat-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1px; background:rgba(255,255,255,.17); border-bottom:1px solid rgba(255,255,255,.18); }
+.baccarat-summary > div { display:grid; gap:5px; padding:13px 17px; background:rgba(0,0,0,.13); }
+.baccarat-summary small { color:#c7e3d7; font-size:10px; font-weight:700; }
+.baccarat-summary strong { color:#fff1c7; font:800 16px Consolas,monospace; }
+.baccarat-board { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:18px; padding:22px 18px; background:radial-gradient(ellipse at center,#176b50 0,#0f563f 75%); }
+.baccarat-hand { min-width:0; text-align:center; }
+.baccarat-hand > span { display:block; margin-bottom:9px; color:#ffe49b; font-size:13px; font-weight:800; }
+.baccarat-hand > p { margin:0; color:rgba(255,255,255,.55); font-size:11px; }
+.baccarat-hand .table-card-row { justify-content:center; }
+.baccarat-result { max-width:145px; padding:9px 12px; border:1px solid rgba(255,235,168,.5); border-radius:999px; background:rgba(0,0,0,.19); color:#fff4cb; text-align:center; font-size:11px; font-weight:900; }
+.baccarat-join,.baccarat-controls { padding:17px 18px; border-top:1px solid rgba(255,255,255,.17); background:rgba(0,0,0,.11); }
+.baccarat-join { display:flex; align-items:center; justify-content:space-between; gap:14px; }
+.baccarat-join p { margin:0; color:#e1f0e8; font-size:12px; line-height:1.5; }
+.baccarat-join button,.baccarat-submit { min-height:44px; padding:0 18px; border:0; border-radius:11px; background:#f6d479; color:#233a2f; font-size:12px; font-weight:900; cursor:pointer; }
+.baccarat-side-buttons { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; }
+.baccarat-side-buttons button { display:grid; gap:4px; min-height:55px; border:1px solid rgba(255,255,255,.38); border-radius:12px; background:rgba(255,255,255,.08); color:#fff; font-size:13px; font-weight:900; cursor:pointer; }
+.baccarat-side-buttons button small { color:#d3e6da; font-size:10px; font-weight:700; }
+.baccarat-side-buttons button.selected { border-color:#ffdf83; background:#f2d071; color:#19382d; box-shadow:0 0 0 3px rgba(242,208,113,.18); }
+.baccarat-side-buttons button.selected small { color:#345642; }
+.baccarat-side-buttons button:disabled { opacity:.5; cursor:not-allowed; }
+.baccarat-amount { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:12px; color:#e1f0e8; font-size:11px; font-weight:800; }
+.baccarat-amount input { width:min(190px,45%); min-height:42px; padding:0 12px; border:1px solid rgba(255,255,255,.4); border-radius:10px; background:#fff; color:#1c342a; font:800 14px Consolas,monospace; }
+.baccarat-submit { width:100%; margin-top:10px; }
+.baccarat-submit:disabled,.baccarat-join button:disabled { opacity:.5; cursor:not-allowed; }
+.baccarat-own-bet { margin:0; padding:12px; border:1px solid rgba(255,222,130,.45); border-radius:11px; background:rgba(0,0,0,.14); color:#fff0ba; text-align:center; font-size:12px; font-weight:800; }
+.baccarat-player-list { margin:0 18px 16px; overflow:hidden; border:1px solid rgba(255,255,255,.19); border-radius:13px; }
+.baccarat-player-list > header { display:flex; justify-content:space-between; gap:10px; padding:10px 12px; background:rgba(0,0,0,.16); color:#fff4cf; font-size:11px; }
+.baccarat-player-list > header span { color:#c8dfd2; }
+.baccarat-player-list > div { display:flex; align-items:center; gap:10px; padding:10px 12px; border-top:1px solid rgba(255,255,255,.12); }
+.baccarat-player-list > div.mine { background:rgba(255,224,132,.08); }
+.baccarat-player-list > div > b { display:grid; flex:0 0 28px; height:28px; place-items:center; border-radius:50%; background:#f3d276; color:#214131; font-size:12px; }
+.baccarat-player-list > div > span { display:grid; flex:1; min-width:0; gap:3px; }
+.baccarat-player-list > div strong { overflow:hidden; color:#fff; text-overflow:ellipsis; white-space:nowrap; font-size:11px; }
+.baccarat-player-list > div small { color:#d0e5d8; font-size:10px; }
+.baccarat-player-list > div em { color:#ffe29a; font-size:11px; font-style:normal; font-weight:900; white-space:nowrap; }
+.baccarat-player-list > div .baccarat-player-result { max-width:210px; text-align:right; }
+.baccarat-player-list > p { margin:0; padding:16px; color:rgba(255,255,255,.7); text-align:center; font-size:11px; }
+.baccarat-leave { display:block; min-height:38px; margin:0 auto 14px; padding:0 14px; border:1px solid rgba(255,255,255,.45); border-radius:9px; background:transparent; color:#fff; font-size:11px; cursor:pointer; }
+.baccarat-table > footer { border-top:1px solid rgba(255,255,255,.16); }
+.casino-game-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
 .account-action-icon { display:none; }
 .account-action-label { display:inline; }
+@media (max-width:700px) {
+  .casino-public-hall { padding:15px; }
+  .casino-public-hall > header { align-items:flex-start; }
+  .casino-public-create { grid-template-columns:1fr; }
+  .casino-public-create > button { width:100%; }
+  .casino-public-table-grid { grid-template-columns:1fr; }
+  .baccarat-summary > div { padding:11px 8px; }
+  .baccarat-summary strong { font-size:13px; }
+  .baccarat-board { grid-template-columns:1fr; gap:10px; padding:17px 12px; }
+  .baccarat-result { order:-1; max-width:none; justify-self:center; }
+  .baccarat-join { align-items:stretch; flex-direction:column; }
+  .baccarat-join button { width:100%; }
+  .baccarat-side-buttons { gap:5px; }
+  .baccarat-side-buttons button { min-height:52px; padding:5px 2px; font-size:12px; }
+  .baccarat-player-list { margin-inline:12px; }
+  .baccarat-player-list > div .baccarat-player-result { display:none; }
+}
 
 @media (max-width:760px) {
   .guest-account-area { gap:8px; min-width:0; }

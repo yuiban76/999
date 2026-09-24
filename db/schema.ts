@@ -162,6 +162,7 @@ export const lastChipsMembers = sqliteTable("last_chips_members", {
 
 export const pokerHands = sqliteTable("poker_hands", {
   userId: text("user_id").primaryKey(),
+  tableId: text("table_id").notNull().default("table-01"),
   playerName: text("player_name").notNull(),
   holeCards: text("hole_cards").notNull().default("[]"),
   communityCards: text("community_cards").notNull().default("[]"),
@@ -176,7 +177,7 @@ export const pokerHands = sqliteTable("poker_hands", {
   roundToken: text("round_token").notNull().default(""),
   actionToken: text("action_token").notNull().default(""),
   updatedAt: integer("updated_at").notNull(),
-}, (table) => [index("idx_poker_status_updated").on(table.status, table.updatedAt), uniqueIndex("idx_poker_seat").on(table.seatNo)]);
+}, (table) => [index("idx_poker_status_updated").on(table.status, table.updatedAt), uniqueIndex("idx_poker_seat").on(table.tableId, table.seatNo)]);
 
 export const pokerTableState = sqliteTable("poker_table_state", {
   id: text("id").primaryKey(),
@@ -191,6 +192,52 @@ export const pokerTableState = sqliteTable("poker_table_state", {
   actionToken: text("action_token").notNull().default(""),
   updatedAt: integer("updated_at").notNull(),
 });
+
+export const casinoPublicTables = sqliteTable("casino_public_tables", {
+  id: text("id").primaryKey(),
+  game: text("game").notNull(),
+  tier: text("tier").notNull(),
+  bigBlind: integer("big_blind").notNull().default(0),
+  minBet: integer("min_bet").notNull().default(0),
+  maxBet: integer("max_bet").notNull().default(0),
+  createdBy: text("created_by").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+}, (table) => [index("idx_casino_public_game_updated").on(table.game, table.updatedAt)]);
+
+export const casinoBaccaratState = sqliteTable("casino_baccarat_state", {
+  tableId: text("table_id").primaryKey(),
+  shoe: text("shoe").notNull().default("[]"),
+  roundNo: integer("round_no").notNull().default(1),
+  status: text("status").notNull().default("betting"),
+  bettingEndsAt: integer("betting_ends_at").notNull().default(0),
+  playerCards: text("player_cards").notNull().default("[]"),
+  bankerCards: text("banker_cards").notNull().default("[]"),
+  result: text("result").notNull().default(""),
+  actionToken: text("action_token").notNull().default(""),
+  updatedAt: integer("updated_at").notNull(),
+}, (table) => [index("idx_baccarat_status_end").on(table.status, table.bettingEndsAt)]);
+
+export const casinoBaccaratBets = sqliteTable("casino_baccarat_bets", {
+  tableId: text("table_id").notNull(),
+  userId: text("user_id").notNull(),
+  roundNo: integer("round_no").notNull(),
+  playerName: text("player_name").notNull(),
+  side: text("side").notNull(),
+  amount: integer("amount").notNull(),
+  payout: integer("payout").notNull().default(0),
+  result: text("result").notNull().default(""),
+  status: text("status").notNull().default("pending"),
+  lifeVersion: integer("life_version").notNull().default(0),
+  updatedAt: integer("updated_at").notNull(),
+}, (table) => [primaryKey({ columns: [table.tableId, table.userId, table.roundNo] }), index("idx_baccarat_bets_round").on(table.tableId, table.roundNo, table.status)]);
+
+export const casinoBaccaratMembers = sqliteTable("casino_baccarat_members", {
+  tableId: text("table_id").notNull(),
+  userId: text("user_id").notNull(),
+  playerName: text("player_name").notNull(),
+  joinedAt: integer("joined_at").notNull(),
+}, (table) => [primaryKey({ columns: [table.tableId, table.userId] }), index("idx_baccarat_members_table").on(table.tableId)]);
 
 export const pokerNpcSessions = sqliteTable("poker_npc_sessions", {
   id: text("id").primaryKey(),

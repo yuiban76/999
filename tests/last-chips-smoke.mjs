@@ -19,6 +19,7 @@ async function request(path, token, body, expected = 200) {
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const value = await response.json();
+  if (expected === "any") return { status: response.status, value };
   assert.equal(response.status, expected, `${path}: ${value.message || response.statusText}`);
   return value;
 }
@@ -115,10 +116,46 @@ await request("/api/poker/action", blindA, { action: "join", seatNo: 4 });
 await request("/api/poker/action", blindB, { action: "join", seatNo: 5 });
 await request("/api/poker/action", blindA, { action: "ready" });
 await request("/api/poker/action", blindB, { action: "ready" });
-await request("/api/poker/action", blindA, { action: "start", bet: 10 });
+await request("/api/poker/action", blindA, { action: "start", tableId: "table-01" });
 const blindSnapshot = await request("/api/game", blindA);
-assert.equal(blindSnapshot.lastChips.room.bankroll, 99_985);
-assert.equal(blindSnapshot.player.cash, 99_985);
-assert.equal((await request("/api/game", blindB)).player.cash, 99_985);
-assert.deepEqual(blindSnapshot.lastChips.room.members.map((member) => member.totalBet), [5, 10]);
-process.stdout.write("✔ 多人德州盲注同時扣款後，全隊餘額保持一致\n");
+assert.equal(blindSnapshot.lastChips.room.bankroll, 99_850);
+assert.equal(blindSnapshot.player.cash, 99_850);
+assert.equal((await request("/api/game", blindB)).player.cash, 99_850);
+assert.deepEqual(blindSnapshot.lastChips.room.members.map((member) => member.totalBet), [50, 100]);
+process.stdout.write("✔ 多人德州固定大盲扣款後，全隊餘額保持一致\n");
+
+await request("/api/baccarat/action", a, { action: "join", tableId: "baccarat-01" });
+await request("/api/baccarat/action", b, { action: "join", tableId: "baccarat-01" });
+const baccaratBefore = await request("/api/game", a);
+const baccaratBalance = baccaratBefore.lastChips.room.bankroll;
+const baccaratTotalsBefore = new Map(baccaratBefore.lastChips.room.members.map((member) => [member.id, member.totalBet]));
+const concurrentBaccaratBets = await Promise.all([
+  request("/api/baccarat/action", a, { action: "bet", tableId: "baccarat-01", side: "player", amount: 100 }),
+  request("/api/baccarat/action", b, { action: "bet", tableId: "baccarat-01", side: "banker", amount: 200 }),
+]);
+assert.equal(concurrentBaccaratBets.filter((item) => item.baccarat?.players.some((member) => member.isMine && member.amount > 0)).length, 2);
+const sharedBaccarat = await request("/api/game", b);
+assert.equal(sharedBaccarat.lastChips.room.bankroll, baccaratBalance - 300);
+assert.equal(sharedBaccarat.player.cash, baccaratBalance - 300);
+assert.deepEqual(sharedBaccarat.lastChips.room.members.map((member) => member.totalBet - (baccaratTotalsBefore.get(member.id) ?? 0)).sort((left, right) => left - right), [100, 200]);
+process.stdout.write("✔ 多名隊友同時下注百家樂會扣同一筆共用賭本並記錄個別下注\n");
+
+const limitedTable = await request("/api/baccarat/action", a, { action: "create", tier: "low" });
+const limitedTableId = limitedTable.baccarat.tableId;
+await request("/api/baccarat/action", a, { action: "join", tableId: limitedTableId });
+await request("/api/baccarat/action", b, { action: "join", tableId: limitedTableId });
+const limitedRoom = sharedBaccarat.lastChips.room;
+const limitedMemberIds = limitedRoom.members.map((member) => `'${member.id}'`).join(",");
+seed(`UPDATE last_chips_rooms SET bankroll=250,wallet_sync=1 WHERE code='${limitedRoom.code}';
+  UPDATE players SET cash=250 WHERE user_id IN (${limitedMemberIds});
+  UPDATE last_chips_rooms SET wallet_sync=0 WHERE code='${limitedRoom.code}';`);
+const constrainedBets = await Promise.all([
+  request("/api/baccarat/action", a, { action: "bet", tableId: limitedTableId, side: "player", amount: 200 }, "any"),
+  request("/api/baccarat/action", b, { action: "bet", tableId: limitedTableId, side: "banker", amount: 200 }, "any"),
+]);
+assert.deepEqual(constrainedBets.map((item) => item.status).sort((left, right) => left - right), [200, 409]);
+const limitedBalance = await request("/api/game", a);
+assert.equal(limitedBalance.lastChips.room.bankroll, 50);
+assert.equal(limitedBalance.player.cash, 50);
+assert.equal((await request("/api/game", b)).player.cash, 50);
+process.stdout.write("✔ 共用賭本不足以承受兩筆並行百家樂下注時，只會接受一筆且不超支\n");
