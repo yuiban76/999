@@ -138,7 +138,8 @@ test("multiplayer cash invitations support gifts and protected scam resolution",
   assert.match(schema, /casinoDiceEntries = sqliteTable\("casino_dice_entries"/);
   assert.match(page, /五骰撲克/);
   assert.match(page, /重擲未保留骰子/);
-  assert.match(page, /casino-category-tabs/);
+  assert.match(page, /casino-game-picker/);
+  assert.match(page, /casino-game-guide/);
   assert.match(page, /離開房間並退還/);
   assert.match(page, /五局積分錦標賽/);
   assert.match(page, /建立下一輪賓果/);
