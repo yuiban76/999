@@ -3584,3 +3584,37 @@ button:disabled {
   .story-choice-detail .story-prologue summary { color: #9ed8f9; }
   .story-choice-detail .story-choice-title span { color: #f4b968; }
 }
+
+.account-action-icon { display:none; }
+.account-action-label { display:inline; }
+
+@media (max-width:760px) {
+  .guest-account-area { gap:8px; min-width:0; }
+  .guest-account-area > .game-guide-button,
+  .guest-account-area > .login-link {
+    display:grid;
+    place-items:center;
+    width:44px;
+    min-width:44px;
+    min-height:44px;
+    height:44px;
+    padding:0;
+    overflow:hidden;
+    color:#fff;
+  }
+  .guest-account-area > .game-guide-button { border-color:rgba(255,255,255,.28); background:rgba(255,255,255,.12); }
+  .guest-account-area > .login-link { border-color:#1677e8; background:#1677e8; }
+  .guest-account-area > button::before { content:none; }
+  .guest-account-area .account-action-icon { display:block; width:19px; height:19px; }
+  .guest-account-area .account-action-label {
+    position:absolute;
+    width:1px;
+    height:1px;
+    padding:0;
+    margin:-1px;
+    overflow:hidden;
+    clip:rect(0,0,0,0);
+    white-space:nowrap;
+    border:0;
+  }
+}

@@ -1224,13 +1224,19 @@ function GameHome() {
           <span><strong>人生 ONLINE</strong><small>LIFE, ONE CHOICE AT A TIME.</small></span>
         </a>
         <div className="world-time"><span>城市時間</span><strong>{gameClock.time}</strong><span>{playClock.day} · 玩家 {playClock.time} · 每滿 24:00 結算</span></div>
-        <div className="account-area">
-          <button className="account-button game-guide-button" type="button" onClick={() => setLifeGuideOpen(true)}>玩法</button>
+        <div className={`account-area ${profile ? "" : "guest-account-area"}`}>
+          <button className="account-button game-guide-button" type="button" aria-label="開啟遊戲說明" title="遊戲說明" onClick={() => setLifeGuideOpen(true)}>
+            <svg className="account-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.8"/><path d="M9.7 9a2.4 2.4 0 1 1 4.2 1.6c-1 .9-1.9 1.2-1.9 2.7M12 16.8v.1" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+            <span className="account-action-label">玩法</span>
+          </button>
           <span className={`connection-dot ${profile ? "connected" : ""}`} />
           {profile ? (
             <><div><strong>{profile.displayName}</strong><small>進度已儲存 · 大廳 01</small></div><button className="account-button" type="button" onClick={openNameEditor} disabled={busy}>改名</button><button className="account-button" type="button" onClick={() => void logout()} disabled={busy}>登出</button></>
           ) : (
-            <><div><strong>訪客試玩</strong><small>進度不會儲存</small></div><button className="account-button login-link" onClick={() => { setAuthMode("login"); setAuthOpen(true); }}>登入帳號</button></>
+            <><div><strong>訪客試玩</strong><small>進度不會儲存</small></div><button className="account-button login-link" type="button" aria-label="登入帳號" title="登入帳號" onClick={() => { setAuthMode("login"); setAuthOpen(true); }}>
+              <svg className="account-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13 5h5a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-5M10 8l4 4-4 4m4-4H4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              <span className="account-action-label">登入帳號</span>
+            </button></>
           )}
         </div>
       </header>
