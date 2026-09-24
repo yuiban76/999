@@ -10,8 +10,9 @@ export const JOB_CATEGORIES = [
   { id: "unfixed", label: "無固定職業", jobs: ["待業者"] },
 ] as const;
 
-export const CAREER_THRESHOLDS = [0, 100, 250, 500, 900, 1400, 2000, 2700] as const;
+export const CAREER_THRESHOLDS = [0, 150, 400, 800] as const;
 export const CAREER_PAY = [180, 230, 300, 400, 550, 750, 1000, 1300] as const;
+const CAREER_PAY_TIER_INDICES = [0, 2, 5, 7] as const;
 export const ABILITY_LABELS = {
   physical: "體力",
   intelligence: "智力",
@@ -43,23 +44,23 @@ const CAREER_ABILITY_PROFILE: Record<string, readonly [AbilityKey, AbilityKey]> 
   street: ["social", "physical"],
 };
 
-const PRIMARY_REQUIREMENTS = [10, 40, 80, 140, 220, 320, 440, 580] as const;
-const SECONDARY_REQUIREMENTS = [5, 20, 40, 70, 110, 160, 220, 300] as const;
+const PRIMARY_REQUIREMENTS = [0, 40, 80, 140] as const;
+const SECONDARY_REQUIREMENTS = [0, 20, 40, 70] as const;
 export const ALL_JOBS = JOB_CATEGORIES.flatMap((category) => category.jobs.map((job) => ({ job, categoryId: category.id, categoryLabel: category.label })));
 
 export const CAREER_WORK_SPECIALS = {
   "行政助理": { name: "超長班", hours: 10, minutes: 5 },
   "行政專員": { name: "爆肝", hours: 11, minutes: 5 },
-  "資深行政專員": { name: "摸魚", hours: 8, minutes: 3 },
-  "行政主管": { name: "準時下班", hours: 8, minutes: 2 },
-  "銀行員": { name: "櫃檯加班", hours: 9, minutes: 3 },
-  "理財專員": { name: "客戶開發", hours: 10, minutes: 4 },
-  "投資顧問": { name: "市場研判", hours: 8, minutes: 3 },
-  "分行經理": { name: "準時關帳", hours: 8, minutes: 2 },
-  "診所助理": { name: "基本照護", hours: 8, minutes: 2 },
-  "護理師": { name: "輪班津貼", hours: 9, minutes: 3 },
-  "資深護理師": { name: "臨床專注", hours: 8, minutes: 3 },
-  "護理長": { name: "準時交班", hours: 8, minutes: 2 },
+  "資深行政專員": { name: "摸魚", hours: 8, minutes: 4 },
+  "行政主管": { name: "準時下班", hours: 8, minutes: 4 },
+  "銀行員": { name: "櫃檯加班", hours: 9, minutes: 5 },
+  "理財專員": { name: "客戶開發", hours: 10, minutes: 5 },
+  "投資顧問": { name: "市場研判", hours: 8, minutes: 4 },
+  "分行經理": { name: "準時關帳", hours: 8, minutes: 4 },
+  "診所助理": { name: "基本照護", hours: 8, minutes: 4 },
+  "護理師": { name: "輪班津貼", hours: 9, minutes: 5 },
+  "資深護理師": { name: "臨床專注", hours: 8, minutes: 4 },
+  "護理長": { name: "準時交班", hours: 8, minutes: 4 },
   "廚房助理": { name: "備料班", hours: 4, minutes: 2 },
   "廚師": { name: "出餐高峰班", hours: 6, minutes: 3 },
   "主廚": { name: "品質監修班", hours: 8, minutes: 4 },
@@ -102,8 +103,9 @@ export const HOSPITALITY_SPECIAL_HUNGER = {
 
 export const RESTAURANT_PURCHASE_PRICE = 400_000;
 export const RESTAURANT_DAILY_GROSS = 20_000;
-export const RESTAURANT_DAILY_COST = 5_000;
+export const RESTAURANT_DAILY_COST = 12_000;
 export const RESTAURANT_DAILY_NET = RESTAURANT_DAILY_GROSS - RESTAURANT_DAILY_COST;
+export const RESTAURANT_PAYBACK_DAYS = Math.ceil(RESTAURANT_PURCHASE_PRICE / RESTAURANT_DAILY_NET);
 
 export const CRIME_ARREST_CHANCES = {
   "詐騙犯": 0.12,
@@ -293,23 +295,23 @@ export function careerRequirements(categoryId: string, index: number): Partial<A
     return requirements[index] ?? requirements.at(-1)!;
   }
   if (categoryId === "street") return {};
-  const tier = normalizedCareerTier(categoryId, index);
+  const rank = Math.max(0, Math.min(index, PRIMARY_REQUIREMENTS.length - 1));
   return {
-    [profile[0]]: PRIMARY_REQUIREMENTS[tier] ?? PRIMARY_REQUIREMENTS.at(-1),
-    [profile[1]]: SECONDARY_REQUIREMENTS[tier] ?? SECONDARY_REQUIREMENTS.at(-1),
+    [profile[0]]: PRIMARY_REQUIREMENTS[rank] ?? PRIMARY_REQUIREMENTS.at(-1),
+    [profile[1]]: SECONDARY_REQUIREMENTS[rank] ?? SECONDARY_REQUIREMENTS.at(-1),
   };
 }
 
 function normalizedCareerTier(categoryId: string, index: number) {
   const category = categoryInfo(categoryId);
   if (!category || category.jobs.length <= 1) return 0;
-  return Math.round((index * (CAREER_THRESHOLDS.length - 1)) / (category.jobs.length - 1));
+  const rank = Math.round((index * (CAREER_PAY_TIER_INDICES.length - 1)) / (category.jobs.length - 1));
+  return CAREER_PAY_TIER_INDICES[rank] ?? CAREER_PAY_TIER_INDICES.at(-1)!;
 }
 
 export function careerThresholdForCategory(categoryId: string, index: number) {
   if (categoryId === "literary") return WRITER_FAN_THRESHOLDS[index] ?? WRITER_FAN_THRESHOLDS.at(-1)!;
-  if (categoryId === "medical" || categoryId === "finance" || categoryId === "hospitality" || categoryId === "crime" || categoryId === "freelance" || categoryId === "street") return [0, 100, 250, 500][index] ?? 500;
-  return CAREER_THRESHOLDS[normalizedCareerTier(categoryId, index)] ?? CAREER_THRESHOLDS.at(-1)!;
+  return CAREER_THRESHOLDS[index] ?? CAREER_THRESHOLDS.at(-1)!;
 }
 
 export function careerPayForCategory(categoryId: string, index: number) {

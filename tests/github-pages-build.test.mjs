@@ -340,7 +340,7 @@ test("medical career adds health support, hospital discounts, and guarded player
   const migration = await readFile(new URL("drizzle/0020_old_starfox.sql", root), "utf8");
 
   assert.match(jobs, /jobs: \["診所助理", "護理師", "資深護理師", "護理長"\]/);
-  assert.match(jobs, /"護理師": \{ name: "輪班津貼", hours: 9, minutes: 3 \}/);
+  assert.match(jobs, /"護理師": \{ name: "輪班津貼", hours: 9, minutes: 5 \}/);
   assert.match(jobs, /"診所助理": 0\.05/);
   assert.match(jobs, /"護理師": \{ name: "護理師照護", health: 20, price: 300, minutes: 15 \}/);
   assert.match(worker, /MEDICAL_REQUEST_TIMEOUT_MS = 30_000/);

@@ -3706,3 +3706,54 @@ button:disabled {
     border:0;
   }
 }
+
+/* Casino card reveal: a short, staggered dealer-style flip for newly dealt cards. */
+.table-card-row { perspective: 720px; }
+.table-card-row i.casino-playing-card {
+  position: relative;
+  display: block;
+  flex: 0 0 31px;
+  overflow: visible;
+  background: transparent;
+  color: transparent;
+  box-shadow: none;
+  transform-style: preserve-3d;
+  animation: casino-card-turn 680ms cubic-bezier(.2,.78,.2,1) both;
+}
+.table-card-row i.casino-playing-card > span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: inherit;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.table-card-row i.casino-playing-card > .casino-card-back {
+  border: 1px solid #e6ca7c;
+  background:
+    radial-gradient(circle at center, rgba(239,211,139,.18) 0 1px, transparent 2px),
+    repeating-linear-gradient(45deg, #123c32 0 4px, #194b3d 4px 8px);
+  box-shadow: inset 0 0 0 2px #164637, inset 0 0 0 3px rgba(236,207,128,.72), 0 5px 12px rgba(0,0,0,.26);
+  color: #f2d887;
+  font-size: 13px;
+  transform: rotateY(180deg);
+}
+.table-card-row i.casino-playing-card > .casino-card-front {
+  border: 1px solid rgba(255,255,255,.82);
+  background: linear-gradient(145deg, #fffefa, #f0ebdf);
+  box-shadow: 0 5px 12px rgba(0,0,0,.24);
+  color: #1f251f;
+  font: 700 11px Georgia, serif;
+}
+.table-card-row i.casino-playing-card.red .casino-card-front { color: #b7312d; }
+@keyframes casino-card-turn {
+  0% { opacity: .65; transform: translateY(-8px) scale(.9) rotateY(180deg); }
+  54% { opacity: 1; transform: translateY(-2px) scale(1.06) rotateY(88deg); }
+  78% { transform: translateY(0) scale(1.025) rotateY(-7deg); }
+  100% { transform: translateY(0) scale(1) rotateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .table-card-row i.casino-playing-card { animation: none !important; transform: none; }
+}
