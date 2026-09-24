@@ -351,7 +351,9 @@ test("medical career adds health support, hospital discounts, and guarded player
   assert.match(worker, /provider\.current_job !== medicalRequest\.provider_job/);
   assert.match(worker, /patient\.cash < medicalRequest\.amount/);
   assert.match(worker, /medicalWorkHealthBonusFor\(next\.current_job\)/);
-  assert.match(worker, /Math\.max\(careerDiscount, memoryDiscount\)/);
+  assert.match(worker, /medicalHospitalDiscountFor\(next\.current_job\)/);
+  assert.match(worker, /const careDiscount = 1 - careerDiscount/);
+  assert.match(page, /medicalHospitalDiscountFor\(player\.currentJob\)/);
   assert.match(page, /請求治療/);
   assert.match(page, /玩家治療請求/);
   assert.match(page, /medical_response/);
