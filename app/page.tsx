@@ -832,6 +832,7 @@ function GameHome() {
   const [pokerMode, setPokerMode] = useState<"public" | "npc">("public");
   const selectedPokerTableRef = useRef("table-01");
   const selectedBaccaratTableRef = useRef("baccarat-01");
+  const pollInFlightRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
@@ -1012,17 +1013,6 @@ function GameHome() {
   }, [loadWorld]);
 
   useEffect(() => {
-    if (!profile) return;
-    const refreshWhileActive = () => { if (document.visibilityState === "visible") void loadWorld(true); };
-    const timer = window.setInterval(refreshWhileActive, 10_000);
-    document.addEventListener("visibilitychange", refreshWhileActive);
-    return () => {
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", refreshWhileActive);
-    };
-  }, [profile, loadWorld]);
-
-  useEffect(() => {
     const updateClock = () => setSharedMinutes(worldMinutes(currentWallClockMs() + serverTimeOffsetMs));
     updateClock();
     const timer = window.setInterval(updateClock, 1_000);
@@ -1037,11 +1027,26 @@ function GameHome() {
     return () => window.clearInterval(timer);
   }, [profile]);
 
+  const fastRefresh = (casino.phase !== undefined && casino.phase !== "idle")
+    || (poker.phase !== undefined && poker.phase !== "idle")
+    || pokerNpc.status !== "idle"
+    || bingo.status === "drawing"
+    || tournament.status === "playing"
+    || (player.location === "casino" && baccarat.joined && ["betting", "settling", "result"].includes(baccarat.status));
   useEffect(() => {
-    if (!profile || ((!casino.phase || casino.phase === "idle") && (!poker.phase || poker.phase === "idle") && pokerNpc.status === "idle" && bingo.status !== "drawing" && tournament.status !== "playing" && !(player.location === "casino" && (baccarat.status === "betting" || (baccarat.status === "result" && baccarat.joined))))) return;
-    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void loadWorld(true); }, 1_500);
-    return () => window.clearInterval(timer);
-  }, [profile, casino.phase, poker.phase, pokerNpc.status, bingo.status, tournament.status, player.location, baccarat.status, baccarat.joined, loadWorld]);
+    if (!profile) return;
+    const refreshWhileActive = () => {
+      if (document.visibilityState !== "visible" || pollInFlightRef.current) return;
+      pollInFlightRef.current = true;
+      void loadWorld(true).finally(() => { pollInFlightRef.current = false; });
+    };
+    const timer = window.setInterval(refreshWhileActive, fastRefresh ? 1_500 : 10_000);
+    document.addEventListener("visibilitychange", refreshWhileActive);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhileActive);
+    };
+  }, [profile, fastRefresh, loadWorld]);
 
   useEffect(() => {
     if (!enlargedPlayer) return;

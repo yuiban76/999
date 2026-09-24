@@ -104,7 +104,10 @@ export const gameEvents = sqliteTable("game_events", {
   tone: text("tone").notNull().default("neutral"),
   gameTime: text("game_time").notNull(),
   createdAt: integer("created_at").notNull(),
-}, (table) => [index("idx_events_room_created").on(table.roomId, table.createdAt)]);
+}, (table) => [
+  index("idx_events_room_created").on(table.roomId, table.createdAt),
+  index("idx_events_user_created").on(table.userId, table.createdAt),
+]);
 
 export const casinoHands = sqliteTable("casino_hands", {
   userId: text("user_id").primaryKey(),
