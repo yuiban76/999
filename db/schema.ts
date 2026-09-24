@@ -209,7 +209,7 @@ export const casinoBaccaratState = sqliteTable("casino_baccarat_state", {
   tableId: text("table_id").primaryKey(),
   shoe: text("shoe").notNull().default("[]"),
   roundNo: integer("round_no").notNull().default(1),
-  status: text("status").notNull().default("betting"),
+  status: text("status").notNull().default("waiting"),
   bettingEndsAt: integer("betting_ends_at").notNull().default(0),
   playerCards: text("player_cards").notNull().default("[]"),
   bankerCards: text("banker_cards").notNull().default("[]"),

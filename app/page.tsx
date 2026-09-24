@@ -1035,10 +1035,10 @@ function GameHome() {
   }, [profile]);
 
   useEffect(() => {
-    if (!profile || ((!casino.phase || casino.phase === "idle") && (!poker.phase || poker.phase === "idle") && pokerNpc.status === "idle" && bingo.status !== "drawing" && tournament.status !== "playing" && !(player.location === "casino" && baccarat.status === "betting"))) return;
+    if (!profile || ((!casino.phase || casino.phase === "idle") && (!poker.phase || poker.phase === "idle") && pokerNpc.status === "idle" && bingo.status !== "drawing" && tournament.status !== "playing" && !(player.location === "casino" && (baccarat.status === "betting" || (baccarat.status === "result" && baccarat.joined))))) return;
     const timer = window.setInterval(() => { if (document.visibilityState === "visible") void loadWorld(true); }, 1_500);
     return () => window.clearInterval(timer);
-  }, [profile, casino.phase, poker.phase, pokerNpc.status, bingo.status, tournament.status, player.location, baccarat.status, loadWorld]);
+  }, [profile, casino.phase, poker.phase, pokerNpc.status, bingo.status, tournament.status, player.location, baccarat.status, baccarat.joined, loadWorld]);
 
   useEffect(() => {
     if (!enlargedPlayer) return;
@@ -1765,7 +1765,7 @@ function CasinoPublicHall({ game, tables, selectedId, signedIn, busy, onAction }
     : `${table.tier === "low" ? "入門桌" : table.tier === "medium" ? "進階桌" : "高額桌"} · NT$${formatMoney(table.minBet)}–${formatMoney(table.maxBet)}`;
   const statusLabel = (table: CasinoPublicTable) => game === "poker"
     ? table.status === "playing" ? "牌局進行中" : "等待玩家"
-    : table.status === "result" ? "本局已結算" : table.status === "settling" ? "正在派彩" : "15 秒下注回合";
+    : table.status === "waiting" ? "等候真人加入" : table.status === "result" ? "本局已結算" : table.status === "settling" ? "正在派彩" : "15 秒下注回合";
   return <section className="casino-public-hall" aria-label={game === "poker" ? "德州公開牌桌大廳" : "百家樂公開牌桌大廳"}>
     <header><div><span>PUBLIC TABLE HALL</span><h3>{game === "poker" ? "德州公開桌" : "百家樂公開桌"}</h3><p>{game === "poker" ? "各桌牌局互相獨立 · 五人座位 · 選桌後加入座位" : "同桌玩家共看一局 · 各自押莊、閒或和 · 八副牌靴"}</p></div><button className={mineOnly ? "active" : ""} type="button" onClick={() => setMineOnly((value) => !value)}>{mineOnly ? "顯示全部牌桌" : "我的牌桌"}</button></header>
     <div className="casino-public-create"><label>建立新桌<select value={tier} onChange={(event) => setTier(event.target.value)} disabled={!signedIn || busy}>{game === "poker" ? <><option value="low">低盲注 · 大盲 NT$100</option><option value="medium">中盲注 · 大盲 NT$500</option><option value="high">高盲注 · 大盲 NT$1,000</option></> : <><option value="low">入門桌 · NT$100–999</option><option value="medium">進階桌 · NT$1,000–9,999</option><option value="high">高額桌 · NT$10,000–100,000</option></>}</select></label><button type="button" disabled={!signedIn || busy} onClick={() => onAction("create", { tier })}>＋ 建立公開桌</button></div>
@@ -1795,10 +1795,10 @@ function BaccaratTable({ state, signedIn, busy, cash, onAction }: { state: Bacca
   const betDisabled = busy || seconds <= 0 || !Number.isSafeInteger(wager) || wager < state.minBet || wager > state.maxBet || wager > cash || Boolean(ownBet);
   const totalBets = state.players.reduce((sum, player) => sum + player.amount, 0);
   return <section className="casino-table baccarat-table">
-    <header><div><span>BACCARAT · 8 DECK SHOE · TABLE {state.tableId.slice(-4).toUpperCase()}</span><h4>百家樂公開桌</h4></div><strong>{!signedIn ? "登入後查看牌局與下注" : state.status === "betting" ? `第 ${state.roundNo} 局 · ${seconds} 秒後封注` : state.status === "settling" ? "正在結算下注" : `第 ${state.roundNo} 局已結算`}</strong></header>
+    <header><div><span>BACCARAT · 8 DECK SHOE · TABLE {state.tableId.slice(-4).toUpperCase()}</span><h4>百家樂公開桌</h4></div><strong>{!signedIn ? "登入後查看牌局與下注" : state.status === "waiting" ? "等候真人加入後開始" : state.status === "betting" ? `第 ${state.roundNo} 局 · ${seconds} 秒後封注` : state.status === "settling" ? "正在結算下注" : `第 ${state.roundNo} 局已結算`}</strong></header>
     <div className="baccarat-summary"><div><small>可用資金</small><strong>NT${formatMoney(cash)}</strong></div><div><small>本局總下注</small><strong>NT${formatMoney(totalBets)}</strong></div><div><small>牌靴剩餘</small><strong>{signedIn ? `${state.shoeRemaining} 張` : "登入後查看"}</strong></div></div>
     <div className="baccarat-board"><div className="baccarat-hand"><span>閒家 · {state.playerCards.length ? state.playerCards.reduce((total, card) => total + (card.startsWith("A") ? 1 : /^(10|J|Q|K)/.test(card) ? 0 : Number.parseInt(card, 10)), 0) % 10 : "—"}</span>{state.playerCards.length ? <CardRow cards={state.playerCards} /> : <p>{signedIn ? "等待本局開牌" : "登入後可觀看同桌牌局"}</p>}</div><div className="baccarat-result">{state.result || "莊閒各先發兩張牌"}</div><div className="baccarat-hand"><span>莊家 · {state.bankerCards.length ? state.bankerCards.reduce((total, card) => total + (card.startsWith("A") ? 1 : /^(10|J|Q|K)/.test(card) ? 0 : Number.parseInt(card, 10)), 0) % 10 : "—"}</span>{state.bankerCards.length ? <CardRow cards={state.bankerCards} /> : <p>{signedIn ? "等待本局開牌" : "登入後可觀看同桌牌局"}</p>}</div></div>
-    {!signedIn ? <p className="casino-message">登入後才能加入百家樂公開桌。</p> : !state.joined ? <div className="baccarat-join"><p>加入後可看同一局牌，並在倒數內押一注。觀戰不需下注。</p><button type="button" onClick={() => onAction("join")} disabled={busy}>加入這張桌</button></div> : <div className="baccarat-controls">
+    {!signedIn ? <p className="casino-message">登入後才能加入百家樂公開桌。</p> : !state.joined ? <div className="baccarat-join"><p>{state.status === "waiting" ? "沒有真人玩家時牌局會暫停；加入後開始 15 秒下注回合。" : "加入後可看同一局牌，並在倒數內押一注。觀戰不需下注。"}</p><button type="button" onClick={() => onAction("join")} disabled={busy}>加入這張桌</button></div> : <div className="baccarat-controls">
       {ownBet ? <p className="baccarat-own-bet">本局已押{ownBet.side === "banker" ? "莊" : ownBet.side === "player" ? "閒" : "和"} NT${formatMoney(ownBet.amount)} · 等待共同結算</p> : <>
         <div className="baccarat-side-buttons"><button type="button" className={side === "banker" ? "selected" : ""} onClick={() => setSide("banker")} disabled={busy || seconds <= 0}>押莊 <small>0.95:1</small></button><button type="button" className={side === "player" ? "selected" : ""} onClick={() => setSide("player")} disabled={busy || seconds <= 0}>押閒 <small>1:1</small></button><button type="button" className={side === "tie" ? "selected" : ""} onClick={() => setSide("tie")} disabled={busy || seconds <= 0}>押和 <small>8:1</small></button></div>
         <label className="baccarat-amount">單注 NT${formatMoney(state.minBet)}–NT${formatMoney(state.maxBet)}<input type="number" inputMode="numeric" min={state.minBet} max={Math.min(state.maxBet, cash)} step="1" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={busy || seconds <= 0} /></label>

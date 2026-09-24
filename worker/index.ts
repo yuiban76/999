@@ -1,5 +1,6 @@
-import { ABILITY_LABELS, ABILITY_MAX, ACADEMIES, BANK_LOAN_RATE_BP, careerForCategory, careerRequirements, careerWorkSpecialFor, careerWorkWaitSeconds, categoryInfo, crimeArrestChanceFor, crimeSentenceMinutesFor, financeDepositRateFor, financeLoanTermsFor, HACK_DAILY_LIMIT, HACK_MAX_STEAL, HACK_STEAL_RATE, HACK_SUCCESS_CHANCE, hospitalitySpecialHungerFor, jobInfo, medicalHospitalDiscountFor, medicalTreatmentFor, medicalWorkHealthBonusFor, meetsCareerRequirements, RESTAURANT_DAILY_NET, RESTAURANT_PURCHASE_PRICE, STREET_BEG_PAIR_COOLDOWN_MS, STREET_BEG_REQUEST_TIMEOUT_MS, STREET_INVENTORY, STREET_SCAVENGE_WAIT_SECONDS, streetBegDailyCapFor, streetBegDonationsFor, streetCanSellPriceFor, streetRankIndex, streetScavengeLimitFor, TERRITORY_DAILY_CAP, TERRITORY_VISIT_COOLDOWN_MINUTES, TERRITORY_VISIT_REWARD, WRITER_DAILY_FAN_RATE, WRITER_DAILY_WRITING_LIMIT, WRITER_MAX_ACTIVE_BOOKS, WRITER_MAX_PURCHASES_PER_BOOK, writerBookPriceFor, writerFanRangeFor, type Abilities } from "../shared/jobs";
+import { ABILITY_LABELS, ABILITY_MAX, ACADEMIES, BANK_LOAN_RATE_BP, careerForCategory, careerRequirements, careerWorkSpecialFor, careerWorkWaitSeconds, categoryInfo, crimeArrestChanceFor, crimeSentenceMinutesFor, financeDepositRateFor, financeLoanTermsFor, HACK_DAILY_LIMIT, HACK_MAX_STEAL, HACK_STEAL_RATE, HACK_SUCCESS_CHANCE, hospitalitySpecialHungerFor, jobInfo, medicalHospitalDiscountFor, medicalTreatmentFor, medicalWorkHealthBonusFor, meetsCareerRequirements, RESTAURANT_DAILY_NET, RESTAURANT_PAYBACK_DAYS, RESTAURANT_PURCHASE_PRICE, STREET_BEG_PAIR_COOLDOWN_MS, STREET_BEG_REQUEST_TIMEOUT_MS, STREET_INVENTORY, STREET_SCAVENGE_WAIT_SECONDS, streetBegDailyCapFor, streetBegDonationsFor, streetCanSellPriceFor, streetRankIndex, streetScavengeLimitFor, TERRITORY_DAILY_CAP, TERRITORY_VISIT_COOLDOWN_MINUTES, TERRITORY_VISIT_REWARD, WRITER_DAILY_FAN_RATE, WRITER_DAILY_WRITING_LIMIT, WRITER_MAX_ACTIVE_BOOKS, WRITER_MAX_PURCHASES_PER_BOOK, writerBookPriceFor, writerFanRangeFor, type Abilities } from "../shared/jobs";
 import { CITY_EVENTS, STORY_CHAPTERS, storyChapterForDebt, talentInfo } from "../shared/progression";
+import { prodigalDailyInterest, prodigalMinimumPayment } from "../shared/finance";
 import { isHospitalRegularOpen, isLocationOpen, minuteOfDay, OPENING_HOURS, worldMinutes } from "../shared/world";
 import { eventMatchesMemories, NPC_EVENTS, NPC_FAVOR_RELATION_COST, NPC_FAVOR_TRUSTED_COST, NPC_FAVOR_TRUSTED_POINTS, NPC_FAVOR_UNLOCK_POINTS, NPCS, npcAvailableAt, npcFavorDefinition, npcFavorTier, relationshipLabel, type NpcChoice, type NpcDefinition, type NpcEvent, type NpcId } from "../shared/npcs";
 import { HOME_CHORE_WAIT_SECONDS, HOME_COOK_COST, HOME_COOK_WAIT_SECONDS, HOME_DAILY_COOK_LIMIT, HOME_NAP_WAIT_SECONDS, homeComfort, homeCookHunger, homeSleepBenefits } from "../shared/housing";
@@ -142,7 +143,6 @@ const CITY_COMMISSIONS = [
   { id: "freelance_fix", category: "freelance", location: "business" as LocationId, title: "緊急修復委託", detail: "完成一項臨時、需要專業的社區委託。", reward: 450, faction: "商家" },
   { id: "street_guide", category: "street", location: "underpass" as LocationId, title: "地下道引路", detail: "協助陌生人安全走過複雜的地下道。", reward: 350, faction: "街頭" },
 ] as const;
-const prodigalMinimumPayment = (balance: number) => balance > 0 ? Math.max(1, Math.ceil(balance * .003)) : 0;
 function scratchPrize() {
   const roll = crypto.getRandomValues(new Uint32Array(1))[0] / 4_294_967_296;
   if (roll < 0.62) return 0;
@@ -732,7 +732,7 @@ async function ensureSchema(db: D1Database) {
     db.prepare(`INSERT INTO poker_table_state (id,deck,community_cards,street,current_bet,turn_seat,pot,status,round_token,action_token,updated_at)
       VALUES ('table-01','[]','[]','idle',0,0,0,'idle','','',?) ON CONFLICT(id) DO NOTHING`).bind(now),
     db.prepare(`INSERT INTO casino_baccarat_state (table_id,shoe,round_no,status,betting_ends_at,player_cards,banker_cards,result,action_token,updated_at)
-      VALUES ('baccarat-01','[]',1,'betting',?,'[]','[]','', '',?) ON CONFLICT(table_id) DO NOTHING`).bind(now + 15_000, now),
+      VALUES ('baccarat-01','[]',1,'waiting',0,'[]','[]','', '',?) ON CONFLICT(table_id) DO NOTHING`).bind(now),
   ]);
   if (columnNames.has("mood")) await db.prepare("ALTER TABLE players DROP COLUMN mood").run();
   await db.prepare("UPDATE players SET current_job='寫作助理', job_category='literary', job_exp=0 WHERE job_category='creative' OR current_job IN ('作家','畫家','設計師','演員','歌手','導演','實況主','網紅')").run();
@@ -944,7 +944,10 @@ async function upsertPlayer(db: D1Database, user: AuthUser, forceHeartbeat = fal
         loanBalance = Math.min(9_000_000_000_000_000, loanBalance + Math.round(loanBalance * loanContract.interest_rate_bp / 10_000));
       } else {
         const dailyLoanRateBp = row.main_story === "prodigal_return" ? (parseList(progress.talents).includes("credit_rebuild") ? 18 : 20) : BANK_LOAN_RATE_BP;
-        loanBalance = Math.min(9_000_000_000_000_000, loanBalance + Math.round(loanBalance * dailyLoanRateBp / 10_000));
+        const dailyInterest = row.main_story === "prodigal_return"
+          ? prodigalDailyInterest(loanBalance, dailyLoanRateBp)
+          : Math.round(loanBalance * dailyLoanRateBp / 10_000);
+        loanBalance = Math.min(9_000_000_000_000_000, loanBalance + dailyInterest);
       }
       paymentMade = 0;
       minimumPayment = row.main_story === "prodigal_return" && !gameOver ? prodigalMinimumPayment(loanBalance) : 0;
@@ -2953,10 +2956,12 @@ const PUBLIC_BACCARAT_TIERS = { low: { label: "入門桌", minBet: 100, maxBet: 
 async function publicCasinoTablesState(db: D1Database, userId: string) {
   const tables = await db.prepare("SELECT * FROM casino_public_tables ORDER BY game, created_at, id").all<PublicCasinoTableRow>();
   await Promise.all(tables.results.filter((table) => table.game === "baccarat").map((table) => advanceBaccaratTable(db, table.id)));
+  const activeSince = Date.now() - ONLINE_HEARTBEAT_GRACE_MS;
   const [pokerCounts, baccaratCounts, baccaratStatus, myPoker, myBaccarat] = await Promise.all([
     db.prepare(`SELECT table_id, COUNT(*) AS count, MAX(CASE WHEN status IN ('playing','all_in','folded','settling') THEN 1 ELSE 0 END) AS playing,
       MAX(updated_at) AS updated_at FROM poker_hands WHERE status IN ${POKER_ACTIVE_STATUSES} GROUP BY table_id`).all<{ table_id: string; count: number; playing: number; updated_at: number }>(),
-    db.prepare(`SELECT m.table_id, COUNT(*) AS count FROM casino_baccarat_members m GROUP BY m.table_id`).all<{ table_id: string; count: number }>(),
+    db.prepare(`SELECT m.table_id, COUNT(*) AS count FROM casino_baccarat_members m JOIN players p ON p.user_id=m.user_id
+      WHERE p.last_seen_at>=? AND p.location='casino' AND p.game_over='' AND p.reset_game_over='' GROUP BY m.table_id`).bind(activeSince).all<{ table_id: string; count: number }>(),
     db.prepare("SELECT table_id,status FROM casino_baccarat_state").all<{ table_id: string; status: string }>(),
     db.prepare(`SELECT table_id FROM poker_hands WHERE user_id=? AND status IN ${POKER_ACTIVE_STATUSES} LIMIT 1`).bind(userId).first<{ table_id: string }>(),
     db.prepare("SELECT table_id FROM casino_baccarat_members WHERE user_id=? LIMIT 1").bind(userId).first<{ table_id: string }>(),
@@ -2997,12 +3002,11 @@ async function createPublicCasinoTable(db: D1Database, userId: string, game: "po
   } else {
     const settings = PUBLIC_BACCARAT_TIERS[tier as keyof typeof PUBLIC_BACCARAT_TIERS];
     if (!settings) return null;
-    const shoe = JSON.stringify(shuffledDeck(8));
     await db.batch([
       db.prepare("INSERT INTO casino_public_tables (id,game,tier,big_blind,min_bet,max_bet,created_by,created_at,updated_at) VALUES (?,'baccarat',?,0,?,?,?,?,?)")
         .bind(id, tier, settings.minBet, settings.maxBet, userId, now, now),
       db.prepare(`INSERT INTO casino_baccarat_state (table_id,shoe,round_no,status,betting_ends_at,player_cards,banker_cards,result,action_token,updated_at)
-        VALUES (?,?,1,'betting',?,'[]','[]','','',?)`).bind(id, shoe, now + 15_000, now),
+        VALUES (?,'[]',1,'waiting',0,'[]','[]','','',?)`).bind(id, now),
     ]);
   }
   return id;
@@ -3012,8 +3016,55 @@ const BACCARAT_BETTING_MS = 15_000;
 const BACCARAT_RESULT_MS = 5_000;
 const BACCARAT_RECOVERY_MS = 30_000;
 
+async function activeBaccaratMemberCount(db: D1Database, tableId: string, now = Date.now()) {
+  const row = await db.prepare(`SELECT COUNT(*) AS count FROM casino_baccarat_members m JOIN players p ON p.user_id=m.user_id
+    WHERE m.table_id=? AND p.last_seen_at>=? AND p.location='casino' AND p.game_over='' AND p.reset_game_over=''`)
+    .bind(tableId, now - ONLINE_HEARTBEAT_GRACE_MS).first<{ count: number }>();
+  return Number(row?.count ?? 0);
+}
+
 async function advanceBaccaratTable(db: D1Database, tableId: string) {
   let state = await db.prepare("SELECT * FROM casino_baccarat_state WHERE table_id=?").bind(tableId).first<BaccaratStateRow>();
+  if (!state) return null;
+  const now = Date.now();
+  const [activeMembers, pendingBets] = await Promise.all([
+    activeBaccaratMemberCount(db, tableId, now),
+    db.prepare("SELECT COUNT(*) AS count FROM casino_baccarat_bets WHERE table_id=? AND round_no=? AND status='pending'")
+      .bind(tableId, state.round_no).first<{ count: number }>(),
+  ]);
+  const pendingBetCount = Number(pendingBets?.count ?? 0);
+  if (!activeMembers && !pendingBetCount) {
+    if (state.status === "betting") {
+      await db.prepare(`UPDATE casino_baccarat_state SET status='waiting', betting_ends_at=0, updated_at=?
+        WHERE table_id=? AND status='betting' AND updated_at=?
+          AND NOT EXISTS (SELECT 1 FROM casino_baccarat_bets WHERE table_id=? AND round_no=? AND status='pending')
+          AND NOT EXISTS (SELECT 1 FROM casino_baccarat_members m JOIN players p ON p.user_id=m.user_id
+            WHERE m.table_id=? AND p.last_seen_at>=? AND p.location='casino' AND p.game_over='' AND p.reset_game_over='')`)
+        .bind(Math.max(now, state.updated_at + 1), tableId, state.updated_at, tableId, state.round_no, tableId, now - ONLINE_HEARTBEAT_GRACE_MS).run();
+      state = await db.prepare("SELECT * FROM casino_baccarat_state WHERE table_id=?").bind(tableId).first<BaccaratStateRow>();
+    } else if (state.status === "settling") {
+      if (state.updated_at > now - BACCARAT_RECOVERY_MS) return state;
+      await db.prepare(`UPDATE casino_baccarat_state SET status='waiting', betting_ends_at=0, action_token='', updated_at=?
+        WHERE table_id=? AND status='settling' AND updated_at=?
+          AND NOT EXISTS (SELECT 1 FROM casino_baccarat_bets WHERE table_id=? AND round_no=? AND status='pending')
+          AND NOT EXISTS (SELECT 1 FROM casino_baccarat_members m JOIN players p ON p.user_id=m.user_id
+            WHERE m.table_id=? AND p.last_seen_at>=? AND p.location='casino' AND p.game_over='' AND p.reset_game_over='')`)
+        .bind(Math.max(now, state.updated_at + 1), tableId, state.updated_at, tableId, state.round_no, tableId, now - ONLINE_HEARTBEAT_GRACE_MS).run();
+      state = await db.prepare("SELECT * FROM casino_baccarat_state WHERE table_id=?").bind(tableId).first<BaccaratStateRow>();
+    }
+    return state;
+  }
+  if (state.status === "waiting") {
+    if (!activeMembers) return state;
+    let shoe = parseCards(state.shoe);
+    if (shoe.length < 40) shoe = shuffledDeck(8);
+    await db.prepare(`UPDATE casino_baccarat_state SET shoe=?, status='betting', betting_ends_at=?, updated_at=?
+      WHERE table_id=? AND status='waiting' AND updated_at=?
+        AND EXISTS (SELECT 1 FROM casino_baccarat_members m JOIN players p ON p.user_id=m.user_id
+          WHERE m.table_id=? AND p.last_seen_at>=? AND p.location='casino' AND p.game_over='' AND p.reset_game_over='')`)
+      .bind(JSON.stringify(shoe), now + BACCARAT_BETTING_MS, Math.max(now, state.updated_at + 1), tableId, state.updated_at, tableId, now - ONLINE_HEARTBEAT_GRACE_MS).run();
+    state = await db.prepare("SELECT * FROM casino_baccarat_state WHERE table_id=?").bind(tableId).first<BaccaratStateRow>();
+  }
   if (!state) return null;
   if (!parseCards(state.shoe).length && state.status === "betting") {
     const shoe = JSON.stringify(shuffledDeck(8));
@@ -3022,10 +3073,12 @@ async function advanceBaccaratTable(db: D1Database, tableId: string) {
     state = await db.prepare("SELECT * FROM casino_baccarat_state WHERE table_id=?").bind(tableId).first<BaccaratStateRow>();
   }
   if (!state) return null;
-  const now = Date.now();
-  if (state.status === "result" && state.betting_ends_at <= now) {
+  if (state.status === "result" && state.betting_ends_at <= now && activeMembers) {
     await db.prepare(`UPDATE casino_baccarat_state SET status='betting', round_no=round_no+1, betting_ends_at=?, action_token='', updated_at=?
-      WHERE table_id=? AND status='result' AND betting_ends_at<=?`).bind(now + BACCARAT_BETTING_MS, now, tableId, now).run();
+      WHERE table_id=? AND status='result' AND betting_ends_at<=?
+        AND EXISTS (SELECT 1 FROM casino_baccarat_members m JOIN players p ON p.user_id=m.user_id
+          WHERE m.table_id=? AND p.last_seen_at>=? AND p.location='casino' AND p.game_over='' AND p.reset_game_over='')`)
+      .bind(now + BACCARAT_BETTING_MS, now, tableId, now, tableId, now - ONLINE_HEARTBEAT_GRACE_MS).run();
     state = await db.prepare("SELECT * FROM casino_baccarat_state WHERE table_id=?").bind(tableId).first<BaccaratStateRow>();
   }
   if (state?.status === "betting" && state.betting_ends_at > now) return state;
@@ -3067,10 +3120,13 @@ async function advanceBaccaratTable(db: D1Database, tableId: string) {
 
 async function baccaratState(db: D1Database, userId: string, tableId = "baccarat-01") {
   await advanceBaccaratTable(db, tableId);
+  const activeSince = Date.now() - ONLINE_HEARTBEAT_GRACE_MS;
   const [state, metadata, members, bets, membership] = await Promise.all([
     db.prepare("SELECT * FROM casino_baccarat_state WHERE table_id=?").bind(tableId).first<BaccaratStateRow>(),
     db.prepare("SELECT tier,min_bet,max_bet FROM casino_public_tables WHERE id=? AND game='baccarat'").bind(tableId).first<{ tier: string; min_bet: number; max_bet: number }>(),
-    db.prepare("SELECT user_id,player_name FROM casino_baccarat_members WHERE table_id=? ORDER BY joined_at LIMIT 40").bind(tableId).all<{ user_id: string; player_name: string }>(),
+    db.prepare(`SELECT m.user_id,m.player_name FROM casino_baccarat_members m JOIN players p ON p.user_id=m.user_id
+      WHERE m.table_id=? AND p.last_seen_at>=? AND p.location='casino' AND p.game_over='' AND p.reset_game_over=''
+      ORDER BY m.joined_at LIMIT 40`).bind(tableId, activeSince).all<{ user_id: string; player_name: string }>(),
     db.prepare("SELECT * FROM casino_baccarat_bets WHERE table_id=? AND round_no=? ORDER BY user_id").bind(tableId, (await db.prepare("SELECT round_no FROM casino_baccarat_state WHERE table_id=?").bind(tableId).first<{ round_no: number }>())?.round_no ?? 0).all<BaccaratBetRow>(),
     db.prepare("SELECT 1 AS joined FROM casino_baccarat_members WHERE table_id=? AND user_id=?").bind(tableId, userId).first<{ joined: number }>(),
   ]);
@@ -4622,7 +4678,7 @@ async function takeAction(request: Request, env: Env) {
       next.cash -= RESTAURANT_PURCHASE_PRICE;
       next.owns_restaurant = 1;
       title = "買下餐廳";
-      message = `支付 NT$${RESTAURANT_PURCHASE_PRICE.toLocaleString("zh-TW")}，取得自有餐廳。從下一個在線遊玩日開始，每日結算淨收益 NT$${RESTAURANT_DAILY_NET.toLocaleString("zh-TW")}。`;
+      message = `支付 NT$${RESTAURANT_PURCHASE_PRICE.toLocaleString("zh-TW")}，取得自有餐廳。從下一個在線遊玩日開始，每日結算淨收益 NT$${RESTAURANT_DAILY_NET.toLocaleString("zh-TW")}，約 ${RESTAURANT_PAYBACK_DAYS} 個遊玩日回本。`;
       break;
     }
     case "writer_write": {
@@ -5080,7 +5136,7 @@ async function takeAction(request: Request, env: Env) {
     case "choose_story":
       if (next.main_story !== "unselected") return json({ message: "人生主線選定後不能再次更換。" }, 409);
       if (body.story !== "prodigal_return") return json({ message: "這條人生主線目前尚未開放。" }, 400);
-      Object.assign(next, { cash: 37, bank_balance: 0, loan_balance: 250_000, main_story: "prodigal_return", finance_day: Math.floor(next.elapsed_minutes / 1440) + 1, daily_minimum_payment: 750, daily_payment_made: 0, missed_payment_days: 0, writer_fans: 0, writer_day: Math.floor(next.elapsed_minutes / 1440) + 1, writer_writes: 0, owns_restaurant: 0, prison_until: 0, prison_crime: "", territory_location: "", territory_day: 0, territory_payout_day: 0, territory_visits: 0, territory_income: 0, territory_pending: 0, hack_day: 0, hack_uses: 0, street_day: 0, street_scavenges: 0, street_beg_income: 0, game_over: "", energy: 100, health: 100, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, home_comfort: 0, home_day: 0, home_cook_uses: 0, home_chore_done: 0, action_available_at: 0, action_label: "", location: "realtor" });
+      Object.assign(next, { cash: 37, bank_balance: 0, loan_balance: 250_000, main_story: "prodigal_return", finance_day: Math.floor(next.elapsed_minutes / 1440) + 1, daily_minimum_payment: prodigalMinimumPayment(250_000), daily_payment_made: 0, missed_payment_days: 0, writer_fans: 0, writer_day: Math.floor(next.elapsed_minutes / 1440) + 1, writer_writes: 0, owns_restaurant: 0, prison_until: 0, prison_crime: "", territory_location: "", territory_day: 0, territory_payout_day: 0, territory_visits: 0, territory_income: 0, territory_pending: 0, hack_day: 0, hack_uses: 0, street_day: 0, street_scavenges: 0, street_beg_income: 0, game_over: "", energy: 100, health: 100, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, home_comfort: 0, home_day: 0, home_cook_uses: 0, home_chore_done: 0, action_available_at: 0, action_label: "", location: "realtor" });
       title = "選擇主線：《浪子回頭》"; message = "你帶著 NT$37 與 NT$250,000 負債，決定承認失敗並重新開始。"; tone = "neutral"; break;
     case "move": {
       if (!VALID_LOCATIONS.has(body.location as LocationId)) return json({ message: "目的地不存在。" }, 400);
@@ -5426,6 +5482,7 @@ async function takeAction(request: Request, env: Env) {
         env.DB.prepare(`UPDATE player_progress SET talent_exp=0, talents='[]', story_chapter=0, story_seen_chapter=0, last_event_day=0, pending_event='', updated_at=? WHERE user_id=? AND ${resetGate}`).bind(resetNow, user.userId, user.userId, expectedLifeVersion, actionToken),
       ];
       Object.assign(next, { cash: next.main_story === "prodigal_return" && !resetToSelection ? 37 : 10000, bank_balance: 0, loan_balance: next.main_story === "prodigal_return" && !resetToSelection ? 250_000 : 0, finance_day: 1, daily_minimum_payment: next.main_story === "prodigal_return" && !resetToSelection ? 750 : 0, daily_payment_made: 0, missed_payment_days: 0, writer_fans: 0, writer_day: 1, writer_writes: 0, owns_restaurant: 0, prison_until: 0, prison_crime: "", territory_location: "", territory_day: 0, territory_payout_day: 0, territory_visits: 0, territory_income: 0, territory_pending: 0, hack_day: 0, hack_uses: 0, street_day: 0, street_scavenges: 0, street_beg_income: 0, game_over: "", reset_game_over: "", elapsed_remainder_ms: 0, energy: 100, health: 100, hunger: 80, intelligence_exp: 0, programming_exp: 0, fitness_exp: 0, work_exp: 0, charisma_exp: 0, current_job: "unemployed", job_category: "unfixed", job_exp: 0, illness: "", owns_home: 0, rental_name: "", rented_until: 0, home_comfort: 0, home_day: 0, home_cook_uses: 0, home_chore_done: 0, action_available_at: 0, action_label: "", elapsed_minutes: 0, location: "realtor", main_story: resetToSelection ? "unselected" : next.main_story });
+      if (next.main_story === "prodigal_return" && !resetToSelection) next.daily_minimum_payment = prodigalMinimumPayment(next.loan_balance);
       progress = { ...progress, talent_exp: 0, talents: "[]", story_chapter: 0, story_seen_chapter: 0, last_event_day: 0, pending_event: "" }; talents = new Set();
       title = "重新開始人生"; message = "新的人生已開始，所有進度回到起點。"; tone = "neutral"; break;
     }
